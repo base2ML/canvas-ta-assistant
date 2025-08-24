@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { RefreshCw, Users, BookOpen, Clock, User, AlertTriangle, CheckCircle, Eye, Calendar, ChevronDown, ChevronRight, AlertCircleIcon, XCircle } from 'lucide-react';
 
 const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onLateDays }) => {
-  const [selectedCourse, setSelectedCourse] = useState('');
   const [taGroups, setTAGroups] = useState([]);
   const [ungradedSubmissions, setUngradedSubmissions] = useState([]);
   const [taAssignments, setTAAssignments] = useState({});
@@ -17,6 +16,9 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
   const [courseInfo, setCourseInfo] = useState(null);
   const [expandedAssignments, setExpandedAssignments] = useState(new Set());
   const [selectedAssignmentForSummary, setSelectedAssignmentForSummary] = useState('');
+
+  // Use the first available course (since this tool is for single course use)
+  const currentCourse = courses && courses.length > 0 ? courses[0] : null;
 
   const fetchTAGroups = async (courseId) => {
     try {
@@ -108,8 +110,8 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
 
       if (response.ok) {
         // Refresh data after clearing cache
-        if (selectedCourse) {
-          loadCourseData(selectedCourse);
+        if (currentCourse) {
+          loadCourseData(currentCourse.id);
         }
       } else {
         const data = await response.json();
@@ -155,23 +157,10 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
     }
   };
 
-  const handleCourseChange = (courseId) => {
-    setSelectedCourse(courseId);
-    if (courseId) {
-      loadCourseData(courseId);
-    } else {
-      setTAGroups([]);
-      setUngradedSubmissions([]);
-      setTAAssignments({});
-      setAssignmentStats([]);
-      setTotalUngraded(0);
-      setCourseInfo(null);
-    }
-  };
 
   const handleRefresh = () => {
-    if (selectedCourse) {
-      loadCourseData(selectedCourse);
+    if (currentCourse) {
+      loadCourseData(currentCourse.id);
     }
   };
 
@@ -300,7 +289,7 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
             <div className="flex space-x-2">
               <button
                 onClick={clearCache}
-                disabled={loading || clearingCache || !selectedCourse}
+                disabled={loading || clearingCache || !currentCourse}
                 className="flex items-center px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:opacity-50 transition-colors"
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${clearingCache ? 'animate-spin' : ''}`} />
@@ -308,7 +297,7 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
               </button>
               <button
                 onClick={handleRefresh}
-                disabled={loading || clearingCache || !selectedCourse}
+                disabled={loading || clearingCache || !currentCourse}
                 className="flex items-center px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50 transition-colors"
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
@@ -318,24 +307,18 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
           </div>
         </div>
 
-        {/* Course Selection */}
-        <div className="p-6 border-b border-gray-200">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Select Course for TA Grading Review
-          </label>
-          <select
-            value={selectedCourse}
-            onChange={(e) => handleCourseChange(e.target.value)}
-            className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select a course...</option>
-            {courses.map(course => (
-              <option key={course.id} value={course.id}>
-                {course.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* Current Course Display */}
+        {currentCourse && (
+          <div className="p-6 border-b border-gray-200">
+            <div className="flex items-center text-sm text-gray-600">
+              <BookOpen className="h-4 w-4 mr-2" />
+              Current Course: <span className="font-medium ml-1">{currentCourse.name}</span>
+              {courseInfo && (
+                <span className="text-gray-500 ml-2">({courseInfo.course_code})</span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Error Display */}
         {error && (
@@ -353,7 +336,7 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
         )}
 
         {/* Dashboard Content */}
-        {!loading && selectedCourse && (
+        {!loading && currentCourse && (
           <>
             {/* Stats Overview */}
             <div className="p-6 border-b border-gray-200">

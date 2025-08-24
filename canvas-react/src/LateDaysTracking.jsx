@@ -14,7 +14,7 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
   const [lastUpdated, setLastUpdated] = useState(null);
 
   // Cache configuration
-  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+  const CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
 
   // Use the first available course (since this tool is for single course use)
   const currentCourse = courses && courses.length > 0 ? courses[0] : null;
