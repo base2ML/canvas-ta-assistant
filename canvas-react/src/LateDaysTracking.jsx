@@ -92,8 +92,6 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
         throw new Error(data.detail || 'Failed to fetch late days data');
       }
 
-      setAssignments(data.assignments || []);
-      setCourseInfo(data.course_info);
       return data;
     } catch (err) {
       throw new Error(`Error fetching late days data: ${err.message}`);
@@ -122,12 +120,14 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
     try {
       const data = await fetchLateDaysData(currentCourse.id);
       setLateDaysData(data.students || []);
+      setAssignments(data.assignments || []);
+      setCourseInfo(data.course_info);
       
       // Save to cache
       const cacheData = {
         lateDaysData: data.students || [],
-        assignments: assignments,
-        courseInfo: courseInfo
+        assignments: data.assignments || [],
+        courseInfo: data.course_info
       };
       saveToCache(courseId, cacheData);
       
