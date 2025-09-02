@@ -7,7 +7,6 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
   const [taAssignments, setTAAssignments] = useState({});
   const [assignmentStats, setAssignmentStats] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [clearingCache, setClearingCache] = useState(false);
   const [error, setError] = useState('');
   const [totalUngraded, setTotalUngraded] = useState(0);
   const [loadTime, setLoadTime] = useState(null);
@@ -45,7 +44,20 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
       
       if (!response.ok) {
         console.error('TA Groups API error:', { status: response.status, statusText: response.statusText, data });
-        throw new Error(data.detail || `Failed to fetch TA groups (${response.status}: ${response.statusText})`);
+        // Handle different error response formats
+        let errorMessage;
+        if (data && typeof data === 'object') {
+          if (data.detail) {
+            errorMessage = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+          } else if (data.message) {
+            errorMessage = data.message;
+          } else {
+            errorMessage = JSON.stringify(data);
+          }
+        } else {
+          errorMessage = data || response.statusText;
+        }
+        throw new Error(`Failed to fetch TA groups (${response.status}): ${errorMessage}`);
       }
 
       console.log('Successfully fetched TA groups:', data.ta_groups?.length || 0);
@@ -53,7 +65,8 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
       return data.course_info;
     } catch (err) {
       console.error('Error in fetchTAGroups:', err);
-      throw new Error(`Error fetching TA groups: ${err.message}`);
+      const errorMessage = err.message || (typeof err === 'string' ? err : JSON.stringify(err));
+      throw new Error(`Error fetching TA groups: ${errorMessage}`);
     }
   };
 
@@ -74,53 +87,48 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
       const data = await response.json();
       
       if (!response.ok) {
-        throw new Error(data.detail || 'Failed to fetch ungraded submissions');
+        // Handle different error response formats
+        let errorMessage;
+        if (data && typeof data === 'object') {
+          if (data.detail) {
+            errorMessage = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+          } else if (data.message) {
+            errorMessage = data.message;
+          } else {
+            errorMessage = JSON.stringify(data);
+          }
+        } else {
+          errorMessage = data || response.statusText;
+        }
+        throw new Error(`Failed to fetch ungraded submissions (${response.status}): ${errorMessage}`);
       }
 
       setUngradedSubmissions(data.ungraded_submissions || []);
-      setTAAssignments(data.ta_assignments || {});
+      setTAAssignments(data.grading_distribution || {});
       setAssignmentStats(data.assignment_stats || []);
       setTotalUngraded(data.total_ungraded || 0);
       
       // Debug logging
+      console.log('Full API response:', data);
       console.log('Assignment stats received:', data.assignment_stats);
+      console.log('Assignment stats length:', data.assignment_stats?.length || 0);
       if (data.assignment_stats && data.assignment_stats.length > 0) {
         console.log('First assignment breakdown:', data.assignment_stats[0].ta_grading_breakdown);
+      } else {
+        console.log('No assignment stats found in response');
       }
       
       return data.course_info;
     } catch (err) {
-      throw new Error(`Error fetching ungraded submissions: ${err.message}`);
+      const errorMessage = err.message || (typeof err === 'string' ? err : JSON.stringify(err));
+      throw new Error(`Error fetching ungraded submissions: ${errorMessage}`);
     }
   };
 
   const clearCache = async () => {
-    setClearingCache(true);
-    try {
-      const response = await fetch(`${backendUrl}/api/cache/clear`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          base_url: apiUrl,
-          api_token: apiToken
-        })
-      });
-
-      if (response.ok) {
-        // Refresh data after clearing cache
-        if (currentCourse) {
-          loadCourseData(currentCourse.id);
-        }
-      } else {
-        const data = await response.json();
-        throw new Error(data.detail || 'Failed to clear cache');
-      }
-    } catch (err) {
-      setError(`Error clearing cache: ${err.message}`);
-    } finally {
-      setClearingCache(false);
+    // Cache clearing not implemented in backend - just refresh data
+    if (currentCourse) {
+      loadCourseData(currentCourse.id);
     }
   };
 
@@ -134,24 +142,46 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
     setLoadTime(null);
     
     try {
-      console.log('Starting parallel API calls...');
-      const [taGroupsInfo, ungradedInfo] = await Promise.all([
-        fetchTAGroups(courseId),
-        fetchUngradedSubmissions(courseId)
-      ]);
+      console.log('Starting API calls...');
+      let taGroupsInfo = null;
+      let ungradedInfo = null;
+      
+      // Try TA Groups first
+      try {
+        console.log('Fetching TA groups...');
+        taGroupsInfo = await fetchTAGroups(courseId);
+        console.log('TA Groups fetch successful:', taGroupsInfo);
+      } catch (taGroupsError) {
+        console.error('TA Groups fetch failed:', taGroupsError);
+        setError(`TA Groups error: ${taGroupsError.message}`);
+      }
+      
+      // Try Ungraded Submissions
+      try {
+        console.log('Fetching ungraded submissions...');
+        ungradedInfo = await fetchUngradedSubmissions(courseId);
+        console.log('Ungraded submissions fetch successful:', ungradedInfo);
+      } catch (ungradedError) {
+        console.error('Ungraded submissions fetch failed:', ungradedError);
+        setError(prevError => prevError ? `${prevError}; Assignments error: ${ungradedError.message}` : `Assignments error: ${ungradedError.message}`);
+      }
       
       const endTime = Date.now();
       const duration = (endTime - startTime) / 1000;
       setLoadTime(duration);
       
-      console.log('API calls completed successfully in', duration, 'seconds');
-      console.log('TA Groups Info:', taGroupsInfo);
-      console.log('Ungraded Info:', ungradedInfo);
-      
+      console.log('API calls completed in', duration, 'seconds');
       setCourseInfo(taGroupsInfo || ungradedInfo);
+      
+      // If neither call succeeded, throw an error
+      if (!taGroupsInfo && !ungradedInfo) {
+        throw new Error('Both API calls failed');
+      }
+      
     } catch (err) {
       console.error('Error in loadCourseData:', err);
-      setError(err.message);
+      const errorMessage = err.message || (typeof err === 'string' ? err : JSON.stringify(err));
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -189,44 +219,8 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
     const assignment = assignmentStats.find(a => a.assignment_id.toString() === assignmentId);
     if (!assignment) return [];
 
-    // Use the same logic as in the assignment breakdown
-    let taBreakdown = assignment.ta_grading_breakdown || [];
-    if (taBreakdown.length === 0 && taGroups.length > 0) {
-      taBreakdown = [];
-      
-      // Use assignment ID as a seed to create different data for each assignment
-      const assignmentSeed = parseInt(assignmentId) || 0;
-      
-      taGroups.forEach((group, index) => {
-        const assigned = group.members_count || group.members?.length || 0;
-        
-        // Make the data vary based on assignment ID and TA index
-        const variationSeed = (assignmentSeed % 7) + index;
-        const graded = Math.max(0, assigned - (variationSeed % 5));
-        
-        // Different submission patterns for different assignments
-        const onTimeRate = 0.6 + ((assignmentSeed + index) % 4) * 0.1; // 60-90% on time
-        const onTime = Math.floor(assigned * onTimeRate);
-        const lateRate = 0.4 + ((assignmentSeed + index) % 3) * 0.2; // 40-80% of remaining
-        const late = Math.floor((assigned - onTime) * lateRate);
-        const missing = assigned - onTime - late;
-        
-        const percentage = assigned > 0 ? Math.round((graded / assigned) * 100 * 10) / 10 : 100.0;
-        
-        taBreakdown.push({
-          ta_name: group.name,
-          ta_group: null,
-          total_assigned: assigned,
-          graded: graded,
-          ungraded: assigned - graded,
-          percentage_complete: percentage,
-          submitted_on_time: onTime,
-          submitted_late: late,
-          not_submitted: missing
-        });
-      });
-    }
-    return taBreakdown;
+    // Always use the backend-provided TA grading breakdown to ensure consistency
+    return assignment.ta_grading_breakdown || [];
   };
 
   // Filter submissions based on selected filters
@@ -289,15 +283,15 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
             <div className="flex space-x-2">
               <button
                 onClick={clearCache}
-                disabled={loading || clearingCache || !currentCourse}
+                disabled={loading || !currentCourse}
                 className="flex items-center px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:opacity-50 transition-colors"
               >
-                <RefreshCw className={`h-4 w-4 mr-2 ${clearingCache ? 'animate-spin' : ''}`} />
-                Clear Cache
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Force Refresh
               </button>
               <button
                 onClick={handleRefresh}
-                disabled={loading || clearingCache || !currentCourse}
+                disabled={loading || !currentCourse}
                 className="flex items-center px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50 transition-colors"
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
@@ -351,30 +345,42 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
                 </div>
                 <div className="bg-purple-50 p-4 rounded-lg">
                   <div className="text-2xl font-bold text-purple-600">{Object.keys(taAssignments).length}</div>
-                  <div className="text-sm text-purple-800">TAs with Assignments</div>
+                  <div className="text-sm text-purple-800">{Object.keys(taAssignments).length > 0 ? 'TAs with Assignments' : 'No TA Assignments'}</div>
                 </div>
               </div>
             </div>
 
             {/* Assignment Selector and Summary Table */}
-            {assignmentStats.length > 0 && (
+            {!loading && currentCourse && (
               <div className="p-6 border-b border-gray-200">
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Assignment Summary
+                    Assignment Summary ({assignmentStats.length} assignments found)
                   </label>
-                  <select
-                    value={selectedAssignmentForSummary}
-                    onChange={(e) => setSelectedAssignmentForSummary(e.target.value)}
-                    className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select an assignment for detailed TA breakdown...</option>
-                    {assignmentStats.map(assignment => (
-                      <option key={assignment.assignment_id} value={assignment.assignment_id.toString()}>
-                        {assignment.assignment_name}
-                      </option>
-                    ))}
-                  </select>
+                  {assignmentStats.length > 0 ? (
+                    <select
+                      value={selectedAssignmentForSummary}
+                      onChange={(e) => setSelectedAssignmentForSummary(e.target.value)}
+                      className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select an assignment for detailed TA breakdown...</option>
+                      {assignmentStats.map(assignment => (
+                        <option key={assignment.assignment_id} value={assignment.assignment_id.toString()}>
+                          {assignment.assignment_name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="text-gray-500 italic p-3 bg-gray-50 rounded-md border">
+                      No assignments with grading data found. This could mean:
+                      <ul className="list-disc list-inside mt-2 text-sm">
+                        <li>No assignments exist in this course yet</li>
+                        <li>No students have submitted assignments</li>
+                        <li>All assignments are fully graded</li>
+                        <li>TA groups are not set up for grading assignments</li>
+                      </ul>
+                    </div>
+                  )}
                 </div>
 
                 {/* Summary Table */}
@@ -383,50 +389,73 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
                     <h4 className="text-lg font-medium text-gray-900 mb-3">
                       TA Summary for: {assignmentStats.find(a => a.assignment_id.toString() === selectedAssignmentForSummary)?.assignment_name}
                     </h4>
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full bg-white border border-gray-200 rounded-lg">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">TA Name</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Students</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Graded</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">On Time</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Late</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Missing</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200">
-                          {getTABreakdownForAssignment(selectedAssignmentForSummary).map((taStats, index) => (
-                            <tr key={index} className="hover:bg-gray-50">
-                              <td className="px-4 py-3 text-sm font-medium text-gray-900">{taStats.ta_name}</td>
-                              <td className="px-4 py-3 text-sm text-gray-600">{taStats.total_assigned}</td>
-                              <td className="px-4 py-3 text-sm text-gray-600">{taStats.graded}/{taStats.total_assigned}</td>
-                              <td className="px-4 py-3 text-sm">
-                                <div className="flex items-center space-x-2">
-                                  <div className="w-16 bg-gray-200 rounded-full h-2">
-                                    <div
-                                      className={`h-2 rounded-full ${
-                                        taStats.percentage_complete === 100 ? 'bg-green-500' : 'bg-yellow-500'
-                                      }`}
-                                      style={{ width: `${taStats.percentage_complete}%` }}
-                                    ></div>
-                                  </div>
-                                  <span className={`text-xs font-medium ${
-                                    taStats.percentage_complete === 100 ? 'text-green-600' : 'text-yellow-600'
-                                  }`}>
-                                    {taStats.percentage_complete}%
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 text-sm text-green-600">{taStats.submitted_on_time}</td>
-                              <td className="px-4 py-3 text-sm text-yellow-600">{taStats.submitted_late}</td>
-                              <td className="px-4 py-3 text-sm text-red-600">{taStats.not_submitted}</td>
+                    {getTABreakdownForAssignment(selectedAssignmentForSummary).length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full bg-white border border-gray-200 rounded-lg">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">TA Name</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Students</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Graded</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">On Time</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Late</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Missing</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {getTABreakdownForAssignment(selectedAssignmentForSummary).map((taStats, index) => (
+                              <tr key={index} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 text-sm font-medium text-gray-900">{taStats.ta_name}</td>
+                                <td className="px-4 py-3 text-sm text-gray-600">{taStats.total_assigned}</td>
+                                <td className="px-4 py-3 text-sm text-gray-600">{taStats.graded}/{taStats.total_assigned}</td>
+                                <td className="px-4 py-3 text-sm">
+                                  <div className="flex items-center space-x-2">
+                                    <div className="w-16 bg-gray-200 rounded-full h-2">
+                                      <div
+                                        className={`h-2 rounded-full ${
+                                          taStats.percentage_complete === 100 ? 'bg-green-500' : 'bg-yellow-500'
+                                        }`}
+                                        style={{ width: `${taStats.percentage_complete}%` }}
+                                      ></div>
+                                    </div>
+                                    <span className={`text-xs font-medium ${
+                                      taStats.percentage_complete === 100 ? 'text-green-600' : 'text-yellow-600'
+                                    }`}>
+                                      {taStats.percentage_complete}%
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-green-600">{taStats.submitted_on_time}</td>
+                                <td className="px-4 py-3 text-sm text-yellow-600">{taStats.submitted_late}</td>
+                                <td className="px-4 py-3 text-sm text-red-600">{taStats.not_submitted}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                        <div className="flex items-start">
+                          <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 mr-3" />
+                          <div>
+                            <h5 className="text-sm font-medium text-yellow-800">No TA Grading Assignments Found</h5>
+                            <p className="text-sm text-yellow-700 mt-1">
+                              This assignment does not have submissions assigned to specific TAs in Canvas. 
+                              This could mean:
+                            </p>
+                            <ul className="text-sm text-yellow-700 mt-2 ml-4 list-disc">
+                              <li>The assignment is not set up for TA grading in Canvas</li>
+                              <li>Grading has not been distributed among TAs yet</li>
+                              <li>The Canvas API does not expose grader assignments for this course</li>
+                            </ul>
+                            <p className="text-sm text-yellow-700 mt-2">
+                              <strong>To fix this:</strong> Check Canvas assignment settings or contact your Canvas administrator.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -469,9 +498,9 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
             )}
 
             {/* TA Workload Summary */}
-            {Object.keys(taAssignments).length > 0 && (
-              <div className="p-6 border-b border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">TA Workload Distribution</h3>
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">TA Workload Distribution</h3>
+              {Object.keys(taAssignments).length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {Object.entries(taAssignments)
                     .sort(([,a], [,b]) => b - a)
@@ -488,8 +517,23 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                  <div className="flex items-start">
+                    <AlertCircleIcon className="h-5 w-5 text-blue-600 mt-0.5 mr-3" />
+                    <div>
+                      <h5 className="text-sm font-medium text-blue-800">No TA Workload Distribution Available</h5>
+                      <p className="text-sm text-blue-700 mt-1">
+                        Canvas does not provide grader assignments for this course, so workload cannot be distributed by TA.
+                      </p>
+                      <p className="text-sm text-blue-700 mt-2">
+                        <strong>Total ungraded submissions:</strong> {totalUngraded}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Filters */}
             {ungradedSubmissions.length > 0 && (
@@ -540,12 +584,8 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
                     const isCompleted = progressPercent === 100;
                     const isExpanded = expandedAssignments.has(assignment.assignment_id);
                     
-                    // For demo purposes, create realistic TA data using actual TA groups if none exists
+                    // Use the backend-provided TA grading breakdown directly
                     let taBreakdown = assignment.ta_grading_breakdown || [];
-                    if (taBreakdown.length === 0 && taGroups.length > 0) {
-                      // Use the same logic as getTABreakdownForAssignment for consistency
-                      taBreakdown = getTABreakdownForAssignment(assignment.assignment_id.toString());
-                    }
                     
                     const hasBreakdown = taBreakdown && taBreakdown.length > 0;
                     
@@ -563,7 +603,7 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
                       >
                         <div 
                           className="p-4 cursor-pointer"
-                          onClick={() => hasBreakdown && toggleAssignmentExpanded(assignment.assignment_id)}
+                          onClick={() => toggleAssignmentExpanded(assignment.assignment_id)}
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
@@ -583,15 +623,13 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
                                         {assignment.graded_submissions}/{assignment.total_submissions} submissions graded
                                       </p>
                                     </div>
-                                    {hasBreakdown && (
-                                      <button className="ml-2 p-1 hover:bg-gray-100 rounded">
-                                        {isExpanded ? (
-                                          <ChevronDown className="h-4 w-4 text-gray-500" />
-                                        ) : (
-                                          <ChevronRight className="h-4 w-4 text-gray-500" />
-                                        )}
-                                      </button>
-                                    )}
+                                    <button className="ml-2 p-1 hover:bg-gray-100 rounded">
+                                      {isExpanded ? (
+                                        <ChevronDown className="h-4 w-4 text-gray-500" />
+                                      ) : (
+                                        <ChevronRight className="h-4 w-4 text-gray-500" />
+                                      )}
+                                    </button>
                                   </div>
                                 </div>
                               </div>
@@ -617,8 +655,8 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
                                 </div>
                                 <div className="text-xs text-gray-400 mt-1">
                                   {hasBreakdown ? 
-                                    `Click to view TA grading breakdown (${taBreakdown?.length || 0} TAs)` : 
-                                    `No TA breakdown available (${taBreakdown?.length || 0} TAs assigned)`
+                                    `Click to view TA grading breakdown (${taBreakdown?.length || 0} TAs assigned)` : 
+                                    `Click to view details (no TA assignments found in Canvas)`
                                   }
                                 </div>
                               </div>
@@ -649,11 +687,12 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
                         </div>
                         
                         {/* TA Grading Breakdown - Expandable */}
-                        {isExpanded && hasBreakdown && (
+                        {isExpanded && (
                           <div className="border-t border-gray-100 p-4 bg-gray-50">
                             <h5 className="font-medium text-gray-900 mb-3">TA Grading Breakdown</h5>
-                            <div className="space-y-2">
-                              {taBreakdown.map((taStats, index) => (
+                            {hasBreakdown ? (
+                              <div className="space-y-2">
+                                {taBreakdown.map((taStats, index) => (
                                 <div key={index} className="bg-white rounded border p-4">
                                   {/* TA Name Header */}
                                   <div className="flex items-center justify-between mb-3">
@@ -710,7 +749,17 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
                                   </div>
                                 </div>
                               ))}
-                            </div>
+                              </div>
+                            ) : (
+                              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                                <div className="flex items-center">
+                                  <AlertTriangle className="h-4 w-4 text-yellow-600 mr-2" />
+                                  <span className="text-sm text-yellow-700">
+                                    No TA assignments found for this assignment in Canvas.
+                                  </span>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

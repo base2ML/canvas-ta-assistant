@@ -194,3 +194,4 @@ get-library-docs "/vitejs/vite" topic:"configuration"
 resolve-library-id "tailwindcss"
 get-library-docs "/tailwindlabs/tailwindcss" topic:"utilities"
 ```
+- Ensure that any logging is done via Loguru following all best practices. Do not use print statements directly in code

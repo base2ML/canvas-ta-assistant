@@ -14,8 +14,12 @@ dependencies = [
     "uvicorn[standard]>=0.24.0",
     "canvasapi>=3.0.0",
     "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
     "python-multipart>=0.0.6",
     "python-dateutil>=2.8.0",
+    "pandas>=2.0.0",
+    "loguru>=0.7.3",
+    "numpy>=1.24.4",
 ]
 
 [project.optional-dependencies]

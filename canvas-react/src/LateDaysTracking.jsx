@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { RefreshCw, Calendar, User, Clock, ArrowLeft, FileText, ChevronUp, ChevronDown } from 'lucide-react';
+import { RefreshCw, Calendar, User, Clock, ArrowLeft, FileText, ChevronUp, ChevronDown, MessageCircle } from 'lucide-react';
 
-const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAGrading, onLoadCourses }) => {
+const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAGrading, onPeerReviews, onLoadCourses }) => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -10,7 +10,7 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
   const [lateDaysData, setLateDaysData] = useState([]);
   const [selectedTAGroup, setSelectedTAGroup] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'student_name', direction: 'asc' });
-  const [cacheKey, setCacheKey] = useState('');
+  const [, setCacheKey] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
 
   // Cache configuration
@@ -74,6 +74,7 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
 
   const fetchLateDaysData = useCallback(async (courseId) => {
     try {
+      // Use the new late-days endpoint that fetches all students' data
       const response = await fetch(`${backendUrl}/api/late-days`, {
         method: 'POST',
         headers: {
@@ -140,7 +141,7 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
     } finally {
       setLoading(false);
     }
-  }, [currentCourse, fetchLateDaysData, generateCacheKey, loadFromCache, saveToCache, assignments, courseInfo]);
+  }, [currentCourse, fetchLateDaysData, generateCacheKey, loadFromCache, saveToCache]);
 
   // Load data automatically when component mounts and currentCourse is available
   useEffect(() => {
@@ -285,6 +286,15 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
                   >
                     <User className="h-4 w-4 mr-1" />
                     TA Grading
+                  </button>
+                )}
+                {onPeerReviews && (
+                  <button
+                    onClick={onPeerReviews}
+                    className="text-green-500 hover:text-green-600 flex items-center"
+                  >
+                    <MessageCircle className="h-4 w-4 mr-1" />
+                    Peer Reviews
                   </button>
                 )}
               </div>

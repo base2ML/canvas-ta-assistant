@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Settings, Calendar, User, Server, Users } from 'lucide-react';
+import { RefreshCw, Settings, Calendar, User, Server, Users, MessageCircle } from 'lucide-react';
 import TAGradingDashboard from './TAGradingDashboard';
 import LateDaysTracking from './LateDaysTracking';
+import PeerReviewTracking from './PeerReviewTracking';
 
 const App = () => {
   const [apiUrl, setApiUrl] = useState(import.meta.env.VITE_CANVAS_API_URL || '');
@@ -15,6 +16,7 @@ const App = () => {
   const [userInfo, setUserInfo] = useState(null);
   const [showTADashboard, setShowTADashboard] = useState(false);
   const [showLateDays, setShowLateDays] = useState(false);
+  const [showPeerReviews, setShowPeerReviews] = useState(false);
 
   // Load saved credentials on mount
   useEffect(() => {
@@ -98,13 +100,15 @@ const App = () => {
       const data = await response.json();
       console.log('Connection test result:', data);
       
-      if (data.success) {
-        setError('✅ Connection test successful! Your credentials should work.');
+      if (response.ok && data.status === 'success') {
+        setError(`✅ Connection test successful! ${data.message}\n\nURL tested: ${data.base_url}`);
       } else {
-        setError(`❌ Connection test failed: ${data.error}\n\nURL tested: ${data.url_tested}\nStatus: ${data.status_code || 'Network error'}`);
+        // Handle error responses from backend
+        const errorMessage = data.detail || data.error || 'Unknown error';
+        setError(`❌ Connection test failed: ${errorMessage}\n\nURL tested: ${apiUrl}`);
       }
     } catch (err) {
-      setError(`❌ Connection test failed: ${err.message}`);
+      setError(`❌ Connection test failed: ${err.message}\n\nURL tested: ${apiUrl || 'undefined'}`);
     } finally {
       setLoading(false);
     }
@@ -323,6 +327,10 @@ const App = () => {
           setShowTADashboard(false);
           setShowLateDays(true);
         }}
+        onPeerReviews={() => {
+          setShowTADashboard(false);
+          setShowPeerReviews(true);
+        }}
       />
     );
   }
@@ -340,6 +348,24 @@ const App = () => {
           setShowLateDays(false);
           setShowTADashboard(true);
         }}
+        onPeerReviews={() => {
+          setShowLateDays(false);
+          setShowPeerReviews(true);
+        }}
+        onLoadCourses={() => validateAndSetCourses()}
+      />
+    );
+  }
+
+  // Show Peer Review Tracking if selected
+  if (showPeerReviews) {
+    return (
+      <PeerReviewTracking
+        apiUrl={apiUrl}
+        apiToken={apiToken}
+        backendUrl={backendUrl}
+        courses={courses}
+        onBack={() => setShowPeerReviews(false)}
         onLoadCourses={() => validateAndSetCourses()}
       />
     );
@@ -377,6 +403,13 @@ const App = () => {
                 Late Days
               </button>
               <button
+                onClick={() => setShowPeerReviews(!showPeerReviews)}
+                className="flex items-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
+              >
+                <MessageCircle className="h-4 w-4 mr-2" />
+                Peer Reviews
+              </button>
+              <button
                 onClick={handleRefresh}
                 disabled={loading}
                 className="flex items-center px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50 transition-colors"
@@ -392,6 +425,7 @@ const App = () => {
                   setUserInfo(null);
                   setShowTADashboard(false);
                   setShowLateDays(false);
+                  setShowPeerReviews(false);
                 }}
                 className="flex items-center px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
               >
@@ -438,6 +472,13 @@ const App = () => {
             >
               <Calendar className="h-5 w-5 mr-2" />
               Late Days Tracking
+            </button>
+            <button
+              onClick={() => setShowPeerReviews(true)}
+              className="inline-flex items-center px-6 py-3 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
+            >
+              <MessageCircle className="h-5 w-5 mr-2" />
+              Peer Review Tracking
             </button>
           </div>
         </div>
