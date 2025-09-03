@@ -170,9 +170,16 @@ api_tokens.txt
 # Logs & Temporary Files
 # =============================================================================
 *.log
+*.zip
 logs/
 *.tmp
 *.temp
+
+# Editor temporary files
+*.swp
+*.swo
+*~
+.#*
 
 # =============================================================================
 # Project-Specific
@@ -191,5 +198,24 @@ test-results/
 playwright-report/
 test-results.xml
 
+# Playwright MCP Server
+.playwright-mcp/
+
+# Modern Development Tools
+# UV Package Manager
+uv.lock
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
 # Documentation builds
 docs/_build/
+
+# Additional Python patterns
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# FastAPI specific
+.fastapi/
