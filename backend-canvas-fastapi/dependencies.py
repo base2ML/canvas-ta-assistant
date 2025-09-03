@@ -155,5 +155,7 @@ class CourseListParams:
 # Type aliases for cleaner dependency injection
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 ThreadPoolDep = Annotated[ThreadPoolExecutor, Depends(get_thread_pool)]
-AssignmentThreadPoolDep = Annotated[ThreadPoolExecutor, Depends(get_assignment_thread_pool)]
+AssignmentThreadPoolDep = Annotated[
+    ThreadPoolExecutor, Depends(get_assignment_thread_pool)
+]
 CommonParamsDep = Annotated[CommonQueryParams, Depends()]

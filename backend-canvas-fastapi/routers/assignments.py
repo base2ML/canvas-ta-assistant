@@ -58,18 +58,21 @@ async def get_assignments(
             )
             if cached_result is not None:
                 assignments_data, courses_data, warnings = cached_result
-                
+
                 # Convert back to response format
-                assignments = [Assignment(**assignment_data) for assignment_data in assignments_data]
+                assignments = [
+                    Assignment(**assignment_data)
+                    for assignment_data in assignments_data
+                ]
                 courses = [Course(**course_data) for course_data in courses_data]
-                
+
                 return AssignmentResponse(
                     assignments=assignments,
                     courses=courses,
                     total_assignments=len(assignments),
                     warnings=warnings if warnings else None,
                 )
-        
+
         canvas = await get_canvas_from_request(request, settings)
 
         # Fetch assignments from all courses concurrently
@@ -82,9 +85,24 @@ async def get_assignments(
                 course = await loop.run_in_executor(
                     thread_pool, lambda: canvas.get_course(course_id)
                 )
-                assignments = await loop.run_in_executor(
-                    thread_pool, lambda: list(course.get_assignments())
-                )
+                def get_assignments() -> List[Any]:
+                    """Get assignments using CanvasAPI best practices."""
+                    return list(course.get_assignments(
+                        per_page=100,  # CanvasAPI best practice
+                        include=["submission", "assignment_group"],  # Include related data
+                        bucket="ungraded"  # Focus on ungraded assignments if available
+                    ))
+                
+                try:
+                    assignments = await loop.run_in_executor(thread_pool, get_assignments)
+                except Exception:
+                    # Fallback without bucket filter if not supported
+                    def get_assignments_fallback() -> List[Any]:
+                        return list(course.get_assignments(
+                            per_page=100,
+                            include=["submission", "assignment_group"]
+                        ))
+                    assignments = await loop.run_in_executor(thread_pool, get_assignments_fallback)
                 return course, assignments
             except Exception as e:
                 print(f"Error fetching assignments for course {course_id}: {e}")
@@ -132,8 +150,10 @@ async def get_assignments(
                 try:
 
                     def get_submission() -> Any:
+                        """Get submission using CanvasAPI best practices."""
                         return assignment.get_submission(
-                            "self", include=["submission_history"]
+                            "self", 
+                            include=["submission_history", "submission_comments", "rubric_assessment"]
                         )
 
                     submission = await loop.run_in_executor(thread_pool, get_submission)
@@ -186,10 +206,16 @@ async def get_assignments(
         # Cache the result (if enabled)
         if settings.enable_caching:
             # Convert to serializable data for caching
-            assignments_data = [assignment.model_dump() for assignment in all_assignments]
+            assignments_data = [
+                assignment.model_dump() for assignment in all_assignments
+            ]
             courses_data = [course.model_dump() for course in courses]
             set_cached_assignments(
-                request.course_ids, request.api_token, assignments_data, courses_data, warnings
+                request.course_ids,
+                request.api_token,
+                assignments_data,
+                courses_data,
+                warnings,
             )
 
         return AssignmentResponse(

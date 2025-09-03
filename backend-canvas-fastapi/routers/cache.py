@@ -59,7 +59,7 @@ async def get_cache_statistics(
     """
     try:
         stats = get_cache_stats()
-        
+
         return {
             "timestamp": datetime.utcnow().isoformat(),
             "caching_enabled": settings.enable_caching,

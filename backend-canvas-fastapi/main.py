@@ -12,7 +12,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from config import Settings, get_settings
-from routers import assignments, auth, cache, health, late_days, peer_reviews, ta_management
+from routers import (
+    assignments,
+    auth,
+    cache,
+    distribution,
+    health,
+    late_days,
+    peer_reviews,
+    statistics,
+    submissions,
+    ta_management,
+)
 
 # Create logs directory if it doesn't exist
 os.makedirs("logs", exist_ok=True)
@@ -22,17 +33,17 @@ logger.remove()  # Remove default handler
 logger.add(
     sys.stderr,
     level="INFO",
-    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}",
-    colorize=True
+    format="{time:YYYY-MM-DD HH:mm:ss A} | {level: <8} | {name}:{function}:{line} | {message}",
+    colorize=True,
 )
 logger.add(
     "logs/canvas-ta-dashboard.log",
-    level="DEBUG", 
-    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}",
+    level="DEBUG",
+    format="{time:YYYY-MM-DD HH:mm:ss A} | {level: <8} | {name}:{function}:{line} | {message}",
     rotation="1 day",
     retention="30 days",
     compression="zip",
-    enqueue=True  # Thread-safe logging
+    enqueue=True,  # Thread-safe logging
 )
 
 
@@ -66,6 +77,9 @@ def create_application() -> FastAPI:
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(assignments.router)
+    app.include_router(submissions.router)
+    app.include_router(statistics.router)
+    app.include_router(distribution.router)
     app.include_router(ta_management.router)
     app.include_router(peer_reviews.router)
     app.include_router(late_days.router)

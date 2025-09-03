@@ -195,3 +195,4 @@ resolve-library-id "tailwindcss"
 get-library-docs "/tailwindlabs/tailwindcss" topic:"utilities"
 ```
 - Ensure that any logging is done via Loguru following all best practices. Do not use print statements directly in code
+- The full documentation for CanvasAPI can be found here and should be consulted whenever utilizing canvasAPI to ensure best practices are used. https://canvasapi.readthedocs.io/en/stable/

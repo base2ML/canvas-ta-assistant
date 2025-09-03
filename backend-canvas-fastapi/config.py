@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     # Server configuration
     host: str = "0.0.0.0"
     port: int = 8000
-    debug: bool = False
+    debug: bool = True
 
     # CORS configuration
     cors_origins: list[str] = ["*"]  # Should be restricted in production

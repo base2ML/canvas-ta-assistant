@@ -51,9 +51,13 @@ def analyze_comments_for_peer_reviews(
     try:
         logger.info("Using alternative comment analysis for peer review detection")
 
-        # Get all submissions with comments
+        # Get all submissions with comments using CanvasAPI best practices
         submissions = list(
-            assignment.get_submissions(include=["submission_comments", "user"])
+            assignment.get_submissions(
+                include=["submission_comments", "user", "submission_history"],
+                per_page=100,  # CanvasAPI best practice
+                workflow_state="submitted"  # Only submitted submissions for efficiency
+            )
         )
         logger.info(f"Found {len(submissions)} submissions to analyze")
 
@@ -339,10 +343,17 @@ async def get_peer_review_lateness(
         }
         logger.info(f"Assignment details: {assignment.name} (ID: {assignment.id})")
 
-        # Create user name mapping
-        users = await loop.run_in_executor(
-            thread_pool, lambda: list(course.get_users())
-        )
+        # Create user name mapping using CanvasAPI best practices
+        def get_users() -> List[Any]:
+            """Get course users with optimal parameters."""
+            return list(course.get_users(
+                per_page=100,  # CanvasAPI best practice
+                enrollment_type=["student", "teacher", "ta"],  # Include relevant user types
+                enrollment_state=["active", "invited"],  # Only active/invited users
+                include=["email", "sis_user_id"]  # Include useful user data
+            ))
+        
+        users = await loop.run_in_executor(thread_pool, get_users)
         name_map = {u.id: getattr(u, "name", str(u.id)) for u in users}
 
         # Fetch peer review events

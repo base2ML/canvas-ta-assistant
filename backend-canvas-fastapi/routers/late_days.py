@@ -88,13 +88,26 @@ async def get_late_days_tracking(
 
         # Get all assignments with due dates
         def get_assignments() -> List[Any]:
-            return [a for a in course.get_assignments() if getattr(a, "due_at", None)]
+            """Get assignments with due dates using CanvasAPI best practices."""
+            # Get all assignments with optimal pagination and includes
+            all_assignments = list(course.get_assignments(
+                per_page=100,  # CanvasAPI best practice
+                include=["submission", "due_at"],  # Include submission data efficiently
+            ))
+            # Filter for assignments with due dates
+            return [a for a in all_assignments if getattr(a, "due_at", None)]
 
         assignments = await loop.run_in_executor(thread_pool, get_assignments)
 
         # Get all students in the course
         def get_students() -> List[Any]:
-            return list(course.get_users(enrollment_type=["student"]))
+            """Get students using CanvasAPI best practices."""
+            return list(course.get_users(
+                enrollment_type=["student"],
+                enrollment_state=["active", "invited"],  # Only active/invited students
+                per_page=100,  # CanvasAPI best practice
+                include=["email", "sis_user_id"]  # Include useful student data
+            ))
 
         students = await loop.run_in_executor(thread_pool, get_students)
 
@@ -113,7 +126,12 @@ async def get_late_days_tracking(
 
             # Get all submissions for this assignment
             def get_submissions() -> List[Any]:
-                return list(assignment.get_submissions(include=["user"]))
+                """Get submissions using CanvasAPI best practices."""
+                return list(assignment.get_submissions(
+                    include=["user", "submission_history"],  # Include comprehensive data
+                    per_page=100,  # CanvasAPI best practice
+                    workflow_state="submitted"  # Only submitted submissions for efficiency
+                ))
 
             submissions = await loop.run_in_executor(thread_pool, get_submissions)
 

@@ -201,6 +201,28 @@ class TAGradingResponse(BaseModel):
     assignment_stats: List[AssignmentGradingStats]
 
 
+class UngradedSubmissionsResponse(BaseModel):
+    """Response for ungraded submissions endpoint."""
+
+    ungraded_submissions: List[UngradedSubmission]
+    total_ungraded: int
+    course_info: Dict[str, Any]
+
+
+class AssignmentStatsResponse(BaseModel):
+    """Response for assignment statistics endpoint."""
+
+    assignment_stats: List[AssignmentGradingStats]
+    course_info: Dict[str, Any]
+
+
+class GradingDistributionResponse(BaseModel):
+    """Response for grading distribution endpoint."""
+
+    grading_distribution: Dict[str, int]
+    course_info: Dict[str, Any]
+
+
 class PeerReviewResponse(BaseModel):
     """Response for peer review tracking."""
 

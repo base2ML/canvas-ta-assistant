@@ -26,33 +26,33 @@ class TTLCache:
     def get(self, key: str, ttl: int) -> Optional[Any]:
         """
         Get cached value if it exists and hasn't expired.
-        
+
         Args:
             key: Cache key
             ttl: Time-to-live in seconds
-            
+
         Returns:
             Cached value or None if expired/missing
         """
         with self._lock:
             if key not in self._cache:
                 return None
-                
+
             value, timestamp = self._cache[key]
             current_time = time.time()
-            
+
             # Check if expired
             if current_time - timestamp > ttl:
                 del self._cache[key]
                 return None
-                
+
             logger.debug(f"Cache hit for key: {key}")
             return value
 
     def set(self, key: str, value: Any) -> None:
         """
         Set cached value with current timestamp.
-        
+
         Args:
             key: Cache key
             value: Value to cache
@@ -60,14 +60,14 @@ class TTLCache:
         with self._lock:
             current_time = time.time()
             self._cache[key] = (value, current_time)
-            
+
             # Simple cache size management (same as original)
             if len(self._cache) > self._max_size:
                 # Remove oldest entry
                 oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k][1])
                 del self._cache[oldest_key]
                 logger.debug(f"Cache evicted oldest entry: {oldest_key}")
-                
+
             logger.debug(f"Cache set for key: {key}")
 
     def clear(self) -> None:
@@ -87,12 +87,12 @@ class TTLCache:
         with self._lock:
             current_time = time.time()
             expired_count = 0
-            
+
             for key, (_, timestamp) in self._cache.items():
                 # Count expired entries (these would be removed on next access)
                 if current_time - timestamp > 3600:  # Use 1 hour as default for stats
                     expired_count += 1
-                    
+
             return {
                 "size": len(self._cache),
                 "max_size": self._max_size,
@@ -126,11 +126,11 @@ def get_cached_ta_groups(
 
 
 def set_cached_ta_groups(
-    course_id: str, 
-    api_token: str, 
-    ta_groups_data: Any, 
-    course_data: Any, 
-    error: Optional[str]
+    course_id: str,
+    api_token: str,
+    ta_groups_data: Any,
+    course_data: Any,
+    error: Optional[str],
 ) -> None:
     """
     Cache TA groups data.
@@ -176,11 +176,11 @@ def get_cached_assignments(
 
 
 def set_cached_assignments(
-    course_ids: list, 
-    api_token: str, 
-    assignments_data: Any, 
-    courses_data: Any, 
-    warnings: Any
+    course_ids: list,
+    api_token: str,
+    assignments_data: Any,
+    courses_data: Any,
+    warnings: Any,
 ) -> None:
     """
     Cache assignments data.
@@ -199,16 +199,16 @@ def clear_all_caches() -> Dict[str, int]:
     ta_size = ta_groups_cache.size()
     assignment_stats_size = assignment_stats_cache.size()
     assignments_size = assignments_cache.size()
-    
+
     ta_groups_cache.clear()
     assignment_stats_cache.clear()
     assignments_cache.clear()
-    
+
     return {
         "ta_groups_cleared": ta_size,
         "assignment_stats_cleared": assignment_stats_size,
         "assignments_cleared": assignments_size,
-        "total_cleared": ta_size + assignment_stats_size + assignments_size
+        "total_cleared": ta_size + assignment_stats_size + assignments_size,
     }
 
 
