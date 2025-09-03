@@ -44,7 +44,6 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
         }
       }
     } catch (err) {
-      console.warn('Failed to load from cache:', err);
     }
     return false;
   }, [generateCacheKey, CACHE_DURATION]);
@@ -58,7 +57,6 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
       localStorage.setItem(`${key}_timestamp`, timestamp.toString());
       setLastUpdated(new Date(timestamp));
     } catch (err) {
-      console.warn('Failed to save to cache:', err);
     }
   }, [generateCacheKey]);
 
@@ -107,7 +105,6 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
     
     // Try to load from cache first (unless force refresh)
     if (!forceRefresh && loadFromCache(courseId)) {
-      console.log('Loaded late days data from cache');
       setLoading(false);
       return;
     }
@@ -135,7 +132,6 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
       const endTime = Date.now();
       const duration = (endTime - startTime) / 1000;
       setLoadTime(duration);
-      console.log(`Loaded late days data from API in ${duration.toFixed(2)}s`);
     } catch (err) {
       setError(err.message);
     } finally {

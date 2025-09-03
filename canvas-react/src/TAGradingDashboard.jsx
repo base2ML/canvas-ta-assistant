@@ -21,9 +21,6 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
 
   const fetchTAGroups = async (courseId) => {
     try {
-      console.log('Fetching TA groups for course:', courseId);
-      console.log('API URL:', apiUrl);
-      console.log('Backend URL:', backendUrl);
       
       const response = await fetch(`${backendUrl}/api/ta-groups/${courseId}`, {
         method: 'POST',
@@ -36,14 +33,10 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
         })
       });
 
-      console.log('Response status:', response.status);
-      console.log('Response OK:', response.ok);
       
       const data = await response.json();
-      console.log('Response data:', data);
       
       if (!response.ok) {
-        console.error('TA Groups API error:', { status: response.status, statusText: response.statusText, data });
         // Handle different error response formats
         let errorMessage;
         if (data && typeof data === 'object') {
@@ -60,11 +53,9 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
         throw new Error(`Failed to fetch TA groups (${response.status}): ${errorMessage}`);
       }
 
-      console.log('Successfully fetched TA groups:', data.ta_groups?.length || 0);
       setTAGroups(data.ta_groups || []);
       return data.course_info;
     } catch (err) {
-      console.error('Error in fetchTAGroups:', err);
       const errorMessage = err.message || (typeof err === 'string' ? err : JSON.stringify(err));
       throw new Error(`Error fetching TA groups: ${errorMessage}`);
     }
@@ -152,17 +143,13 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
         taGroupsInfo = await fetchTAGroups(courseId);
         console.log('TA Groups fetch successful:', taGroupsInfo);
       } catch (taGroupsError) {
-        console.error('TA Groups fetch failed:', taGroupsError);
         setError(`TA Groups error: ${taGroupsError.message}`);
       }
       
       // Try Ungraded Submissions
       try {
-        console.log('Fetching ungraded submissions...');
         ungradedInfo = await fetchUngradedSubmissions(courseId);
-        console.log('Ungraded submissions fetch successful:', ungradedInfo);
       } catch (ungradedError) {
-        console.error('Ungraded submissions fetch failed:', ungradedError);
         setError(prevError => prevError ? `${prevError}; Assignments error: ${ungradedError.message}` : `Assignments error: ${ungradedError.message}`);
       }
       
@@ -170,7 +157,6 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
       const duration = (endTime - startTime) / 1000;
       setLoadTime(duration);
       
-      console.log('API calls completed in', duration, 'seconds');
       setCourseInfo(taGroupsInfo || ungradedInfo);
       
       // If neither call succeeded, throw an error
@@ -589,12 +575,6 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
                     
                     const hasBreakdown = taBreakdown && taBreakdown.length > 0;
                     
-                    // Debug logging for this assignment
-                    console.log(`Assignment ${assignment.assignment_name}:`, {
-                      ta_grading_breakdown: taBreakdown,
-                      hasBreakdown,
-                      breakdownLength: taBreakdown?.length
-                    });
                     
                     return (
                       <div

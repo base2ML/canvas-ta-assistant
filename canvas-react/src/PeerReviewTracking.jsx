@@ -42,7 +42,6 @@ const PeerReviewTracking = ({
         throw new Error(data.detail || 'Failed to fetch assignments');
       }
 
-      console.log('All assignments loaded:', data.assignments);
 
       // Filter for assignments that might have peer reviews (Proposal, Final Project, etc.)
       // If no filtered assignments found, show all assignments for debugging
@@ -59,8 +58,6 @@ const PeerReviewTracking = ({
       // If still no matches, show all assignments (for debugging)
       const finalAssignments = peerReviewAssignments.length > 0 ? peerReviewAssignments : data.assignments;
 
-      console.log('Filtered peer review assignments:', peerReviewAssignments);
-      console.log('Final assignments to show:', finalAssignments);
       setAssignments(finalAssignments);
 
     } catch (err) {
@@ -88,13 +85,6 @@ const PeerReviewTracking = ({
     setPeerReviewData(null);
 
     try {
-      console.log('Sending peer review request:', {
-        backendUrl,
-        course_id: selectedCourse,
-        assignment_id: parseInt(selectedAssignment),
-        deadline: deadline,
-        penalty_per_review: penaltyPerReview
-      });
 
       const response = await fetch(`${backendUrl}/api/peer-reviews`, {
         method: 'POST',
@@ -111,9 +101,7 @@ const PeerReviewTracking = ({
         })
       });
 
-      console.log('Response status:', response.status);
       const data = await response.json();
-      console.log('Response data:', data);
       
       if (!response.ok) {
         throw new Error(data.detail || 'Failed to fetch peer review data');

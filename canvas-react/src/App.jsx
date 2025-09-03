@@ -48,7 +48,6 @@ const App = () => {
 
   const validateCredentials = async (url, token, backend) => {
     try {
-      console.log('Validating credentials...', { url, backend });
       
       const response = await fetch(`${backend}/api/validate-credentials`, {
         method: 'POST',
@@ -62,7 +61,6 @@ const App = () => {
       });
 
       const data = await response.json();
-      console.log('Validation response:', data);
       
       if (response.ok && data.valid) {
         setUserInfo(data.user);
@@ -71,7 +69,6 @@ const App = () => {
         throw new Error(data.error || 'Invalid credentials');
       }
     } catch (err) {
-      console.error('Validation error:', err);
       throw new Error(`Failed to validate credentials: ${err.message}`);
     }
   };
@@ -98,7 +95,6 @@ const App = () => {
       });
 
       const data = await response.json();
-      console.log('Connection test result:', data);
       
       if (response.ok && data.status === 'success') {
         setError(`✅ Connection test successful! ${data.message}\n\nURL tested: ${data.base_url}`);

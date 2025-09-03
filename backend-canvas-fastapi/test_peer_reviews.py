@@ -4,20 +4,14 @@ Debug script to test peer review functionality with your actual Canvas data.
 This will show detailed logging about what's happening with peer review detection.
 """
 
-import logging
 import sys
+from loguru import logger
 
 from main import get_peer_review_data_sync
 
-# Set up detailed logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
 
 def test_peer_reviews():
-    print("=== Canvas Peer Review Debug Test ===")
-    print()
+    logger.info("=== Canvas Peer Review Debug Test ===")
 
     # You'll need to fill these in with your actual values
     base_url = input(
@@ -28,17 +22,17 @@ def test_peer_reviews():
 
     api_token = input("Enter your Canvas API token: ").strip()
     if not api_token:
-        print("❌ API token is required")
+        logger.error("API token is required")
         return
 
     course_id = input("Enter course ID: ").strip()
     if not course_id:
-        print("❌ Course ID is required")
+        logger.error("Course ID is required")
         return
 
     assignment_id = input("Enter assignment ID (the project proposal): ").strip()
     if not assignment_id:
-        print("❌ Assignment ID is required")
+        logger.error("Assignment ID is required")
         return
 
     deadline = input(
@@ -47,12 +41,11 @@ def test_peer_reviews():
     if not deadline:
         deadline = "2024-03-15T23:59:59"
 
-    print("\n=== Testing Peer Review Detection ===")
-    print(f"Base URL: {base_url}")
-    print(f"Course ID: {course_id}")
-    print(f"Assignment ID: {assignment_id}")
-    print(f"Deadline: {deadline}")
-    print("\n" + "=" * 50)
+    logger.info("Testing Peer Review Detection")
+    logger.info(f"Base URL: {base_url}")
+    logger.info(f"Course ID: {course_id}")
+    logger.info(f"Assignment ID: {assignment_id}")
+    logger.info(f"Deadline: {deadline}")
 
     try:
         # Call the function with debugging
@@ -67,37 +60,34 @@ def test_peer_reviews():
             )
         )
 
-        print("\n=== RESULTS ===")
+        logger.info("=== RESULTS ===")
         if error:
-            print(f"❌ Error: {error}")
+            logger.error(f"Error: {error}")
         else:
-            print(f"✅ Success!")
-            print(f"📊 Found {len(peer_events_data)} peer review events")
-            print(f"👥 Found {len(peer_summary_data)} students with penalties")
+            logger.success("Success!")
+            logger.info(f"Found {len(peer_events_data)} peer review events")
+            logger.info(f"Found {len(peer_summary_data)} students with penalties")
 
             if assignment_data:
-                print(f"📝 Assignment: {assignment_data.get('name')}")
+                logger.info(f"Assignment: {assignment_data.get('name')}")
 
             if peer_events_data:
-                print("\n📋 Peer Review Events:")
+                logger.info("Peer Review Events:")
                 for i, event in enumerate(peer_events_data[:5]):  # Show first 5
-                    print(
+                    logger.info(
                         f"  {i+1}. {event.get('reviewer_name', f'ID:{event.get('reviewer_id')}')} -> "
                         f"{event.get('assessed_name', f'ID:{event.get('assessed_user_id')}')} "
                         f"[{event.get('status')}] ({event.get('penalty_points')} pts)"
                     )
 
                 if len(peer_events_data) > 5:
-                    print(f"  ... and {len(peer_events_data) - 5} more")
+                    logger.info(f"  ... and {len(peer_events_data) - 5} more")
             else:
-                print("📋 No peer review events found")
+                logger.warning("No peer review events found")
 
     except Exception as e:
-        print(f"💥 Exception occurred: {str(e)}")
-        print(f"Exception type: {type(e)}")
-        import traceback
-
-        traceback.print_exc()
+        logger.exception(f"Exception occurred: {str(e)}")
+        logger.error(f"Exception type: {type(e)}")
 
 
 if __name__ == "__main__":

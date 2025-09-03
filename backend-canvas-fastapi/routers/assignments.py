@@ -105,7 +105,7 @@ async def get_assignments(
                     assignments = await loop.run_in_executor(thread_pool, get_assignments_fallback)
                 return course, assignments
             except Exception as e:
-                print(f"Error fetching assignments for course {course_id}: {e}")
+                logger.error(f"Error fetching assignments for course {course_id}: {e}")
                 return None, []
 
         # Process all courses concurrently
