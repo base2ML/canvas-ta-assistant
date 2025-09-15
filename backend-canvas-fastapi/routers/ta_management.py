@@ -9,7 +9,7 @@ import asyncio
 from typing import Any, Dict, List
 
 from loguru import logger
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Path
 import httpx
 
 from dependencies import SettingsDep, ThreadPoolDep, AssignmentThreadPoolDep
@@ -26,6 +26,9 @@ from models import (
     TAGroup,
     TAGroupsResponse,
 )
+from config import get_settings
+
+_settings = get_settings()
 
 # Configure loguru for this module
 logger = logger.bind(module="ta_management")
@@ -39,10 +42,12 @@ router = APIRouter(
 
 @router.post("/ta-groups/{course_id}", response_model=TAGroupsResponse)
 async def get_ta_groups(
-    course_id: str,
     request: CanvasCredentials,
     settings: SettingsDep,
     thread_pool: ThreadPoolDep,
+    course_id: str = Path(
+        ..., description="Canvas course ID", example=_settings.canvas_course_id or "12345"
+    ),
 ) -> TAGroupsResponse:
     """
     Fetch TA groups from a Canvas course (excludes Term Project groups).
@@ -193,9 +198,15 @@ async def get_ta_grading_info(
         }
 
         # Prepare request body for internal API calls
+        # Use resolved credentials so internal calls inherit env defaults
+        from dependencies import resolve_credentials
+
+        base_url, token = resolve_credentials(
+            request.base_url, request.api_token, settings
+        )
         request_data = {
-            "base_url": str(request.base_url),
-            "api_token": request.api_token,
+            "base_url": base_url,
+            "api_token": token,
             "course_id": request.course_id,
         }
         if hasattr(request, "assignment_id") and request.assignment_id:
