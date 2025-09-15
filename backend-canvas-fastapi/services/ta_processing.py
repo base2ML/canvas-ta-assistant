@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 from loguru import logger
 
-from dependencies import SettingsDep
+from dependencies import SettingsDep, resolve_credentials
 from models import TAGradingRequest, CanvasCredentials
 
 # Configure loguru for this module
@@ -24,9 +24,10 @@ async def get_canvas_from_ta_request(
     """Convert TAGradingRequest to Canvas client."""
     from dependencies import validate_canvas_credentials
 
-    return await validate_canvas_credentials(
-        str(request.base_url), request.api_token, settings
+    base_url, token = resolve_credentials(
+        request.base_url, request.api_token, settings
     )
+    return await validate_canvas_credentials(base_url, token, settings)
 
 
 async def get_canvas_from_credentials(
@@ -35,9 +36,10 @@ async def get_canvas_from_credentials(
     """Convert CanvasCredentials to Canvas client."""
     from dependencies import validate_canvas_credentials
 
-    return await validate_canvas_credentials(
-        str(request.base_url), request.api_token, settings
+    base_url, token = resolve_credentials(
+        request.base_url, request.api_token, settings
     )
+    return await validate_canvas_credentials(base_url, token, settings)
 
 
 def process_assignment_submissions_sync(
@@ -83,15 +85,22 @@ def process_assignment_submissions_sync(
             count=len(submission_df),
         )
         if not submission_df.empty:
-            workflow_states = submission_df['workflow_state'].value_counts().to_dict()
-            user_count = submission_df['user.id'].notna().sum()
-            
+            workflow_states = (
+                submission_df.get("workflow_state").value_counts().to_dict()
+                if "workflow_state" in submission_df.columns
+                else {}
+            )
+            user_col = "user.id" if "user.id" in submission_df.columns else None
+            user_count = (
+                submission_df[user_col].notna().sum() if user_col else 0
+            )
+
             # Debug: Show actual DataFrame columns to understand structure
             logger.info(
                 "DataFrame columns: {columns}",
                 columns=list(submission_df.columns),
             )
-            
+
             logger.info(
                 "Workflow states distribution: {states}, Submissions with users: {user_count}",
                 states=workflow_states,
@@ -113,23 +122,48 @@ def process_assignment_submissions_sync(
             }
             return [], {}, stats, None
 
-        # Rename columns to match expected format
-        df = submission_df.rename(columns={
-            'id': 'submission_id',
-            'user.id': 'student_id',
-            'user.name': 'student_name'
-        })
+        # Rename columns to match expected format, with fallbacks for CanvasAPI object flattening
+        df = submission_df.rename(
+            columns={
+                "id": "submission_id",
+                "user.id": "student_id",
+                "user.name": "student_name",
+            }
+        )
+
+        # Fallbacks if the normalized keys differ (e.g., 'user_id' instead of nested 'user.id')
+        if "student_id" not in df.columns and "user_id" in df.columns:
+            df["student_id"] = df["user_id"]
+        if "student_name" not in df.columns and "user.name" in df.columns:
+            df["student_name"] = df["user.name"]
 
         # Convert to nullable dtypes for better handling of missing data
         df = df.convert_dtypes()
 
-        # Ensure student_id is integer type for consistent mapping
-        if 'student_id' in df.columns:
-            df["student_id"] = pd.to_numeric(df["student_id"], errors="coerce").astype(int)
+        # Ensure student_id is integer type for consistent mapping (coerce invalid to NA)
+        if "student_id" in df.columns:
+            df["student_id"] = pd.to_numeric(df["student_id"], errors="coerce")
+            # Drop rows where student_id could not be determined to avoid skewing counts
+            missing_ids = df["student_id"].isna().sum()
+            if missing_ids:
+                logger.warning(
+                    "Dropping {count} submission rows with missing student_id",
+                    count=int(missing_ids),
+                )
+            df = df.dropna(subset=["student_id"]).copy()
+            df["student_id"] = df["student_id"].astype(int)
 
         # Create derived columns using vectorized operations
         # Convert numeric columns properly
-        df["score_numeric"] = pd.to_numeric(df["score"], errors="coerce")
+        df["score_numeric"] = pd.to_numeric(df.get("score"), errors="coerce")
+        df["seconds_late_numeric"] = pd.to_numeric(
+            df.get("seconds_late"), errors="coerce"
+        ).fillna(0)
+        # Normalize workflow_state to string for robust comparisons
+        if "workflow_state" in df.columns:
+            df["workflow_state"] = df["workflow_state"].astype("string").fillna(
+                "unsubmitted"
+            )
 
         # Use the provided student-to-TA-group mapping from function parameter
         # Create TA group mapping series for efficient lookup based on student assignment
@@ -143,11 +177,73 @@ def process_assignment_submissions_sync(
             total_submissions=len(df),
         )
 
-        # Add derived columns using efficient vectorized operations
-        df["has_submission"] = df["submitted_at"].notna()
-        df["has_grade"] = (
-            df["grade"].notna() & (df["grade"].astype("string") != "")
-        ) | df["score_numeric"].notna()
+        # Add derived columns using Canvas API fields as authoritative source
+        # Use the Canvas "missing" field directly - this is the most reliable indicator
+        if "missing" in df.columns:
+            df["is_missing"] = df["missing"].fillna(False).astype(bool)
+        elif "workflow_state" in df.columns:
+            # Fallback to workflow_state if missing field not available
+            df["is_missing"] = df["workflow_state"].eq("unsubmitted")
+        else:
+            # Final fallback for older API responses
+            submitted_signal = df.get("submitted_at").notna() if "submitted_at" in df.columns else False
+            df["is_missing"] = ~submitted_signal
+
+        # Determine submission status
+        if "workflow_state" in df.columns:
+            df["has_submission"] = df["workflow_state"].isin(["submitted", "graded", "pending_review"])
+            df["has_grade"] = df["workflow_state"].eq("graded")
+        else:
+            # Fallback logic for submission status
+            submitted_signal = df.get("submitted_at").notna() if "submitted_at" in df.columns else False
+            df["has_submission"] = submitted_signal
+
+            # Initialize graded_signal as a proper boolean Series
+            graded_signal = pd.Series(False, index=df.index, dtype=bool)
+
+            # Check for non-empty grade
+            if "grade" in df.columns:
+                grade_signal = (df["grade"].astype("string") != "") & (df["grade"].notna())
+                graded_signal = graded_signal | grade_signal
+
+            # Check for non-null score
+            score_signal = df["score_numeric"].notna()
+            graded_signal = graded_signal | score_signal
+
+            # Check for graded_at timestamp
+            if "graded_at" in df.columns:
+                graded_at_signal = df["graded_at"].notna()
+                graded_signal = graded_signal | graded_at_signal
+
+            df["has_grade"] = graded_signal
+
+        # Treat excused as not requiring grading (so they count as "graded")
+        if "excused" in df.columns:
+            excused_signal = df["excused"].fillna(False)
+            df["has_grade"] = df["has_grade"] | excused_signal
+            # Excused submissions are not missing
+            df["is_missing"] = df["is_missing"] & ~excused_signal
+
+        # Debug: Show detailed breakdown of grading signals
+        if "workflow_state" in df.columns:
+            submitted_only = df[df["workflow_state"] == "submitted"]
+            if not submitted_only.empty:
+                grade_values = submitted_only.get("grade", pd.Series()).value_counts(dropna=False)
+                score_values = submitted_only["score_numeric"].value_counts(dropna=False)
+                has_submission_values = submitted_only["has_submission"].value_counts(dropna=False)
+                has_grade_values = submitted_only["has_grade"].value_counts(dropna=False)
+                logger.info(
+                    f"Assignment {getattr(assignment, 'id', 'unknown')} - Submitted state analysis:"
+                )
+                logger.info(f"  Grade values in 'submitted': {dict(grade_values)}")
+                logger.info(f"  Score values in 'submitted': {dict(score_values)}")
+                logger.info(f"  Has_submission for 'submitted': {dict(has_submission_values)}")
+                logger.info(f"  Has_grade for 'submitted': {dict(has_grade_values)}")
+
+                # Check submitted_at values for submitted workflow state
+                if "submitted_at" in df.columns:
+                    submitted_at_values = submitted_only["submitted_at"].notna().value_counts()
+                    logger.info(f"  Has submitted_at timestamp: {dict(submitted_at_values)}")
 
         # Map students to their TA groups (students are group members)
         df["ta_group"] = df["student_id"].map(ta_group_series)
@@ -192,16 +288,33 @@ def process_assignment_submissions_sync(
         # Calculate assignment totals using efficient aggregation
         total_submissions = len(df)
         graded_submissions = int(df["has_grade"].sum())
+        missing_submissions = int(df["is_missing"].sum())
+        gradeable_submissions = total_submissions - missing_submissions
         ungraded_submissions = int((df["has_submission"] & ~df["has_grade"]).sum())
+
+        # Fix: Calculate percentage based on total submissions (missing submissions can be graded)
         percentage_graded = (
             round((graded_submissions / total_submissions) * 100, 1)
             if total_submissions > 0
             else 0.0
         )
 
+        # Ensure percentage never exceeds 100% due to data inconsistencies
+        percentage_graded = min(percentage_graded, 100.0)
+
+        # Debug: Log overall assignment statistics
+        logger.info(
+            "Assignment {assignment_id} overall stats: total={total}, missing={missing}, graded={graded}, percentage={percentage}%",
+            assignment_id=getattr(assignment, "id", "unknown"),
+            total=total_submissions,
+            missing=missing_submissions,
+            graded=graded_submissions,
+            percentage=percentage_graded,
+        )
+
         # Create TA grading breakdown using modern groupby operations
         ta_breakdown = []
-        
+
         # Debug: Show DataFrame structure for troubleshooting mapping issues
         logger.info(
             "DataFrame analysis for assignment {assignment_id}:",
@@ -215,42 +328,77 @@ def process_assignment_submissions_sync(
             "Student IDs in TA groups: {ta_group_ids}",
             ta_group_ids=sorted(list(student_to_ta_group.keys())),
         )
-        
+
+        # Canvas API provides all students in submissions response, so we don't need to
+        # manually calculate member counts - the submission data is authoritative
+
         if df["ta_group"].notna().any():
             # Group by TA and calculate statistics
             ta_grouped = df[df["ta_group"].notna()].groupby("ta_group", observed=True)
 
             # Use agg for multiple aggregations at once (more efficient)
+            # Ensure 'late' exists and is boolean; compute from seconds_late if missing
+            if "late" not in df.columns:
+                df["late"] = df["seconds_late_numeric"] > 0
+            else:
+                df["late"] = df["late"].fillna(False).astype(bool) | (
+                    df["seconds_late_numeric"] > 0
+                )
+
             ta_stats = ta_grouped.agg(
                 {
                     "has_grade": ["count", "sum"],
                     "has_submission": "sum",
                     "late": "sum",  # Include late submissions count
+                    "is_missing": "sum",  # Count missing submissions directly from Canvas API
                 }
             ).round(1)
 
             # Flatten column names properly
             ta_stats.columns = [
-                "total_assigned",
+                "total_assigned",  # This is the count of students in submission data for this TA
                 "graded",
                 "submitted",
                 "submitted_late",
+                "not_submitted",  # Direct count from Canvas API missing field
             ]
             ta_stats = ta_stats.reset_index()
 
             # Calculate derived metrics
             ta_stats["ungraded"] = ta_stats["submitted"] - ta_stats["graded"]
+
+            # Fix: Calculate percentage based on total assigned (TAs must grade ALL submissions, including missing ones)
             ta_stats["percentage_complete"] = (
                 (ta_stats["graded"] / ta_stats["total_assigned"]) * 100
             ).round(1)
+
+            # Handle division by zero for TAs with no assigned submissions
+            ta_stats["percentage_complete"] = ta_stats["percentage_complete"].fillna(0.0)
+
+            # Ensure percentage never exceeds 100% due to data inconsistencies
+            ta_stats["percentage_complete"] = ta_stats["percentage_complete"].clip(upper=100.0)
 
             # Calculate submission timing breakdown
             ta_stats["submitted_on_time"] = (
                 ta_stats["submitted"] - ta_stats["submitted_late"]
             )
-            ta_stats["not_submitted"] = (
-                ta_stats["total_assigned"] - ta_stats["submitted"]
+            # not_submitted is already calculated correctly from Canvas API missing field
+
+            # Debug: Log the Canvas API-based calculations
+            logger.info(
+                "Canvas API-based TA statistics for assignment {assignment_id}:",
+                assignment_id=getattr(assignment, "id", "unknown"),
             )
+            for _, row in ta_stats.iterrows():
+                logger.info(
+                    "TA '{ta_group}': total={total_assigned}, submitted={submitted}, missing={not_submitted}, graded={graded}, progress={percentage}%",
+                    ta_group=row["ta_group"],
+                    total_assigned=int(row["total_assigned"]),
+                    submitted=int(row["submitted"]),
+                    not_submitted=int(row["not_submitted"]),
+                    graded=int(row["graded"]),
+                    percentage=float(row["percentage_complete"]),
+                )
 
             # Create breakdown records with proper column names and safe type conversion
             for _, row in ta_stats.iterrows():
@@ -290,11 +438,12 @@ def process_assignment_submissions_sync(
                     }
                 )
 
-        # Ensure all TA groups are represented, even if they have no assigned students
+        # Ensure all TA groups are represented, even if they have no assigned students in submissions
         ta_groups_in_breakdown = {ta["ta_group"] for ta in ta_breakdown}
         for group in ta_groups_data:
             group_name = group.get("name", "Unknown TA Group")
             if group_name not in ta_groups_in_breakdown:
+                # TA groups with no submissions get zero stats
                 ta_breakdown.append(
                     {
                         "ta_name": group_name,
@@ -305,7 +454,7 @@ def process_assignment_submissions_sync(
                         "percentage_complete": 0.0,
                         "submitted_on_time": 0,
                         "submitted_late": 0,
-                        "not_submitted": 0,
+                        "not_submitted": 0,  # No students in submission data for this TA
                     }
                 )
 
@@ -327,6 +476,18 @@ def process_assignment_submissions_sync(
         # Filter ungraded submissions efficiently
         ungraded_mask = df["has_submission"] & ~df["has_grade"]
         ungraded_df = df[ungraded_mask].copy()
+
+        # Debug: Log counts for ungraded detection
+        total_rows = len(df)
+        has_submission_count = int(df["has_submission"].sum())
+        has_grade_count = int(df["has_grade"].sum())
+        ungraded_count = len(ungraded_df)
+
+        logger.info(
+            f"Assignment {getattr(assignment, 'id', 'unknown')} ungraded detection: "
+            f"{total_rows} total, {has_submission_count} submitted, {has_grade_count} graded, "
+            f"{ungraded_count} ungraded (submitted & not graded)"
+        )
 
         # Add TA members information
         ungraded_df["ta_members"] = (
