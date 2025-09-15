@@ -5,34 +5,39 @@ Following FastAPI best practices for data models organization.
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, HttpUrl, validator
+from pydantic import BaseModel, HttpUrl, Field
+from config import get_settings
+
+# Load settings once for default factories
+_settings = get_settings()
 
 
 # Request Models
 class CanvasCredentials(BaseModel):
-    """Canvas API credentials."""
+    """Canvas API credentials with env-based defaults (visible in docs)."""
 
-    base_url: HttpUrl
-    api_token: str
+    # Use defaults from .env via Settings when not provided in request
+    # Use 'default=' so Swagger UI shows values in Try it out.
+    base_url: Optional[HttpUrl] = Field(default=_settings.canvas_base_url)
+    api_token: Optional[str] = Field(default=_settings.canvas_api_token)
 
 
 class AssignmentRequest(CanvasCredentials):
     """Request for fetching assignments from multiple courses."""
-
-    course_ids: List[str]
+    course_ids: List[str] = Field(
+        default=([_settings.canvas_course_id] if _settings.canvas_course_id else [])
+    )
 
 
 class TAGradingRequest(CanvasCredentials):
     """Request for TA grading information."""
-
-    course_id: str
+    course_id: str = Field(default=_settings.canvas_course_id or "")
     assignment_id: Optional[int] = None
 
 
 class PeerReviewRequest(CanvasCredentials):
     """Request for peer review tracking."""
-
-    course_id: str
+    course_id: str = Field(default=_settings.canvas_course_id or "")
     assignment_id: int
     deadline: str
     penalty_per_review: float = 4.0
@@ -235,11 +240,11 @@ class PeerReviewResponse(BaseModel):
 
 # Late Days Models
 class LateDaysRequest(BaseModel):
-    """Request for late days tracking."""
+    """Request for late days tracking with env-based defaults (visible in docs)."""
 
-    base_url: HttpUrl
-    api_token: str
-    course_id: str
+    base_url: Optional[HttpUrl] = Field(default=_settings.canvas_base_url)
+    api_token: Optional[str] = Field(default=_settings.canvas_api_token)
+    course_id: str = Field(default=_settings.canvas_course_id or "")
 
 
 class AssignmentInfo(BaseModel):

@@ -9,7 +9,12 @@ from typing import Annotated, Any, Dict
 from canvasapi.exceptions import CanvasException, InvalidAccessToken
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from dependencies import SettingsDep, ThreadPoolDep, validate_canvas_credentials
+from dependencies import (
+    SettingsDep,
+    ThreadPoolDep,
+    validate_canvas_credentials,
+    resolve_credentials,
+)
 from models import CanvasCredentials, CredentialValidationResponse, UserProfile
 
 router = APIRouter(
@@ -32,9 +37,10 @@ async def validate_credentials(
     Returns user profile information if credentials are valid.
     """
     try:
-        canvas = await validate_canvas_credentials(
-            str(credentials.base_url), credentials.api_token, settings
+        base_url, token = resolve_credentials(
+            credentials.base_url, credentials.api_token, settings
         )
+        canvas = await validate_canvas_credentials(base_url, token, settings)
 
         # Get current user info
         loop = asyncio.get_event_loop()
@@ -74,14 +80,15 @@ async def test_connection(
     - **api_token**: Canvas API access token
     """
     try:
-        await validate_canvas_credentials(
-            str(credentials.base_url), credentials.api_token, settings
+        base_url, token = resolve_credentials(
+            credentials.base_url, credentials.api_token, settings
         )
+        await validate_canvas_credentials(base_url, token, settings)
 
         return {
             "status": "success",
             "message": "Successfully connected to Canvas API",
-            "base_url": str(credentials.base_url),
+            "base_url": base_url,
         }
 
     except HTTPException as e:

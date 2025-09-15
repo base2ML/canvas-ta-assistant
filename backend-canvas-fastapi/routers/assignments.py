@@ -8,10 +8,15 @@ from typing import Annotated, Any, Dict, List, Optional, Tuple
 
 from canvasapi import Canvas
 from canvasapi.exceptions import CanvasException
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Path
 
 from config import Settings
-from dependencies import SettingsDep, ThreadPoolDep, get_validated_canvas_client
+from dependencies import (
+    SettingsDep,
+    ThreadPoolDep,
+    get_validated_canvas_client,
+    resolve_credentials,
+)
 from services.cache import get_cached_assignments, set_cached_assignments
 from models import (
     Assignment,
@@ -31,12 +36,13 @@ router = APIRouter(
 async def get_canvas_from_request(
     request: AssignmentRequest, settings: SettingsDep
 ) -> Canvas:
-    """Convert AssignmentRequest to Canvas client."""
+    """Convert AssignmentRequest to Canvas client with env fallback."""
     from dependencies import validate_canvas_credentials
 
-    return await validate_canvas_credentials(
-        str(request.base_url), request.api_token, settings
+    base_url, token = resolve_credentials(
+        request.base_url, request.api_token, settings
     )
+    return await validate_canvas_credentials(base_url, token, settings)
 
 
 @router.post("/assignments", response_model=AssignmentResponse)
@@ -236,10 +242,10 @@ async def get_assignments(
 
 @router.post("/assignment/{assignment_id}/details", response_model=DetailedAssignment)
 async def get_assignment_details(
-    assignment_id: int,
     request: AssignmentRequest,
     settings: SettingsDep,
     thread_pool: ThreadPoolDep,
+    assignment_id: int = Path(..., description="Canvas assignment ID", example=1001),
 ) -> DetailedAssignment:
     """
     Get detailed information about a specific assignment including submission and rubric.

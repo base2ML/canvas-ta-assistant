@@ -5,9 +5,9 @@ Focused on TA grading distribution and workload metrics.
 
 import asyncio
 from concurrent.futures import as_completed
-from typing import Any, Dict
+from typing import Any, Dict, List
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Path
 from loguru import logger
 
 from dependencies import SettingsDep, ThreadPoolDep, AssignmentThreadPoolDep
@@ -18,6 +18,9 @@ from services.ta_processing import (
     build_ta_member_mapping,
     get_group_members_with_memberships,
 )
+from config import get_settings
+
+_settings = get_settings()
 
 # Configure loguru for this module
 logger = logger.bind(module="distribution")
@@ -31,11 +34,13 @@ router = APIRouter(
 
 @router.post("/grading/{course_id}", response_model=Dict[str, int])
 async def get_grading_distribution(
-    course_id: str,
     request: TAGradingRequest,
     settings: SettingsDep,
     thread_pool: ThreadPoolDep,
     assignment_pool: AssignmentThreadPoolDep,
+    course_id: str = Path(
+        ..., description="Canvas course ID", example=_settings.canvas_course_id or "12345"
+    ),
 ) -> Dict[str, int]:
     """
     Get TA grading workload distribution for a Canvas course.
@@ -126,15 +131,32 @@ async def get_grading_distribution(
                     )
                     continue
 
+                # Debug: Log ta_counts for each assignment
+                assignment_id = getattr(assignment, 'id', 'unknown')
+                logger.info(
+                    f"Assignment {assignment_id} returned ta_counts: {ta_counts}"
+                )
+
                 # Aggregate TA counts
                 if ta_counts:
+                    logger.info(
+                        f"Aggregating ta_counts for assignment {assignment_id}: {ta_counts}"
+                    )
                     for ta, count in ta_counts.items():
                         try:
-                            grading_distribution[ta] = grading_distribution.get(
-                                ta, 0
-                            ) + int(count or 0)
-                        except Exception:
+                            old_count = grading_distribution.get(ta, 0)
+                            new_count = old_count + int(count or 0)
+                            grading_distribution[ta] = new_count
+                            logger.debug(
+                                f"TA {ta}: {old_count} + {count} = {new_count}"
+                            )
+                        except Exception as ex:
+                            logger.error(f"Error aggregating count for TA {ta}: {ex}")
                             continue
+                else:
+                    logger.info(
+                        f"Assignment {assignment_id} returned empty ta_counts"
+                    )
 
             except Exception as ex:
                 logger.error(

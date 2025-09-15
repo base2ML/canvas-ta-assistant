@@ -12,7 +12,7 @@ from canvasapi import Canvas
 from canvasapi.exceptions import ResourceDoesNotExist
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from dependencies import SettingsDep, ThreadPoolDep
+from dependencies import SettingsDep, ThreadPoolDep, resolve_credentials
 from models import AssignmentInfo, LateDaysRequest, LateDaysResponse, StudentLateDays
 
 logger = logging.getLogger(__name__)
@@ -30,9 +30,10 @@ async def get_canvas_from_late_days_request(
     """Convert late days request to Canvas client."""
     from dependencies import validate_canvas_credentials
 
-    return await validate_canvas_credentials(
-        str(request.base_url), request.api_token, settings
+    base_url, token = resolve_credentials(
+        request.base_url, request.api_token, settings
     )
+    return await validate_canvas_credentials(base_url, token, settings)
 
 
 def calculate_late_days(submitted_at: str, due_at: str) -> int:

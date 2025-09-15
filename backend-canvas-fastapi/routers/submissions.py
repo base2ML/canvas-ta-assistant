@@ -7,7 +7,7 @@ import asyncio
 from concurrent.futures import as_completed
 from typing import Any, List
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Path
 from loguru import logger
 
 from dependencies import SettingsDep, ThreadPoolDep, AssignmentThreadPoolDep
@@ -18,6 +18,9 @@ from services.ta_processing import (
     build_ta_member_mapping,
     get_group_members_with_memberships,
 )
+from config import get_settings
+
+_settings = get_settings()
 
 # Configure loguru for this module
 logger = logger.bind(module="submissions")
@@ -31,11 +34,13 @@ router = APIRouter(
 
 @router.post("/ungraded/{course_id}", response_model=List[UngradedSubmission])
 async def get_ungraded_submissions(
-    course_id: str,
     request: TAGradingRequest,
     settings: SettingsDep,
     thread_pool: ThreadPoolDep,
     assignment_pool: AssignmentThreadPoolDep,
+    course_id: str = Path(
+        ..., description="Canvas course ID", example=_settings.canvas_course_id or "12345"
+    ),
 ) -> List[UngradedSubmission]:
     """
     Get ungraded submissions for a Canvas course.

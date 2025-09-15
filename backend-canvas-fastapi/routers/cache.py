@@ -8,7 +8,7 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, status
 
-from dependencies import SettingsDep, validate_canvas_credentials
+from dependencies import SettingsDep, validate_canvas_credentials, resolve_credentials
 from models import CanvasCredentials
 from services.cache import clear_all_caches, get_cache_stats
 
@@ -30,9 +30,10 @@ async def clear_cache(
     """
     try:
         # Validate credentials before allowing cache clear (security measure)
-        await validate_canvas_credentials(
-            str(request.base_url), request.api_token, settings
+        base_url, token = resolve_credentials(
+            request.base_url, request.api_token, settings
         )
+        await validate_canvas_credentials(base_url, token, settings)
 
         # Clear all caches
         stats = clear_all_caches()

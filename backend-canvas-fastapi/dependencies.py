@@ -7,7 +7,7 @@ import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
-from typing import Annotated, Optional
+from typing import Annotated, Optional, Tuple, Union
 
 from canvasapi import Canvas
 from canvasapi.exceptions import CanvasException, InvalidAccessToken
@@ -101,6 +101,32 @@ async def validate_canvas_credentials(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to connect to Canvas: {str(e)}",
         )
+
+
+def resolve_credentials(
+    base_url: Optional[Union[str, "HttpUrl"]],
+    api_token: Optional[str],
+    settings: Settings,
+) -> Tuple[str, str]:
+    """Resolve credentials by falling back to settings when values are missing.
+
+    Raises HTTP 400 if credentials are not available from request or .env.
+    """
+    effective_base_url = (
+        str(base_url) if base_url else (settings.canvas_base_url or None)
+    )
+    effective_token = api_token or settings.canvas_api_token
+
+    if not effective_base_url or not effective_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Missing Canvas credentials. Provide 'base_url' and 'api_token' in the body "
+                "or set CANVAS_BASE_URL and CANVAS_API_TOKEN in .env"
+            ),
+        )
+
+    return str(effective_base_url), str(effective_token)
 
 
 class CanvasCredentials:

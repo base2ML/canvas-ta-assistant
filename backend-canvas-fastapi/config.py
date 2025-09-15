@@ -6,11 +6,19 @@ Follows FastAPI best practices for settings management.
 from functools import lru_cache
 from typing import Optional
 
-from pydantic_settings import BaseSettings
+from pydantic import Field, AliasChoices
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Application settings with environment variable support."""
+
+    # Pydantic v2 settings configuration
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
 
     # Server configuration
     host: str = "0.0.0.0"
@@ -26,6 +34,10 @@ class Settings(BaseSettings):
     # Canvas API configuration (optional defaults)
     canvas_base_url: Optional[str] = None
     canvas_api_token: Optional[str] = None
+    canvas_course_id: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("CANVAS_COURSE_ID", "COURSE_ID"),
+    )
 
     # Logging configuration
     log_level: str = "INFO"
@@ -46,10 +58,7 @@ class Settings(BaseSettings):
     cache_max_size: int = 100  # Maximum cache entries
     enable_caching: bool = True  # Can disable for testing
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    # No inner Config in Pydantic v2; using model_config above
 
 
 @lru_cache()

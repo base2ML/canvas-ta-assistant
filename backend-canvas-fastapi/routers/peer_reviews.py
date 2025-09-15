@@ -13,7 +13,7 @@ from canvasapi import Canvas
 from canvasapi.exceptions import ResourceDoesNotExist
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from dependencies import SettingsDep, ThreadPoolDep
+from dependencies import SettingsDep, ThreadPoolDep, resolve_credentials
 from models import (
     PeerReviewEvent,
     PeerReviewRequest,
@@ -36,9 +36,10 @@ async def get_canvas_from_peer_request(
     """Convert PeerReviewRequest to Canvas client."""
     from dependencies import validate_canvas_credentials
 
-    return await validate_canvas_credentials(
-        str(request.base_url), request.api_token, settings
+    base_url, token = resolve_credentials(
+        request.base_url, request.api_token, settings
     )
+    return await validate_canvas_credentials(base_url, token, settings)
 
 
 def analyze_comments_for_peer_reviews(
