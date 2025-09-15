@@ -76,7 +76,7 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
       });
 
       const data = await response.json();
-      
+
       if (!response.ok) {
         // Handle different error response formats
         let errorMessage;
@@ -96,23 +96,62 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
 
       setUngradedSubmissions(data.ungraded_submissions || []);
       setTAAssignments(data.grading_distribution || {});
-      setAssignmentStats(data.assignment_stats || []);
       setTotalUngraded(data.total_ungraded || 0);
-      
-      // Debug logging
-      console.log('Full API response:', data);
-      console.log('Assignment stats received:', data.assignment_stats);
-      console.log('Assignment stats length:', data.assignment_stats?.length || 0);
-      if (data.assignment_stats && data.assignment_stats.length > 0) {
-        console.log('First assignment breakdown:', data.assignment_stats[0].ta_grading_breakdown);
-      } else {
-        console.log('No assignment stats found in response');
-      }
-      
+
       return data.course_info;
     } catch (err) {
       const errorMessage = err.message || (typeof err === 'string' ? err : JSON.stringify(err));
       throw new Error(`Error fetching ungraded submissions: ${errorMessage}`);
+    }
+  };
+
+  const fetchAssignmentStatistics = async (courseId) => {
+    try {
+      const response = await fetch(`${backendUrl}/api/statistics/assignments/${courseId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          base_url: apiUrl,
+          api_token: apiToken
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Handle different error response formats
+        let errorMessage;
+        if (data && typeof data === 'object') {
+          if (data.detail) {
+            errorMessage = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+          } else if (data.message) {
+            errorMessage = data.message;
+          } else {
+            errorMessage = JSON.stringify(data);
+          }
+        } else {
+          errorMessage = data || response.statusText;
+        }
+        throw new Error(`Failed to fetch assignment statistics (${response.status}): ${errorMessage}`);
+      }
+
+      setAssignmentStats(data || []);
+
+      // Debug logging
+      console.log('Statistics API response:', data);
+      console.log('Assignment stats received:', data);
+      console.log('Assignment stats length:', data?.length || 0);
+      if (data && data.length > 0) {
+        console.log('First assignment breakdown:', data[0].ta_grading_breakdown);
+      } else {
+        console.log('No assignment stats found in response');
+      }
+
+    } catch (err) {
+      const errorMessage = err.message || (typeof err === 'string' ? err : JSON.stringify(err));
+      throw new Error(`Error fetching assignment statistics: ${errorMessage}`);
     }
   };
 
@@ -125,18 +164,18 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
 
   const loadCourseData = async (courseId) => {
     if (!courseId) return;
-    
+
     console.log('Loading course data for:', courseId);
     const startTime = Date.now();
     setLoading(true);
     setError('');
     setLoadTime(null);
-    
+
     try {
       console.log('Starting API calls...');
       let taGroupsInfo = null;
       let ungradedInfo = null;
-      
+
       // Try TA Groups first
       try {
         console.log('Fetching TA groups...');
@@ -145,25 +184,35 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
       } catch (taGroupsError) {
         setError(`TA Groups error: ${taGroupsError.message}`);
       }
-      
+
       // Try Ungraded Submissions
       try {
         ungradedInfo = await fetchUngradedSubmissions(courseId);
       } catch (ungradedError) {
         setError(prevError => prevError ? `${prevError}; Assignments error: ${ungradedError.message}` : `Assignments error: ${ungradedError.message}`);
       }
-      
+
+      // Fetch Assignment Statistics (this provides complete TA breakdown data)
+      try {
+        console.log('Fetching assignment statistics...');
+        await fetchAssignmentStatistics(courseId);
+        console.log('Assignment statistics fetch successful');
+      } catch (statisticsError) {
+        console.warn('Assignment statistics error:', statisticsError.message);
+        setError(prevError => prevError ? `${prevError}; Statistics error: ${statisticsError.message}` : `Statistics error: ${statisticsError.message}`);
+      }
+
       const endTime = Date.now();
       const duration = (endTime - startTime) / 1000;
       setLoadTime(duration);
-      
+
       setCourseInfo(taGroupsInfo || ungradedInfo);
-      
+
       // If neither call succeeded, throw an error
       if (!taGroupsInfo && !ungradedInfo) {
         throw new Error('Both API calls failed');
       }
-      
+
     } catch (err) {
       console.error('Error in loadCourseData:', err);
       const errorMessage = err.message || (typeof err === 'string' ? err : JSON.stringify(err));
