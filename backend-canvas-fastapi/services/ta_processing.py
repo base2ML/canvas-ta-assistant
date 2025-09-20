@@ -193,6 +193,9 @@ def process_assignment_submissions_sync(
         if "workflow_state" in df.columns:
             df["has_submission"] = df["workflow_state"].isin(["submitted", "graded", "pending_review"])
             df["has_grade"] = df["workflow_state"].eq("graded")
+            # Ensure missing submissions are never counted as graded, regardless of workflow_state
+            if "is_missing" in df.columns:
+                df["has_grade"] = df["has_grade"] & ~df["is_missing"]
         else:
             # Fallback logic for submission status
             submitted_signal = df.get("submitted_at").notna() if "submitted_at" in df.columns else False
@@ -217,12 +220,11 @@ def process_assignment_submissions_sync(
 
             df["has_grade"] = graded_signal
 
-        # Treat excused as not requiring grading (so they count as "graded")
-        if "excused" in df.columns:
-            excused_signal = df["excused"].fillna(False)
-            df["has_grade"] = df["has_grade"] | excused_signal
-            # Excused submissions are not missing
-            df["is_missing"] = df["is_missing"] & ~excused_signal
+        # Ensure missing submissions are never counted as graded, regardless of Canvas data
+        if "is_missing" in df.columns:
+            df["has_grade"] = df["has_grade"] & ~df["is_missing"]
+
+        # Note: Students are never excused from assignments in this workflow
 
         # Debug: Show detailed breakdown of grading signals
         if "workflow_state" in df.columns:

@@ -85,7 +85,6 @@ class Assignment(BaseModel):
     graded_at: Optional[str] = None
     late: bool = False
     missing: bool = False
-    excused: bool = False
     workflow_state: Optional[str] = None
 
 

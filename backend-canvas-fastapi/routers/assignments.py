@@ -325,7 +325,6 @@ def determine_assignment_status(assignment: Any, submission: Any) -> Dict[str, A
             "graded_at": None,
             "late": False,
             "missing": True,
-            "excused": False,
             "workflow_state": getattr(assignment, "workflow_state", None),
         }
 
@@ -334,12 +333,9 @@ def determine_assignment_status(assignment: Any, submission: Any) -> Dict[str, A
     score = getattr(submission, "score", None)
     late = getattr(submission, "late", False)
     missing = getattr(submission, "missing", False)
-    excused = getattr(submission, "excused", False)
+    # Note: Students are never excused from assignments in this workflow
 
-    if excused:
-        status = "excused"
-        status_text = "Excused"
-    elif grade and grade != "ungraded":
+    if grade and grade != "ungraded":
         status = "graded"
         status_text = f"Graded ({grade})"
     elif workflow_state == "submitted":
@@ -360,6 +356,5 @@ def determine_assignment_status(assignment: Any, submission: Any) -> Dict[str, A
         "graded_at": getattr(submission, "graded_at", None),
         "late": late,
         "missing": missing,
-        "excused": excused,
         "workflow_state": workflow_state,
     }
