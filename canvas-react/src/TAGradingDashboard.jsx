@@ -155,12 +155,6 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
     }
   };
 
-  const clearCache = async () => {
-    // Cache clearing not implemented in backend - just refresh data
-    if (currentCourse) {
-      loadCourseData(currentCourse.id);
-    }
-  };
 
   const loadCourseData = async (courseId) => {
     if (!courseId) return;
@@ -316,14 +310,6 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
               )}
             </div>
             <div className="flex space-x-2">
-              <button
-                onClick={clearCache}
-                disabled={loading || !currentCourse}
-                className="flex items-center px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:opacity-50 transition-colors"
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Force Refresh
-              </button>
               <button
                 onClick={handleRefresh}
                 disabled={loading || !currentCourse}
