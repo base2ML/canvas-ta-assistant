@@ -9,6 +9,7 @@ from typing import Annotated, Any, Dict, List, Optional, Tuple
 from canvasapi import Canvas
 from canvasapi.exceptions import CanvasException
 from fastapi import APIRouter, Depends, HTTPException, status, Path
+from loguru import logger
 
 from config import Settings
 from dependencies import (

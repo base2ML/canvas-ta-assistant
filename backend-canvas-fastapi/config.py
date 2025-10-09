@@ -26,10 +26,23 @@ class Settings(BaseSettings):
     debug: bool = True
 
     # CORS configuration
-    cors_origins: list[str] = ["*"]  # Should be restricted in production
+    # Production: Set CORS_ORIGINS env var to comma-separated list of allowed origins
+    # Example: CORS_ORIGINS="https://yourdomain.com,https://app.yourdomain.com"
+    # Development: Defaults to ["*"] for local development convenience
+    cors_origins: list[str] = Field(
+        default=["*"],
+        description="Allowed CORS origins. Use '*' for development only. Set via CORS_ORIGINS env var for production.",
+    )
     cors_allow_credentials: bool = True
     cors_allow_methods: list[str] = ["*"]
     cors_allow_headers: list[str] = ["*"]
+
+    @property
+    def parsed_cors_origins(self) -> list[str]:
+        """Parse CORS_ORIGINS from comma-separated string if provided as env var."""
+        if isinstance(self.cors_origins, str):
+            return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        return self.cors_origins
 
     # Canvas API configuration (optional defaults)
     canvas_base_url: Optional[str] = None

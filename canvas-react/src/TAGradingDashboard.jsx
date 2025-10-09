@@ -18,6 +18,23 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
   // Use the first available course (since this tool is for single course use)
   const currentCourse = courses && courses.length > 0 ? courses[0] : null;
 
+  // Utility function to handle API error responses consistently
+  const handleApiError = (data, response) => {
+    let errorMessage;
+    if (data && typeof data === 'object') {
+      if (data.detail) {
+        errorMessage = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+      } else if (data.message) {
+        errorMessage = data.message;
+      } else {
+        errorMessage = JSON.stringify(data);
+      }
+    } else {
+      errorMessage = data || response.statusText;
+    }
+    return errorMessage;
+  };
+
   const fetchTAGroups = async (courseId) => {
     try {
       
@@ -32,23 +49,11 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
         })
       });
 
-      
+
       const data = await response.json();
-      
+
       if (!response.ok) {
-        // Handle different error response formats
-        let errorMessage;
-        if (data && typeof data === 'object') {
-          if (data.detail) {
-            errorMessage = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
-          } else if (data.message) {
-            errorMessage = data.message;
-          } else {
-            errorMessage = JSON.stringify(data);
-          }
-        } else {
-          errorMessage = data || response.statusText;
-        }
+        const errorMessage = handleApiError(data, response);
         throw new Error(`Failed to fetch TA groups (${response.status}): ${errorMessage}`);
       }
 
@@ -77,19 +82,7 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
       const data = await response.json();
 
       if (!response.ok) {
-        // Handle different error response formats
-        let errorMessage;
-        if (data && typeof data === 'object') {
-          if (data.detail) {
-            errorMessage = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
-          } else if (data.message) {
-            errorMessage = data.message;
-          } else {
-            errorMessage = JSON.stringify(data);
-          }
-        } else {
-          errorMessage = data || response.statusText;
-        }
+        const errorMessage = handleApiError(data, response);
         throw new Error(`Failed to fetch ungraded submissions (${response.status}): ${errorMessage}`);
       }
 
@@ -120,33 +113,11 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
       const data = await response.json();
 
       if (!response.ok) {
-        // Handle different error response formats
-        let errorMessage;
-        if (data && typeof data === 'object') {
-          if (data.detail) {
-            errorMessage = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
-          } else if (data.message) {
-            errorMessage = data.message;
-          } else {
-            errorMessage = JSON.stringify(data);
-          }
-        } else {
-          errorMessage = data || response.statusText;
-        }
+        const errorMessage = handleApiError(data, response);
         throw new Error(`Failed to fetch assignment statistics (${response.status}): ${errorMessage}`);
       }
 
       setAssignmentStats(data || []);
-
-      // Debug logging
-      console.log('Statistics API response:', data);
-      console.log('Assignment stats received:', data);
-      console.log('Assignment stats length:', data?.length || 0);
-      if (data && data.length > 0) {
-        console.log('First assignment breakdown:', data[0].ta_grading_breakdown);
-      } else {
-        console.log('No assignment stats found in response');
-      }
 
     } catch (err) {
       const errorMessage = err.message || (typeof err === 'string' ? err : JSON.stringify(err));
@@ -158,22 +129,18 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
   const loadCourseData = async (courseId) => {
     if (!courseId) return;
 
-    console.log('Loading course data for:', courseId);
     const startTime = Date.now();
     setLoading(true);
     setError('');
     setLoadTime(null);
 
     try {
-      console.log('Starting API calls...');
       let taGroupsInfo = null;
       let ungradedInfo = null;
 
       // Try TA Groups first
       try {
-        console.log('Fetching TA groups...');
         taGroupsInfo = await fetchTAGroups(courseId);
-        console.log('TA Groups fetch successful:', taGroupsInfo);
       } catch (taGroupsError) {
         setError(`TA Groups error: ${taGroupsError.message}`);
       }
@@ -187,11 +154,8 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
 
       // Fetch Assignment Statistics (this provides complete TA breakdown data)
       try {
-        console.log('Fetching assignment statistics...');
         await fetchAssignmentStatistics(courseId);
-        console.log('Assignment statistics fetch successful');
       } catch (statisticsError) {
-        console.warn('Assignment statistics error:', statisticsError.message);
         setError(prevError => prevError ? `${prevError}; Statistics error: ${statisticsError.message}` : `Statistics error: ${statisticsError.message}`);
       }
 
@@ -207,7 +171,6 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
       }
 
     } catch (err) {
-      console.error('Error in loadCourseData:', err);
       const errorMessage = err.message || (typeof err === 'string' ? err : JSON.stringify(err));
       setError(errorMessage);
     } finally {

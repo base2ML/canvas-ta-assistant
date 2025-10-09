@@ -144,7 +144,7 @@ dist-ssr/
 .env.development.local
 .env.test.local
 .env.production.local
-.env.example
+# Note: .env.example is NOT ignored - it should be committed as a template
 
 # Canvas API credentials (if stored in files)
 canvas_credentials.json

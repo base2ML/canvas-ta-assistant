@@ -10,7 +10,6 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
   const [lateDaysData, setLateDaysData] = useState([]);
   const [selectedTAGroup, setSelectedTAGroup] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'student_name', direction: 'asc' });
-  const [, setCacheKey] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
 
   // Cache configuration
