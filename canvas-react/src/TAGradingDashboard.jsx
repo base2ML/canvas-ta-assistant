@@ -359,7 +359,15 @@ const TAGradingDashboard = ({ apiUrl, apiToken, backendUrl, courses, onBack, onL
               <div className="p-6 border-b border-gray-200">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Assignment Grading Progress</h3>
                 <div className="space-y-3">
-                  {assignmentStats.map(assignment => {
+                  {assignmentStats
+                    .sort((a, b) => {
+                      // Sort by due date, assignments without due dates appear last
+                      if (!a.due_at && !b.due_at) return 0;
+                      if (!a.due_at) return 1;
+                      if (!b.due_at) return -1;
+                      return new Date(a.due_at) - new Date(b.due_at);
+                    })
+                    .map(assignment => {
                     const progressPercent = assignment.percentage_graded;
                     const isCompleted = progressPercent === 100;
                     const isExpanded = expandedAssignments.has(assignment.assignment_id);
