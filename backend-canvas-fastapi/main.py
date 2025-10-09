@@ -5,10 +5,12 @@ Refactored to follow FastAPI best practices with dependency injection and modula
 
 import os
 import sys
+from pathlib import Path
 from typing import Annotated, Any, Dict
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from config import Settings, get_settings
@@ -85,6 +87,15 @@ def create_application() -> FastAPI:
     app.include_router(late_days.router)
     app.include_router(cache.router)
 
+    # Mount static files for React frontend (served at root "/")
+    # Static directory is created during Docker build
+    static_dir = Path(__file__).parent / "static"
+    if static_dir.exists():
+        app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+        logger.info(f"Mounted static files from {static_dir}")
+    else:
+        logger.warning(f"Static directory not found at {static_dir}. Running in API-only mode.")
+
     return app
 
 
@@ -93,20 +104,6 @@ app = create_application()
 
 # Log application startup
 logger.info("Canvas TA Dashboard FastAPI application initialized with loguru logging")
-
-
-@app.get("/")
-async def root(settings: Annotated[Settings, Depends(get_settings)]) -> Dict[str, Any]:
-    """
-    Root endpoint with basic application information.
-    Demonstrates dependency injection for settings.
-    """
-    return {
-        "message": "Canvas TA Dashboard API",
-        "version": settings.app_version,
-        "docs": "/docs",
-        "health": "/api/health",
-    }
 
 
 if __name__ == "__main__":

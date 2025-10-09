@@ -8,7 +8,7 @@ const App = () => {
   const [apiUrl, setApiUrl] = useState(import.meta.env.VITE_CANVAS_API_URL || '');
   const [apiToken, setApiToken] = useState(import.meta.env.VITE_CANVAS_API_KEY || '');
   const [courseIds, setCourseIds] = useState(import.meta.env.VITE_CANVAS_COURSE_ID || '');
-  const [backendUrl, setBackendUrl] = useState(import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000');
+  const [backendUrl, setBackendUrl] = useState(import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000');
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -29,7 +29,7 @@ const App = () => {
     const finalUrl = savedUrl || import.meta.env.VITE_CANVAS_API_URL || '';
     const finalToken = savedToken || import.meta.env.VITE_CANVAS_API_KEY || '';
     const finalCourseIds = savedCourseIds || import.meta.env.VITE_CANVAS_COURSE_ID || '';
-    const finalBackendUrl = savedBackendUrl || import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+    const finalBackendUrl = savedBackendUrl ?? import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000';
     
     // Update state with final values
     setApiUrl(finalUrl);
@@ -74,8 +74,8 @@ const App = () => {
   };
 
   const testConnection = async () => {
-    if (!apiUrl || !apiToken || !backendUrl) {
-      setError('Please fill in Canvas URL, API token, and backend URL first');
+    if (!apiUrl || !apiToken) {
+      setError('Please fill in Canvas URL and API token first');
       return;
     }
 
@@ -111,8 +111,8 @@ const App = () => {
   };
 
   const saveCredentials = async () => {
-    if (!apiUrl || !apiToken || !courseIds || !backendUrl) {
-      setError('Please fill in all required fields');
+    if (!apiUrl || !apiToken || !courseIds) {
+      setError('Please fill in all required fields: Canvas URL, API token, and course IDs');
       return;
     }
 
@@ -209,17 +209,17 @@ const App = () => {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Backend URL
+              Backend URL <span className="text-gray-400 font-normal">(optional for Docker)</span>
             </label>
             <input
               type="text"
-              placeholder={import.meta.env.VITE_BACKEND_URL || "http://localhost:8000"}
+              placeholder={import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000"}
               value={backendUrl}
               onChange={(e) => setBackendUrl(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
             <p className="text-xs text-gray-500 mt-1">
-              URL of your Python FastAPI backend server
+              Leave empty for same-origin (Docker), or specify backend URL (e.g., http://localhost:8000)
             </p>
           </div>
           
