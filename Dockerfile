@@ -26,7 +26,7 @@ RUN npm run build
 # ============================================
 FROM python:3.11-slim
 
-WORKDIR /app
+WORKDIR /backend-canvas-fastapi
 
 # Install uv package manager
 RUN pip install --no-cache-dir uv
@@ -46,7 +46,7 @@ COPY backend-canvas-fastapi/routers ./routers
 COPY backend-canvas-fastapi/services ./services
 
 # Copy React build from frontend stage
-COPY --from=frontend-builder /frontend/dist ./static
+COPY --from=frontend-builder /canvas-react/dist ./static
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && \
