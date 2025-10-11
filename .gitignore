@@ -144,7 +144,7 @@ dist-ssr/
 .env.development.local
 .env.test.local
 .env.production.local
-.env.example
+# Note: .env.example is NOT ignored - it should be committed as a template
 
 # Canvas API credentials (if stored in files)
 canvas_credentials.json
@@ -170,9 +170,16 @@ api_tokens.txt
 # Logs & Temporary Files
 # =============================================================================
 *.log
+*.zip
 logs/
 *.tmp
 *.temp
+
+# Editor temporary files
+*.swp
+*.swo
+*~
+.#*
 
 # =============================================================================
 # Project-Specific
@@ -191,5 +198,25 @@ test-results/
 playwright-report/
 test-results.xml
 
+# Playwright MCP Server
+.playwright-mcp/
+
+# Modern Development Tools
+# UV Package Manager
+uv.lock
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
 # Documentation builds
 docs/_build/
+
+# Additional Python patterns
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# FastAPI specific
+.fastapi/
+.github/AWS_DEPLOYMENT_SETUP.md
