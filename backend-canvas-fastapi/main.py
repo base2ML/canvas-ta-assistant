@@ -26,6 +26,7 @@ from routers import (
     submissions,
     ta_management,
 )
+import debug_endpoint
 
 
 # Create logs directory if it doesn't exist
@@ -88,6 +89,7 @@ def create_application() -> FastAPI:
     app.include_router(late_days.router)
     app.include_router(cache.router)
     app.include_router(background.router)
+    app.include_router(debug_endpoint.router)  # Temporary debug endpoint
 
     # Mount static files for React frontend (served at root "/")
     # Static directory is created during Docker build
