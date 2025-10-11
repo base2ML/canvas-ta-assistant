@@ -49,6 +49,79 @@ class TTLCache:
             logger.debug(f"Cache hit for key: {key}")
             return value
 
+    def get_stale_ok(self, key: str, ttl: int, stale_ttl: int) -> Optional[Tuple[Any, bool]]:
+        """
+        Get cached value, allowing stale data within stale_ttl window.
+        Implements stale-while-revalidate pattern.
+
+        Args:
+            key: Cache key
+            ttl: Normal time-to-live in seconds
+            stale_ttl: Extended TTL for stale data (total age allowed)
+
+        Returns:
+            Tuple of (value, is_stale) or None if beyond stale_ttl
+            is_stale=True means data is older than ttl but within stale_ttl
+        """
+        with self._lock:
+            if key not in self._cache:
+                return None
+
+            value, timestamp = self._cache[key]
+            current_time = time.time()
+            age = current_time - timestamp
+
+            # Beyond stale grace period, data is too old
+            if age > (ttl + stale_ttl):
+                del self._cache[key]
+                logger.debug(f"Cache entry too stale for key: {key} (age: {age}s)")
+                return None
+
+            # Within normal TTL - fresh data
+            if age <= ttl:
+                logger.debug(f"Cache hit (fresh) for key: {key}")
+                return (value, False)
+
+            # Within stale grace period - stale but usable
+            logger.debug(f"Cache hit (stale) for key: {key} (age: {age}s)")
+            return (value, True)
+
+    def get_age(self, key: str) -> Optional[float]:
+        """
+        Get the age of a cached entry in seconds.
+
+        Args:
+            key: Cache key
+
+        Returns:
+            Age in seconds or None if not cached
+        """
+        with self._lock:
+            if key not in self._cache:
+                return None
+
+            _, timestamp = self._cache[key]
+            return time.time() - timestamp
+
+    def is_fresh(self, key: str, ttl: int, freshness_threshold: float = 0.8) -> Optional[bool]:
+        """
+        Check if cache entry is fresh (below threshold of TTL).
+        Useful for triggering background refresh.
+
+        Args:
+            key: Cache key
+            ttl: Time-to-live in seconds
+            freshness_threshold: Percentage of TTL (0.8 = 80% of TTL)
+
+        Returns:
+            True if fresh, False if approaching expiration, None if not cached
+        """
+        age = self.get_age(key)
+        if age is None:
+            return None
+
+        return age < (ttl * freshness_threshold)
+
     def set(self, key: str, value: Any) -> None:
         """
         Set cached value with current timestamp.
@@ -219,3 +292,62 @@ def get_cache_stats() -> Dict[str, Any]:
         "assignment_stats_cache": assignment_stats_cache.stats(),
         "assignments_cache": assignments_cache.stats(),
     }
+
+
+# Stale-while-revalidate helper functions
+def get_cached_ta_groups_stale_ok(
+    course_id: str, api_token: str, ttl: int, stale_ttl: int
+) -> Optional[Tuple[Tuple[Any, Any, Optional[str]], bool]]:
+    """
+    Get cached TA groups with stale-while-revalidate support.
+
+    Returns:
+        Tuple of ((ta_groups_data, course_data, error), is_stale) or None
+        is_stale=True indicates data should be refreshed in background
+    """
+    cache_key = generate_cache_key(course_id, api_token)
+    result = ta_groups_cache.get_stale_ok(cache_key, ttl, stale_ttl)
+    return result
+
+
+def get_cached_assignment_stats_stale_ok(
+    course_id: str, api_token: str, ttl: int, stale_ttl: int
+) -> Optional[Tuple[Any, bool]]:
+    """
+    Get cached assignment stats with stale-while-revalidate support.
+
+    Returns:
+        Tuple of (assignment_stats, is_stale) or None
+        is_stale=True indicates data should be refreshed in background
+    """
+    cache_key = generate_cache_key(course_id, api_token)
+    result = assignment_stats_cache.get_stale_ok(cache_key, ttl, stale_ttl)
+    return result
+
+
+def should_refresh_ta_groups_cache(course_id: str, api_token: str, ttl: int) -> bool:
+    """
+    Check if TA groups cache should be refreshed (approaching expiration).
+
+    Returns:
+        True if cache is approaching expiration and should refresh in background
+    """
+    cache_key = generate_cache_key(course_id, api_token)
+    is_fresh = ta_groups_cache.is_fresh(cache_key, ttl, freshness_threshold=0.8)
+
+    # If is_fresh is None (not cached) or False (approaching expiration), should refresh
+    return is_fresh is None or not is_fresh
+
+
+def should_refresh_assignment_stats_cache(course_id: str, api_token: str, ttl: int) -> bool:
+    """
+    Check if assignment stats cache should be refreshed (approaching expiration).
+
+    Returns:
+        True if cache is approaching expiration and should refresh in background
+    """
+    cache_key = generate_cache_key(course_id, api_token)
+    is_fresh = assignment_stats_cache.is_fresh(cache_key, ttl, freshness_threshold=0.8)
+
+    # If is_fresh is None (not cached) or False (approaching expiration), should refresh
+    return is_fresh is None or not is_fresh

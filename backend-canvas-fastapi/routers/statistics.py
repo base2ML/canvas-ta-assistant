@@ -32,21 +32,19 @@ router = APIRouter(
 )
 
 
-@router.post("/assignments/{course_id}", response_model=List[AssignmentGradingStats])
-async def get_assignment_statistics(
+async def get_assignment_statistics_logic(
     request: TAGradingRequest,
     settings: SettingsDep,
     thread_pool: ThreadPoolDep,
     assignment_pool: AssignmentThreadPoolDep,
-    course_id: str = Path(
-        ..., description="Canvas course ID", example=_settings.canvas_course_id or "12345"
-    ),
 ) -> List[AssignmentGradingStats]:
     """
-    Get assignment grading statistics for a Canvas course.
-
-    Focused endpoint that returns only assignment grading statistics.
+    Core logic for getting assignment statistics.
+    Extracted for reuse by both endpoint and background tasks.
     """
+    # Ensure course_id is an integer for Canvas API
+    course_id = int(request.course_id) if isinstance(request.course_id, str) else request.course_id
+
     try:
         # Get Canvas client and course data
         canvas = await get_canvas_from_ta_request(request, settings)
@@ -166,3 +164,26 @@ async def get_assignment_statistics(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching assignment statistics: {ex}",
         )
+
+
+@router.post("/assignments/{course_id}", response_model=List[AssignmentGradingStats])
+async def get_assignment_statistics(
+    request: TAGradingRequest,
+    settings: SettingsDep,
+    thread_pool: ThreadPoolDep,
+    assignment_pool: AssignmentThreadPoolDep,
+    course_id: str = Path(
+        ..., description="Canvas course ID", example=_settings.canvas_course_id or "12345"
+    ),
+) -> List[AssignmentGradingStats]:
+    """
+    Get assignment grading statistics for a Canvas course.
+
+    Focused endpoint that returns only assignment grading statistics.
+    """
+    # Override request course_id with path parameter to ensure consistency
+    request.course_id = course_id
+
+    return await get_assignment_statistics_logic(
+        request, settings, thread_pool, assignment_pool
+    )

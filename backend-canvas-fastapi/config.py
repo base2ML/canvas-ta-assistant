@@ -61,15 +61,16 @@ class Settings(BaseSettings):
     canvas_api_version: str = "1.0"
 
     # Performance settings
-    thread_pool_max_workers: int = 10
-    assignment_thread_pool_max_workers: int = 3  # Optimized for Canvas API
+    thread_pool_max_workers: int = 20  # Increased from 10 for better parallelization
+    assignment_thread_pool_max_workers: int = 10  # Increased from 3 for faster Canvas API processing
     request_timeout: int = 30
 
-    # Cache settings (matching original performance)
-    ta_cache_ttl: int = 3600  # 1 hour TTL for TA groups
+    # Cache settings (optimized for performance)
+    ta_cache_ttl: int = 14400  # 4 hours TTL for TA groups (rarely change)
     assignment_cache_ttl: int = 900  # 15 minutes TTL for assignment stats
     cache_max_size: int = 100  # Maximum cache entries
     enable_caching: bool = True  # Can disable for testing
+    stale_cache_extension: int = 7200  # 2 hours - serve stale data within this window while refreshing
 
     # No inner Config in Pydantic v2; using model_config above
 

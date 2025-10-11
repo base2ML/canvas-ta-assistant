@@ -17,6 +17,7 @@ from config import Settings, get_settings
 from routers import (
     assignments,
     auth,
+    background,
     cache,
     distribution,
     health,
@@ -86,6 +87,7 @@ def create_application() -> FastAPI:
     app.include_router(peer_reviews.router)
     app.include_router(late_days.router)
     app.include_router(cache.router)
+    app.include_router(background.router)
 
     # Mount static files for React frontend (served at root "/")
     # Static directory is created during Docker build

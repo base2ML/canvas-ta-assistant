@@ -48,13 +48,19 @@ async def get_ungraded_submissions(
     Focused endpoint that returns only ungraded submissions assigned to TAs.
     """
     try:
+        # Override request course_id with path parameter to ensure consistency
+        request.course_id = course_id
+
+        # Ensure course_id is an integer for Canvas API
+        course_id_int = int(course_id) if isinstance(course_id, str) else course_id
+
         # Get Canvas client and course data
         canvas = await get_canvas_from_ta_request(request, settings)
         loop = asyncio.get_event_loop()
 
         # Load course, groups, and assignments
         course = await loop.run_in_executor(
-            thread_pool, lambda: canvas.get_course(course_id)
+            thread_pool, lambda: canvas.get_course(course_id_int)
         )
 
         def get_groups() -> List[Any]:
@@ -135,7 +141,7 @@ async def get_ungraded_submissions(
                 course_name = getattr(course, "name", None)
                 for submission in ungraded or []:
                     submission["course_name"] = course_name
-                    submission["course_id"] = course_id
+                    submission["course_id"] = course_id_int
 
                 if ungraded:
                     ungraded_submissions_raw.extend(ungraded)
