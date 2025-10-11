@@ -5,7 +5,7 @@ Following FastAPI best practices for data models organization.
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, field_validator
 
 from config import get_settings
 
@@ -20,8 +20,31 @@ class CanvasCredentials(BaseModel):
 
     # Use defaults from .env via Settings when not provided in request
     # Use 'default=' so Swagger UI shows values in Try it out.
-    base_url: Optional[HttpUrl] = Field(default=_settings.canvas_base_url)
+    base_url: Optional[str] = Field(default=_settings.canvas_base_url)
     api_token: Optional[str] = Field(default=_settings.canvas_api_token)
+
+    @field_validator('base_url')
+    @classmethod
+    def validate_base_url(cls, v):
+        """Flexible Canvas URL validation - accepts various URL formats."""
+        if v is None:
+            return v
+
+        # Convert to string and strip whitespace
+        url_str = str(v).strip()
+
+        # Add https:// if no protocol specified
+        if not url_str.startswith(('http://', 'https://')):
+            url_str = f'https://{url_str}'
+
+        # Remove trailing slash for consistency
+        url_str = url_str.rstrip('/')
+
+        # Basic validation - must contain a domain
+        if '.' not in url_str or len(url_str) < 8:
+            raise ValueError(f"Invalid Canvas URL format: {url_str}")
+
+        return url_str
 
 
 class AssignmentRequest(CanvasCredentials):
@@ -246,9 +269,32 @@ class PeerReviewResponse(BaseModel):
 class LateDaysRequest(BaseModel):
     """Request for late days tracking with env-based defaults (visible in docs)."""
 
-    base_url: Optional[HttpUrl] = Field(default=_settings.canvas_base_url)
+    base_url: Optional[str] = Field(default=_settings.canvas_base_url)
     api_token: Optional[str] = Field(default=_settings.canvas_api_token)
     course_id: str = Field(default=_settings.canvas_course_id or "")
+
+    @field_validator('base_url')
+    @classmethod
+    def validate_base_url(cls, v):
+        """Flexible Canvas URL validation - accepts various URL formats."""
+        if v is None:
+            return v
+
+        # Convert to string and strip whitespace
+        url_str = str(v).strip()
+
+        # Add https:// if no protocol specified
+        if not url_str.startswith(('http://', 'https://')):
+            url_str = f'https://{url_str}'
+
+        # Remove trailing slash for consistency
+        url_str = url_str.rstrip('/')
+
+        # Basic validation - must contain a domain
+        if '.' not in url_str or len(url_str) < 8:
+            raise ValueError(f"Invalid Canvas URL format: {url_str}")
+
+        return url_str
 
 
 class AssignmentInfo(BaseModel):
