@@ -7,7 +7,7 @@
 # ============================================
 FROM node:20-alpine AS frontend-builder
 
-WORKDIR /frontend
+WORKDIR /canvas-react
 
 # Copy package files
 COPY canvas-react/package*.json ./
