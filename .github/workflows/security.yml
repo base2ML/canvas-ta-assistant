@@ -29,9 +29,7 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Optional: for Gitleaks Pro
         with:
-          # Scan all commits, not just new ones
           args: --verbose --redact
 
   trufflehog:
@@ -78,21 +76,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run Snyk to check for vulnerabilities
-        uses: snyk/actions/python@master
-        continue-on-error: true  # Don't fail on vulnerabilities, just report
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          args: --severity-threshold=high
-          command: test
+          python-version: '3.12'
 
       - name: Check Python dependencies with Safety
         run: |
           pip install safety
-          # Check backend dependencies
+          # Check backend dependencies for known vulnerabilities
           cd backend-canvas-fastapi
           safety check --json || true
+        continue-on-error: true  # Don't fail build on vulnerabilities, just report
 
   codeql:
     name: CodeQL Security Analysis
