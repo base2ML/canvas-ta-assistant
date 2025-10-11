@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Quick script to build and run Vibey Canvas Docker container locally
+# Quick script to build and run CDA TA Dashboard Docker container locally
 # Usage: ./docker-build-and-run.sh
 
 set -e
 
-echo "🐳 Building Vibey Canvas Docker image..."
-docker build -t vibey-canvas:local .
+echo "🐳 Building CDA TA Dashboard Docker image..."
+docker build -t cda-ta-dashboard:local .
 
 echo ""
 echo "✅ Build complete!"
@@ -18,8 +18,8 @@ docker run -it --rm \
   -p 8000:8000 \
   -e PORT=8000 \
   -e CORS_ORIGINS='["http://localhost:8000"]' \
-  --name vibey-canvas-dev \
-  vibey-canvas:local
+  --name cda-ta-dashboard-dev \
+  cda-ta-dashboard:local
 
 echo ""
 echo "🛑 Container stopped"
