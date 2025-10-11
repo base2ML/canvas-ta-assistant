@@ -7,13 +7,13 @@
 # ============================================
 FROM node:20-alpine AS frontend-builder
 
-WORKDIR /canvas-react
+WORKDIR /frontend
 
 # Copy package files
 COPY canvas-react/package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm ci
 
 # Copy source code
 COPY canvas-react/ ./
@@ -26,7 +26,7 @@ RUN npm run build
 # ============================================
 FROM python:3.11-slim
 
-WORKDIR /backend-canvas-fastapi
+WORKDIR /app
 
 # Install uv package manager
 RUN pip install --no-cache-dir uv
@@ -46,7 +46,7 @@ COPY backend-canvas-fastapi/routers ./routers
 COPY backend-canvas-fastapi/services ./services
 
 # Copy React build from frontend stage
-COPY --from=frontend-builder /canvas-react/dist ./static
+COPY --from=frontend-builder /frontend/dist ./static
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && \
@@ -57,7 +57,7 @@ USER appuser
 EXPOSE 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=600s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"
 
 # Run application
