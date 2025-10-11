@@ -39,8 +39,12 @@ jobs:
 
       - name: Install frontend dependencies
         run: |
-          cd frontend
+          cd canvas-react
           npm install
+      - name: Build frontend
+        run: |
+          cd canvas-react
+          npm run build
 
       - name: Build Docker image
         run: |
