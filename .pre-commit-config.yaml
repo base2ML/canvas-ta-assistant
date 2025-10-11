@@ -1,0 +1,113 @@
+# Pre-commit hooks configuration
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # Secret detection
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: Detect secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: package-lock.json
+
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      # Prevent large files from being committed
+      - id: check-added-large-files
+        name: Check for large files
+        args: ['--maxkb=1000']
+
+      # Check for files that would conflict on case-insensitive filesystems
+      - id: check-case-conflict
+        name: Check for case conflicts
+
+      # Ensure files end with newline
+      - id: end-of-file-fixer
+        name: Fix end of files
+        exclude: '\.json$'
+
+      # Remove trailing whitespace
+      - id: trailing-whitespace
+        name: Trim trailing whitespace
+        args: [--markdown-linebreak-ext=md]
+
+      # Check YAML syntax
+      - id: check-yaml
+        name: Check YAML syntax
+        exclude: 'docker-compose\.yml'
+
+      # Check JSON syntax
+      - id: check-json
+        name: Check JSON syntax
+
+      # Check for merge conflict markers
+      - id: check-merge-conflict
+        name: Check for merge conflicts
+
+      # Prevent committing to main/master
+      - id: no-commit-to-branch
+        name: Prevent commits to main/master
+        args: ['--branch', 'main', '--branch', 'master']
+
+      # Check for private keys
+      - id: detect-private-key
+        name: Detect private keys
+
+  # Python linting and formatting with Ruff
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      # Run the linter
+      - id: ruff
+        name: Lint Python with Ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^backend-canvas-fastapi/.*\.py$
+
+      # Run the formatter
+      - id: ruff-format
+        name: Format Python code with Ruff
+        files: ^backend-canvas-fastapi/.*\.py$
+
+  # JavaScript/React specific hooks
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v9.17.0
+    hooks:
+      - id: eslint
+        name: Lint JavaScript/React
+        files: ^canvas-react/src/.*\.[jt]sx?$
+        types: [file]
+        args: ['--fix', '--max-warnings=0']
+        additional_dependencies:
+          - eslint@9.17.0
+          - eslint-plugin-react@7.37.2
+          - eslint-plugin-react-hooks@5.0.0
+
+  # Markdown linting
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.43.0
+    hooks:
+      - id: markdownlint
+        name: Lint Markdown files
+        args: ['--fix', '--disable', 'MD013', 'MD033', 'MD041']
+
+# Default settings
+default_language_version:
+  python: python3
+  node: system
+
+# Files/directories to exclude from all hooks
+exclude: |
+  (?x)^(
+    canvas-react/node_modules/|
+    canvas-react/dist/|
+    backend-canvas-fastapi/.venv/|
+    backend-canvas-fastapi/__pycache__/|
+    .*\.egg-info/|
+    \.git/|
+    \.pytest_cache/|
+    \.mypy_cache/
+  )$

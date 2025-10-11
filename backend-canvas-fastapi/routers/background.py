@@ -9,13 +9,17 @@ from typing import Any, Dict
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from loguru import logger
 
-from dependencies import SettingsDep, ThreadPoolDep, AssignmentThreadPoolDep
+from dependencies import AssignmentThreadPoolDep, SettingsDep, ThreadPoolDep
 from models import TAGradingRequest
 from services.cache import (
-    set_cached_ta_groups,
     set_cached_assignment_stats,
+    set_cached_ta_groups,
 )
-from services.ta_processing import get_canvas_from_ta_request, get_group_members_with_memberships
+from services.ta_processing import (
+    get_canvas_from_ta_request,
+    get_group_members_with_memberships,
+)
+
 
 router = APIRouter(
     prefix="/api/background",
@@ -39,7 +43,11 @@ async def refresh_ta_groups_task(
     """
     try:
         # Ensure course_id is an integer for Canvas API
-        course_id = int(request.course_id) if isinstance(request.course_id, str) else request.course_id
+        course_id = (
+            int(request.course_id)
+            if isinstance(request.course_id, str)
+            else request.course_id
+        )
 
         logger.info(f"Starting background refresh for TA groups in course {course_id}")
 
@@ -52,7 +60,9 @@ async def refresh_ta_groups_task(
         )
 
         def get_groups():
-            return list(course.get_groups(per_page=100, include=["users", "group_category"]))
+            return list(
+                course.get_groups(per_page=100, include=["users", "group_category"])
+            )
 
         groups = await loop.run_in_executor(thread_pool, get_groups)
 
@@ -61,14 +71,16 @@ async def refresh_ta_groups_task(
         for group in groups:
             if "Term Project" not in group.name:
                 members = await get_group_members_with_memberships(group, thread_pool)
-                ta_groups_data.append({
-                    "id": group.id,
-                    "name": group.name,
-                    "description": getattr(group, "description", None),
-                    "course_id": course_id,
-                    "members_count": len(members),
-                    "members": members,
-                })
+                ta_groups_data.append(
+                    {
+                        "id": group.id,
+                        "name": group.name,
+                        "description": getattr(group, "description", None),
+                        "course_id": course_id,
+                        "members_count": len(members),
+                        "members": members,
+                    }
+                )
 
         course_info = {
             "id": course.id,
@@ -91,7 +103,9 @@ async def refresh_ta_groups_task(
         )
 
     except Exception as e:
-        logger.error(f"Background refresh failed for TA groups in course {request.course_id}: {e}")
+        logger.error(
+            f"Background refresh failed for TA groups in course {request.course_id}: {e}"
+        )
 
 
 async def refresh_assignment_stats_task(
@@ -106,9 +120,15 @@ async def refresh_assignment_stats_task(
     """
     try:
         # Ensure course_id is an integer for Canvas API
-        course_id = int(request.course_id) if isinstance(request.course_id, str) else request.course_id
+        course_id = (
+            int(request.course_id)
+            if isinstance(request.course_id, str)
+            else request.course_id
+        )
 
-        logger.info(f"Starting background refresh for assignment stats in course {course_id}")
+        logger.info(
+            f"Starting background refresh for assignment stats in course {course_id}"
+        )
 
         # Import here to avoid circular dependencies
         from routers.statistics import get_assignment_statistics_logic
@@ -130,7 +150,9 @@ async def refresh_assignment_stats_task(
         )
 
     except Exception as e:
-        logger.error(f"Background refresh failed for assignment stats in course {request.course_id}: {e}")
+        logger.error(
+            f"Background refresh failed for assignment stats in course {request.course_id}: {e}"
+        )
 
 
 @router.post("/refresh-ta-groups/{course_id}")
@@ -164,7 +186,9 @@ async def trigger_ta_groups_refresh(
             thread_pool,
         )
 
-        logger.info(f"Queued background refresh for TA groups in course {request.course_id}")
+        logger.info(
+            f"Queued background refresh for TA groups in course {request.course_id}"
+        )
 
         return {
             "message": "Background refresh queued for TA groups",
@@ -214,7 +238,9 @@ async def trigger_assignment_stats_refresh(
             assignment_pool,
         )
 
-        logger.info(f"Queued background refresh for assignment stats in course {request.course_id}")
+        logger.info(
+            f"Queued background refresh for assignment stats in course {request.course_id}"
+        )
 
         return {
             "message": "Background refresh queued for assignment statistics",

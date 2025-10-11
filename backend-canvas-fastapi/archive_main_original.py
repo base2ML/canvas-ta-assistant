@@ -16,7 +16,8 @@ from canvasapi.exceptions import (
 from dateutil.parser import parse as parse_date
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, HttpUrl, validator
+from pydantic import BaseModel, HttpUrl
+
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -471,7 +472,8 @@ def process_assignment_submissions_sync(
         # Get all submissions for this assignment with optimized parameters
         # Only fetch essential fields to reduce payload size
         submissions = assignment.get_submissions(
-            include=["user"], per_page=100  # Optimize pagination
+            include=["user"],
+            per_page=100,  # Optimize pagination
         )
         submissions_list = list(submissions)
 
@@ -570,7 +572,6 @@ def process_assignment_submissions_sync(
 
                 # Only track ungraded submissions for the ungraded submissions list
                 if has_submission and not has_grade:
-
                     # Get student info with better error handling
                     student = getattr(submission, "user", None)
                     if not student or not hasattr(student, "id"):
@@ -1102,14 +1103,18 @@ async def get_ungraded_submissions(request: TAGradingRequest):
     try:
         logger.info(f"Fetching ungraded submissions for course {request.course_id}")
 
-        ungraded_data, ta_counts, assignment_stats_data, course_data, error = (
-            await run_in_executor(
-                get_ungraded_submissions_sync,
-                str(request.base_url),
-                request.api_token,
-                request.course_id,
-                request.assignment_id,
-            )
+        (
+            ungraded_data,
+            ta_counts,
+            assignment_stats_data,
+            course_data,
+            error,
+        ) = await run_in_executor(
+            get_ungraded_submissions_sync,
+            str(request.base_url),
+            request.api_token,
+            request.course_id,
+            request.assignment_id,
         )
 
         if error:
@@ -1327,7 +1332,9 @@ def get_late_days_data_sync(
                 "due_at": (
                     assignment.due_at.isoformat()
                     if hasattr(assignment.due_at, "isoformat") and assignment.due_at
-                    else str(assignment.due_at) if assignment.due_at else None
+                    else str(assignment.due_at)
+                    if assignment.due_at
+                    else None
                 ),
                 "html_url": getattr(assignment, "html_url", None),
             }
@@ -1425,7 +1432,6 @@ def analyze_comments_for_peer_reviews(
                     and commenter_id != submission_author_id
                     and commenter_id in student_ids
                 ):
-
                     logger.info(
                         f"Found potential peer review: student {commenter_id} commented on {submission_author_id}'s submission at {comment_time}"
                     )
@@ -1844,16 +1850,20 @@ async def get_peer_review_lateness(request: PeerReviewRequest):
             f"Fetching peer review data for course {request.course_id}, assignment {request.assignment_id}"
         )
 
-        peer_events_data, peer_summary_data, assignment_data, course_data, error = (
-            await run_in_executor(
-                get_peer_review_data_sync,
-                str(request.base_url),
-                request.api_token,
-                request.course_id,
-                request.assignment_id,
-                request.deadline,
-                request.penalty_per_review,
-            )
+        (
+            peer_events_data,
+            peer_summary_data,
+            assignment_data,
+            course_data,
+            error,
+        ) = await run_in_executor(
+            get_peer_review_data_sync,
+            str(request.base_url),
+            request.api_token,
+            request.course_id,
+            request.assignment_id,
+            request.deadline,
+            request.penalty_per_review,
         )
 
         if error:

@@ -4,18 +4,18 @@ Following FastAPI best practices for security and error handling.
 """
 
 import asyncio
-from typing import Annotated, Any, Dict
+from typing import Any, Dict
 
-from canvasapi.exceptions import CanvasException, InvalidAccessToken
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 
 from dependencies import (
     SettingsDep,
     ThreadPoolDep,
-    validate_canvas_credentials,
     resolve_credentials,
+    validate_canvas_credentials,
 )
 from models import CanvasCredentials, CredentialValidationResponse, UserProfile
+
 
 router = APIRouter(
     prefix="/api",

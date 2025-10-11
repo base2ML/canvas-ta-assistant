@@ -12,7 +12,8 @@ import pandas as pd
 from loguru import logger
 
 from dependencies import SettingsDep, resolve_credentials
-from models import TAGradingRequest, CanvasCredentials
+from models import CanvasCredentials, TAGradingRequest
+
 
 # Configure loguru for this module
 logger = logger.bind(module="ta_processing")
@@ -24,9 +25,7 @@ async def get_canvas_from_ta_request(
     """Convert TAGradingRequest to Canvas client."""
     from dependencies import validate_canvas_credentials
 
-    base_url, token = resolve_credentials(
-        request.base_url, request.api_token, settings
-    )
+    base_url, token = resolve_credentials(request.base_url, request.api_token, settings)
     return await validate_canvas_credentials(base_url, token, settings)
 
 
@@ -36,9 +35,7 @@ async def get_canvas_from_credentials(
     """Convert CanvasCredentials to Canvas client."""
     from dependencies import validate_canvas_credentials
 
-    base_url, token = resolve_credentials(
-        request.base_url, request.api_token, settings
-    )
+    base_url, token = resolve_credentials(request.base_url, request.api_token, settings)
     return await validate_canvas_credentials(base_url, token, settings)
 
 
@@ -69,15 +66,13 @@ def process_assignment_submissions_sync(
 
         # Use pandas json_normalize for proper Canvas API object handling
         submission_df = pd.concat(
-            [
-                pd.json_normalize(
-                    [vars(submission) for submission in submissions]
-                )
-            ],
-            ignore_index=True
+            [pd.json_normalize([vars(submission) for submission in submissions])],
+            ignore_index=True,
         )
-        submission_df = submission_df.loc[:, ~submission_df.columns.str.startswith("turnitin")]
-        
+        submission_df = submission_df.loc[
+            :, ~submission_df.columns.str.startswith("turnitin")
+        ]
+
         # Debug: Log submission count and workflow states to verify fix
         logger.info(
             "Assignment {assignment_id} has {count} total submissions",
@@ -91,9 +86,7 @@ def process_assignment_submissions_sync(
                 else {}
             )
             user_col = "user.id" if "user.id" in submission_df.columns else None
-            user_count = (
-                submission_df[user_col].notna().sum() if user_col else 0
-            )
+            user_count = submission_df[user_col].notna().sum() if user_col else 0
 
             # Debug: Show actual DataFrame columns to understand structure
             logger.info(
@@ -161,8 +154,8 @@ def process_assignment_submissions_sync(
         ).fillna(0)
         # Normalize workflow_state to string for robust comparisons
         if "workflow_state" in df.columns:
-            df["workflow_state"] = df["workflow_state"].astype("string").fillna(
-                "unsubmitted"
+            df["workflow_state"] = (
+                df["workflow_state"].astype("string").fillna("unsubmitted")
             )
 
         # Use the provided student-to-TA-group mapping from function parameter
@@ -186,19 +179,29 @@ def process_assignment_submissions_sync(
             df["is_missing"] = df["workflow_state"].eq("unsubmitted")
         else:
             # Final fallback for older API responses
-            submitted_signal = df.get("submitted_at").notna() if "submitted_at" in df.columns else False
+            submitted_signal = (
+                df.get("submitted_at").notna()
+                if "submitted_at" in df.columns
+                else False
+            )
             df["is_missing"] = ~submitted_signal
 
         # Determine submission status
         if "workflow_state" in df.columns:
-            df["has_submission"] = df["workflow_state"].isin(["submitted", "graded", "pending_review"])
+            df["has_submission"] = df["workflow_state"].isin(
+                ["submitted", "graded", "pending_review"]
+            )
             df["has_grade"] = df["workflow_state"].eq("graded")
             # Ensure missing submissions are never counted as graded, regardless of workflow_state
             if "is_missing" in df.columns:
                 df["has_grade"] = df["has_grade"] & ~df["is_missing"]
         else:
             # Fallback logic for submission status
-            submitted_signal = df.get("submitted_at").notna() if "submitted_at" in df.columns else False
+            submitted_signal = (
+                df.get("submitted_at").notna()
+                if "submitted_at" in df.columns
+                else False
+            )
             df["has_submission"] = submitted_signal
 
             # Initialize graded_signal as a proper boolean Series
@@ -206,7 +209,9 @@ def process_assignment_submissions_sync(
 
             # Check for non-empty grade
             if "grade" in df.columns:
-                grade_signal = (df["grade"].astype("string") != "") & (df["grade"].notna())
+                grade_signal = (df["grade"].astype("string") != "") & (
+                    df["grade"].notna()
+                )
                 graded_signal = graded_signal | grade_signal
 
             # Check for non-null score
@@ -230,22 +235,36 @@ def process_assignment_submissions_sync(
         if "workflow_state" in df.columns:
             submitted_only = df[df["workflow_state"] == "submitted"]
             if not submitted_only.empty:
-                grade_values = submitted_only.get("grade", pd.Series()).value_counts(dropna=False)
-                score_values = submitted_only["score_numeric"].value_counts(dropna=False)
-                has_submission_values = submitted_only["has_submission"].value_counts(dropna=False)
-                has_grade_values = submitted_only["has_grade"].value_counts(dropna=False)
+                grade_values = submitted_only.get("grade", pd.Series()).value_counts(
+                    dropna=False
+                )
+                score_values = submitted_only["score_numeric"].value_counts(
+                    dropna=False
+                )
+                has_submission_values = submitted_only["has_submission"].value_counts(
+                    dropna=False
+                )
+                has_grade_values = submitted_only["has_grade"].value_counts(
+                    dropna=False
+                )
                 logger.info(
                     f"Assignment {getattr(assignment, 'id', 'unknown')} - Submitted state analysis:"
                 )
                 logger.info(f"  Grade values in 'submitted': {dict(grade_values)}")
                 logger.info(f"  Score values in 'submitted': {dict(score_values)}")
-                logger.info(f"  Has_submission for 'submitted': {dict(has_submission_values)}")
+                logger.info(
+                    f"  Has_submission for 'submitted': {dict(has_submission_values)}"
+                )
                 logger.info(f"  Has_grade for 'submitted': {dict(has_grade_values)}")
 
                 # Check submitted_at values for submitted workflow state
                 if "submitted_at" in df.columns:
-                    submitted_at_values = submitted_only["submitted_at"].notna().value_counts()
-                    logger.info(f"  Has submitted_at timestamp: {dict(submitted_at_values)}")
+                    submitted_at_values = (
+                        submitted_only["submitted_at"].notna().value_counts()
+                    )
+                    logger.info(
+                        f"  Has submitted_at timestamp: {dict(submitted_at_values)}"
+                    )
 
         # Map students to their TA groups (students are group members)
         df["ta_group"] = df["student_id"].map(ta_group_series)
@@ -254,13 +273,13 @@ def process_assignment_submissions_sync(
         # Debug: Check mapping success and identify mismatches
         mapped_students = df["ta_group"].notna().sum()
         unmapped_students = df[df["ta_group"].isna()]
-        
+
         logger.info(
             "TA group mapping results: {mapped}/{total} students mapped to TA groups",
             mapped=mapped_students,
             total=len(df),
         )
-        
+
         # Log unmapped student IDs for debugging
         if not unmapped_students.empty:
             unmapped_ids = unmapped_students["student_id"].tolist()
@@ -268,11 +287,11 @@ def process_assignment_submissions_sync(
                 "Unmapped student IDs: {unmapped_ids} not found in TA group members",
                 unmapped_ids=unmapped_ids,
             )
-            
+
         # Log sample of mapped vs available student IDs for debugging
         submission_student_ids = set(df["student_id"].dropna().astype(int).tolist())
         ta_group_student_ids = set(student_to_ta_group.keys())
-        
+
         logger.info(
             "Student ID analysis: {submission_count} from submissions, {ta_count} in TA groups",
             submission_count=len(submission_student_ids),
@@ -280,7 +299,9 @@ def process_assignment_submissions_sync(
         )
         logger.debug(
             "Submission student IDs: {submission_ids}",
-            submission_ids=sorted(list(submission_student_ids))[:10],  # First 10 for brevity
+            submission_ids=sorted(list(submission_student_ids))[
+                :10
+            ],  # First 10 for brevity
         )
         logger.debug(
             "TA group student IDs: {ta_ids}",
@@ -375,10 +396,14 @@ def process_assignment_submissions_sync(
             ).round(1)
 
             # Handle division by zero for TAs with no assigned submissions
-            ta_stats["percentage_complete"] = ta_stats["percentage_complete"].fillna(0.0)
+            ta_stats["percentage_complete"] = ta_stats["percentage_complete"].fillna(
+                0.0
+            )
 
             # Ensure percentage never exceeds 100% due to data inconsistencies
-            ta_stats["percentage_complete"] = ta_stats["percentage_complete"].clip(upper=100.0)
+            ta_stats["percentage_complete"] = ta_stats["percentage_complete"].clip(
+                upper=100.0
+            )
 
             # Calculate submission timing breakdown
             ta_stats["submitted_on_time"] = (
@@ -618,14 +643,18 @@ async def get_group_members_with_memberships_original(
 
         def get_memberships() -> List[Any]:
             """Get group memberships using CanvasAPI best practices."""
-            group_id = getattr(group, 'id', 'unknown')
-            group_name = getattr(group, 'name', 'unknown')
-            
+            group_id = getattr(group, "id", "unknown")
+            group_name = getattr(group, "name", "unknown")
+
             try:
                 # Use get_memberships() with per_page for optimal performance
-                logger.debug(f"Attempting get_memberships() for group {group_id} '{group_name}'")
+                logger.debug(
+                    f"Attempting get_memberships() for group {group_id} '{group_name}'"
+                )
                 memberships = list(group.get_memberships(per_page=100))
-                logger.info(f"SUCCESS: get_memberships() for group {group_id} returned {len(memberships)} memberships")
+                logger.info(
+                    f"SUCCESS: get_memberships() for group {group_id} returned {len(memberships)} memberships"
+                )
                 return memberships
             except Exception as e:
                 # Fallback to get_users() with optimization if get_memberships() fails
@@ -640,15 +669,17 @@ async def get_group_members_with_memberships_original(
                         # Note: enrollment_state might not apply to group users
                     )
                 )
-                logger.info(f"FALLBACK: group.get_users() for group {group_id} returned {len(users)} users")
+                logger.info(
+                    f"FALLBACK: group.get_users() for group {group_id} returned {len(users)} users"
+                )
                 return users
 
         loop = asyncio.get_event_loop()
         memberships = await loop.run_in_executor(thread_pool, get_memberships)
-        
+
         # Debug: Log group-specific membership info
-        group_id = getattr(group, 'id', 'unknown')
-        group_name = getattr(group, 'name', 'unknown')
+        group_id = getattr(group, "id", "unknown")
+        group_name = getattr(group, "name", "unknown")
         logger.info(
             "Group {group_id} '{group_name}' has {count} memberships",
             group_id=group_id,
@@ -690,7 +721,7 @@ async def get_group_members_with_memberships_original(
                 continue
 
         # Debug: Log the specific student IDs for this group
-        student_ids = [m.get('id') for m in members if m.get('id')]
+        student_ids = [m.get("id") for m in members if m.get("id")]
         logger.info(
             "Group {group_id} '{group_name}' retrieved {count} members: {member_ids}",
             group_id=group_id,
@@ -698,7 +729,7 @@ async def get_group_members_with_memberships_original(
             count=len(members),
             member_ids=student_ids[:10],  # Show first 10 to avoid log spam
         )
-        
+
         return members
 
     except Exception as e:
@@ -716,67 +747,88 @@ async def get_group_members_with_memberships(
     Uses group.get_memberships() with pandas json_normalize for accurate group-specific membership retrieval.
     """
     try:
+
         def get_memberships_sync() -> List[Dict[str, Any]]:
             """Synchronous function to get group memberships using pandas pattern."""
-            group_id = getattr(group, 'id', 'unknown')
-            group_name = getattr(group, 'name', 'unknown')
-            
+            group_id = getattr(group, "id", "unknown")
+            group_name = getattr(group, "name", "unknown")
+
             try:
                 # Use user's pandas pattern for group memberships
-                logger.debug(f"Using pandas pattern for group {group_id} '{group_name}'")
+                logger.debug(
+                    f"Using pandas pattern for group {group_id} '{group_name}'"
+                )
                 memberships = list(group.get_memberships())
-                
+
                 if not memberships:
                     logger.info(f"Group {group_id} '{group_name}' has no memberships")
                     return []
-                
+
                 # Apply user's pandas pattern exactly as provided
                 membership_df = pd.json_normalize(
                     [vars(member) for member in memberships]
                 ).assign(grading_TA=group_name)
-                
+
                 # Debug: Log the DataFrame structure and user IDs
-                logger.debug(f"Group {group_id} membership DataFrame columns: {list(membership_df.columns)}")
-                logger.debug(f"Group {group_id} membership DataFrame shape: {membership_df.shape}")
-                
-                if 'user_id' in membership_df.columns:
-                    user_ids = membership_df['user_id'].dropna().astype(int).tolist()
+                logger.debug(
+                    f"Group {group_id} membership DataFrame columns: {list(membership_df.columns)}"
+                )
+                logger.debug(
+                    f"Group {group_id} membership DataFrame shape: {membership_df.shape}"
+                )
+
+                if "user_id" in membership_df.columns:
+                    user_ids = membership_df["user_id"].dropna().astype(int).tolist()
                     logger.info(
                         f"Group {group_id} '{group_name}' has {len(user_ids)} unique user_ids: {sorted(user_ids)[:10]}..."
                     )
-                    
+
                     # CRITICAL DEBUG: Check if group_id column exists and varies
-                    if 'group_id' in membership_df.columns:
-                        group_ids_in_data = membership_df['group_id'].dropna().unique()
-                        logger.info(f"Group {group_id} memberships contain group_ids: {group_ids_in_data}")
+                    if "group_id" in membership_df.columns:
+                        group_ids_in_data = membership_df["group_id"].dropna().unique()
+                        logger.info(
+                            f"Group {group_id} memberships contain group_ids: {group_ids_in_data}"
+                        )
                         if len(group_ids_in_data) > 1:
-                            logger.warning(f"UNEXPECTED: Group {group_id} memberships contain multiple group_ids: {group_ids_in_data}")
+                            logger.warning(
+                                f"UNEXPECTED: Group {group_id} memberships contain multiple group_ids: {group_ids_in_data}"
+                            )
                     else:
-                        logger.warning(f"Group {group_id} memberships missing group_id column")
-                    
+                        logger.warning(
+                            f"Group {group_id} memberships missing group_id column"
+                        )
+
                     # Convert to expected member dictionary format
                     members = []
                     for _, row in membership_df.iterrows():
-                        if pd.notna(row.get('user_id')):
-                            members.append({
-                                "id": int(row['user_id']),
-                                "name": f"Student_{int(row['user_id'])}",
-                                "email": None,
-                                "workflow_state": row.get('workflow_state', 'active'),
-                                "moderator": row.get('moderator', False),
-                            })
+                        if pd.notna(row.get("user_id")):
+                            members.append(
+                                {
+                                    "id": int(row["user_id"]),
+                                    "name": f"Student_{int(row['user_id'])}",
+                                    "email": None,
+                                    "workflow_state": row.get(
+                                        "workflow_state", "active"
+                                    ),
+                                    "moderator": row.get("moderator", False),
+                                }
+                            )
                     return members
                 else:
-                    logger.error(f"Group {group_id} memberships missing user_id column: {list(membership_df.columns)}")
+                    logger.error(
+                        f"Group {group_id} memberships missing user_id column: {list(membership_df.columns)}"
+                    )
                     return []
-                    
+
             except Exception as e:
-                logger.error(f"Failed to get memberships for group {group_id} '{group_name}': {e}")
+                logger.error(
+                    f"Failed to get memberships for group {group_id} '{group_name}': {e}"
+                )
                 return []
-        
+
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(thread_pool, get_memberships_sync)
-        
+
     except Exception as e:
         logger.error(f"Error in pandas group membership retrieval: {e}")
         return []
@@ -804,11 +856,11 @@ def build_ta_member_mapping(ta_groups: List[Dict[str, Any]]) -> Dict[int, str]:
             group_name=group_name,
             member_count=len(group_members),
         )
-        
+
         for member in group_members:
             student_id = member.get("id")
             student_name = member.get("name", "Unknown")
-            
+
             if isinstance(student_id, int):
                 student_to_ta_group[student_id] = group_name
                 logger.debug(
@@ -824,6 +876,6 @@ def build_ta_member_mapping(ta_groups: List[Dict[str, Any]]) -> Dict[int, str]:
                     student_name=student_name,
                     group_name=group_name,
                 )
-    
+
     logger.info(f"Built {len(student_to_ta_group)} student-to-TA-group mappings")
     return student_to_ta_group

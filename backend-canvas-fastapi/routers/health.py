@@ -4,12 +4,12 @@ Following FastAPI best practices for monitoring and status checks.
 """
 
 from datetime import datetime
-from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
 from dependencies import SettingsDep
 from models import HealthResponse
+
 
 router = APIRouter(
     tags=["health"],

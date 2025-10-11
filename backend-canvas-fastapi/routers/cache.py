@@ -8,9 +8,10 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, status
 
-from dependencies import SettingsDep, validate_canvas_credentials, resolve_credentials
+from dependencies import SettingsDep, resolve_credentials, validate_canvas_credentials
 from models import CanvasCredentials
 from services.cache import clear_all_caches, get_cache_stats
+
 
 router = APIRouter(
     prefix="/api/cache",

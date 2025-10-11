@@ -4,7 +4,6 @@ Debug script to test peer review functionality with your actual Canvas data.
 This will show detailed logging about what's happening with peer review detection.
 """
 
-import sys
 from loguru import logger
 
 from main import get_peer_review_data_sync
@@ -75,8 +74,8 @@ def test_peer_reviews():
                 logger.info("Peer Review Events:")
                 for i, event in enumerate(peer_events_data[:5]):  # Show first 5
                     logger.info(
-                        f"  {i+1}. {event.get('reviewer_name', f'ID:{event.get('reviewer_id')}')} -> "
-                        f"{event.get('assessed_name', f'ID:{event.get('assessed_user_id')}')} "
+                        f"  {i + 1}. {event.get('reviewer_name', f'ID:{event.get("reviewer_id")}')} -> "
+                        f"{event.get('assessed_name', f'ID:{event.get("assessed_user_id")}')} "
                         f"[{event.get('status')}] ({event.get('penalty_points')} pts)"
                     )
 

@@ -3,10 +3,11 @@ Caching service with TTL support.
 Implements the same caching behavior as the original main.py for performance parity.
 """
 
-import time
-import threading
-from typing import Any, Dict, Optional, Tuple
 import logging
+import threading
+import time
+from typing import Any, Dict, Optional, Tuple
+
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,9 @@ class TTLCache:
             logger.debug(f"Cache hit for key: {key}")
             return value
 
-    def get_stale_ok(self, key: str, ttl: int, stale_ttl: int) -> Optional[Tuple[Any, bool]]:
+    def get_stale_ok(
+        self, key: str, ttl: int, stale_ttl: int
+    ) -> Optional[Tuple[Any, bool]]:
         """
         Get cached value, allowing stale data within stale_ttl window.
         Implements stale-while-revalidate pattern.
@@ -103,7 +106,9 @@ class TTLCache:
             _, timestamp = self._cache[key]
             return time.time() - timestamp
 
-    def is_fresh(self, key: str, ttl: int, freshness_threshold: float = 0.8) -> Optional[bool]:
+    def is_fresh(
+        self, key: str, ttl: int, freshness_threshold: float = 0.8
+    ) -> Optional[bool]:
         """
         Check if cache entry is fresh (below threshold of TTL).
         Useful for triggering background refresh.
@@ -339,7 +344,9 @@ def should_refresh_ta_groups_cache(course_id: str, api_token: str, ttl: int) -> 
     return is_fresh is None or not is_fresh
 
 
-def should_refresh_assignment_stats_cache(course_id: str, api_token: str, ttl: int) -> bool:
+def should_refresh_assignment_stats_cache(
+    course_id: str, api_token: str, ttl: int
+) -> bool:
     """
     Check if assignment stats cache should be refreshed (approaching expiration).
 

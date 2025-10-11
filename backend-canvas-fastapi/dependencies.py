@@ -5,7 +5,6 @@ Provides reusable dependencies for Canvas client, credentials validation, and co
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from functools import lru_cache
 from typing import Annotated, Optional, Tuple, Union
 
 from canvasapi import Canvas
@@ -14,6 +13,7 @@ from fastapi import Depends, HTTPException, status
 from loguru import logger
 
 from config import Settings, get_settings
+
 
 # Configure loguru for this module
 logger = logger.bind(module="dependencies")

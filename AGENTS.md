@@ -32,11 +32,11 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 # Run with Python directly
 uv run python main.py
 
-# Code formatting and linting
-uv run black .
-uv run isort .
-uv run flake8 .
-uv run mypy .
+# Code formatting and linting with Ruff (replaces Black, isort, flake8)
+uv run ruff check .           # Lint code
+uv run ruff check . --fix     # Lint and auto-fix
+uv run ruff format .          # Format code
+uv run mypy .                 # Type checking
 
 # Testing
 uv run pytest
@@ -147,6 +147,89 @@ VITE_BACKEND_URL=http://localhost:8000
 - Use `.env.example` as a template for team members
 - Environment variables are prefixed with `VITE_` to be accessible in the frontend
 - API tokens in environment variables will show as dots (••••) in password fields
+
+## Security Best Practices
+
+**CRITICAL**: This application handles sensitive student data (names, grades, submissions) and Canvas API credentials. Always follow security best practices.
+
+### Pre-commit Hooks (REQUIRED)
+
+Before making any commits, install pre-commit hooks to prevent accidental secret exposure:
+
+```bash
+# Install pre-commit package
+pip install pre-commit
+
+# Install hooks in repository
+pre-commit install
+
+# Test hooks (optional)
+pre-commit run --all-files
+```
+
+### Security Checklist for Development
+
+- [ ] **Never commit `.env` files** - they contain Canvas API tokens
+- [ ] **Never commit Jupyter notebooks** with real Canvas data
+- [ ] **Install pre-commit hooks** before first commit
+- [ ] **Use placeholder data** in examples and documentation
+- [ ] **Regenerate Canvas API tokens** before making repository public
+- [ ] **Check git status** before commits to verify no sensitive files staged
+- [ ] **Review SECURITY.md** for complete guidelines
+
+### What NOT to Commit
+
+❌ **Files:**
+- `.env`, `.env.local`, `.env.production` (any environment files with real credentials)
+- `Canvas_API.ipynb` or any notebooks with real Canvas data
+- Screenshots with student names, IDs, or grades
+- API tokens, passwords, or private keys
+- Database dumps or backups with real data
+
+❌ **In Code:**
+- Hardcoded API tokens or credentials
+- Student names, IDs, or email addresses in comments
+- Real course IDs or assignment IDs in examples
+- Debug statements that log sensitive data
+
+✅ **Always Use:**
+- `.env.example` files with placeholder values
+- Generic examples (e.g., "your-token-here", "12345")
+- Anonymized data for testing and documentation
+- Environment variables for all credentials
+
+### Data Privacy
+
+This application accesses protected student data under FERPA:
+- **Student names and IDs**: Personally identifiable information
+- **Grades and submissions**: Educational records
+- **Course enrollment**: Student status information
+
+When developing:
+- Use test courses with fake students when possible
+- Never share screenshots or logs with real student data
+- Anonymize data in bug reports and documentation
+- Minimize data caching (follow TTL settings in `config.py`)
+
+### Production Deployment Security
+
+Before deploying to production:
+
+1. **Regenerate all Canvas API tokens**
+2. **Set `DEBUG=false`** in environment variables
+3. **Configure CORS** with specific allowed origins (not `*`)
+   ```bash
+   CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
+   ```
+4. **Enable HTTPS** and enforce SSL/TLS
+5. **Review SECURITY.md** for complete deployment checklist
+
+### Security Resources
+
+- **[SECURITY.md](SECURITY.md)**: Complete security guidelines and policies
+- **[README.md](README.md)**: Quick start and setup instructions
+- **Canvas API Docs**: https://canvas.instructure.com/doc/api/
+- **FERPA Guidelines**: https://www2.ed.gov/policy/gen/guid/fpco/ferpa/index.html
 
 ## Development Guidelines
 

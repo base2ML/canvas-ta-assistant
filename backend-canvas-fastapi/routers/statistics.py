@@ -7,18 +7,19 @@ import asyncio
 from concurrent.futures import as_completed
 from typing import Any, List
 
-from fastapi import APIRouter, HTTPException, status, Path
+from fastapi import APIRouter, HTTPException, Path, status
 from loguru import logger
 
-from dependencies import SettingsDep, ThreadPoolDep, AssignmentThreadPoolDep
-from models import TAGradingRequest, AssignmentGradingStats
-from services.ta_processing import (
-    get_canvas_from_ta_request,
-    process_assignment_submissions_sync,
-    build_ta_member_mapping,
-    get_group_members_with_memberships,
-)
 from config import get_settings
+from dependencies import AssignmentThreadPoolDep, SettingsDep, ThreadPoolDep
+from models import AssignmentGradingStats, TAGradingRequest
+from services.ta_processing import (
+    build_ta_member_mapping,
+    get_canvas_from_ta_request,
+    get_group_members_with_memberships,
+    process_assignment_submissions_sync,
+)
+
 
 _settings = get_settings()
 
@@ -43,7 +44,11 @@ async def get_assignment_statistics_logic(
     Extracted for reuse by both endpoint and background tasks.
     """
     # Ensure course_id is an integer for Canvas API
-    course_id = int(request.course_id) if isinstance(request.course_id, str) else request.course_id
+    course_id = (
+        int(request.course_id)
+        if isinstance(request.course_id, str)
+        else request.course_id
+    )
 
     try:
         # Get Canvas client and course data
@@ -173,7 +178,9 @@ async def get_assignment_statistics(
     thread_pool: ThreadPoolDep,
     assignment_pool: AssignmentThreadPoolDep,
     course_id: str = Path(
-        ..., description="Canvas course ID", example=_settings.canvas_course_id or "12345"
+        ...,
+        description="Canvas course ID",
+        example=_settings.canvas_course_id or "12345",
     ),
 ) -> List[AssignmentGradingStats]:
     """

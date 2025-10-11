@@ -5,8 +5,10 @@ Following FastAPI best practices for data models organization.
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, HttpUrl, Field
+from pydantic import BaseModel, Field, HttpUrl
+
 from config import get_settings
+
 
 # Load settings once for default factories
 _settings = get_settings()
@@ -24,6 +26,7 @@ class CanvasCredentials(BaseModel):
 
 class AssignmentRequest(CanvasCredentials):
     """Request for fetching assignments from multiple courses."""
+
     course_ids: List[str] = Field(
         default=([_settings.canvas_course_id] if _settings.canvas_course_id else [])
     )
@@ -31,12 +34,14 @@ class AssignmentRequest(CanvasCredentials):
 
 class TAGradingRequest(CanvasCredentials):
     """Request for TA grading information."""
+
     course_id: str = Field(default=_settings.canvas_course_id or "")
     assignment_id: Optional[int] = None
 
 
 class PeerReviewRequest(CanvasCredentials):
     """Request for peer review tracking."""
+
     course_id: str = Field(default=_settings.canvas_course_id or "")
     assignment_id: int
     deadline: str

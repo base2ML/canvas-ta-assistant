@@ -7,18 +7,19 @@ import asyncio
 from concurrent.futures import as_completed
 from typing import Any, List
 
-from fastapi import APIRouter, HTTPException, status, Path
+from fastapi import APIRouter, HTTPException, Path, status
 from loguru import logger
 
-from dependencies import SettingsDep, ThreadPoolDep, AssignmentThreadPoolDep
+from config import get_settings
+from dependencies import AssignmentThreadPoolDep, SettingsDep, ThreadPoolDep
 from models import TAGradingRequest, UngradedSubmission
 from services.ta_processing import (
-    get_canvas_from_ta_request,
-    process_assignment_submissions_sync,
     build_ta_member_mapping,
+    get_canvas_from_ta_request,
     get_group_members_with_memberships,
+    process_assignment_submissions_sync,
 )
-from config import get_settings
+
 
 _settings = get_settings()
 
@@ -39,7 +40,9 @@ async def get_ungraded_submissions(
     thread_pool: ThreadPoolDep,
     assignment_pool: AssignmentThreadPoolDep,
     course_id: str = Path(
-        ..., description="Canvas course ID", example=_settings.canvas_course_id or "12345"
+        ...,
+        description="Canvas course ID",
+        example=_settings.canvas_course_id or "12345",
     ),
 ) -> List[UngradedSubmission]:
     """
@@ -65,31 +68,37 @@ async def get_ungraded_submissions(
 
         def get_groups() -> List[Any]:
             """Get all groups with optimal pagination."""
-            return list(course.get_groups(
-                per_page=100,  # CanvasAPI best practice
-                include=["users"]  # Include user data in single request
-            ))
-        
+            return list(
+                course.get_groups(
+                    per_page=100,  # CanvasAPI best practice
+                    include=["users"],  # Include user data in single request
+                )
+            )
+
         groups = await loop.run_in_executor(thread_pool, get_groups)
 
         def get_assignments() -> List[Any]:
             """Get all assignments with optimal parameters."""
-            return list(course.get_assignments(
-                per_page=100,  # CanvasAPI best practice
-                include=["submission"],  # Include submission data for efficiency
-                bucket="ungraded"  # Focus on ungraded assignments if available
-            ))
-        
+            return list(
+                course.get_assignments(
+                    per_page=100,  # CanvasAPI best practice
+                    include=["submission"],  # Include submission data for efficiency
+                    bucket="ungraded",  # Focus on ungraded assignments if available
+                )
+            )
+
         try:
             assignments = await loop.run_in_executor(thread_pool, get_assignments)
         except Exception:
             # Fallback without bucket filter if not supported
             def get_assignments_fallback() -> List[Any]:
-                return list(course.get_assignments(
-                    per_page=100,
-                    include=["submission"]
-                ))
-            assignments = await loop.run_in_executor(thread_pool, get_assignments_fallback)
+                return list(
+                    course.get_assignments(per_page=100, include=["submission"])
+                )
+
+            assignments = await loop.run_in_executor(
+                thread_pool, get_assignments_fallback
+            )
 
         # Optional single-assignment constraint
         if getattr(request, "assignment_id", None):

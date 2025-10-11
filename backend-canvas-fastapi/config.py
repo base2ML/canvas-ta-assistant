@@ -6,7 +6,7 @@ Follows FastAPI best practices for settings management.
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import Field, AliasChoices
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,7 +41,11 @@ class Settings(BaseSettings):
     def parsed_cors_origins(self) -> list[str]:
         """Parse CORS_ORIGINS from comma-separated string if provided as env var."""
         if isinstance(self.cors_origins, str):
-            return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+            return [
+                origin.strip()
+                for origin in self.cors_origins.split(",")
+                if origin.strip()
+            ]
         return self.cors_origins
 
     # Canvas API configuration (optional defaults)
@@ -62,7 +66,9 @@ class Settings(BaseSettings):
 
     # Performance settings
     thread_pool_max_workers: int = 20  # Increased from 10 for better parallelization
-    assignment_thread_pool_max_workers: int = 10  # Increased from 3 for faster Canvas API processing
+    assignment_thread_pool_max_workers: int = (
+        10  # Increased from 3 for faster Canvas API processing
+    )
     request_timeout: int = 30
 
     # Cache settings (optimized for performance)
@@ -70,12 +76,14 @@ class Settings(BaseSettings):
     assignment_cache_ttl: int = 900  # 15 minutes TTL for assignment stats
     cache_max_size: int = 100  # Maximum cache entries
     enable_caching: bool = True  # Can disable for testing
-    stale_cache_extension: int = 7200  # 2 hours - serve stale data within this window while refreshing
+    stale_cache_extension: int = (
+        7200  # 2 hours - serve stale data within this window while refreshing
+    )
 
     # No inner Config in Pydantic v2; using model_config above
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """
     Get cached settings instance.

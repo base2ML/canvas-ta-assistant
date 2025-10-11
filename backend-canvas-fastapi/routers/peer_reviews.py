@@ -5,13 +5,12 @@ Following FastAPI best practices for dependency injection and error handling.
 
 import asyncio
 import logging
-from datetime import datetime
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from canvasapi import Canvas
 from canvasapi.exceptions import ResourceDoesNotExist
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 
 from dependencies import SettingsDep, ThreadPoolDep, resolve_credentials
 from models import (
@@ -20,6 +19,7 @@ from models import (
     PeerReviewResponse,
     PeerReviewSummary,
 )
+
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +36,7 @@ async def get_canvas_from_peer_request(
     """Convert PeerReviewRequest to Canvas client."""
     from dependencies import validate_canvas_credentials
 
-    base_url, token = resolve_credentials(
-        request.base_url, request.api_token, settings
-    )
+    base_url, token = resolve_credentials(request.base_url, request.api_token, settings)
     return await validate_canvas_credentials(base_url, token, settings)
 
 
@@ -57,7 +55,7 @@ def analyze_comments_for_peer_reviews(
             assignment.get_submissions(
                 include=["submission_comments", "user", "submission_history"],
                 per_page=100,  # CanvasAPI best practice
-                workflow_state="submitted"  # Only submitted submissions for efficiency
+                workflow_state="submitted",  # Only submitted submissions for efficiency
             )
         )
         logger.info(f"Found {len(submissions)} submissions to analyze")
@@ -90,7 +88,6 @@ def analyze_comments_for_peer_reviews(
                     and commenter_id != submission_author_id
                     and commenter_id in student_ids
                 ):
-
                     logger.info(
                         f"Found potential peer review: student {commenter_id} commented on {submission_author_id}'s submission at {comment_time}"
                     )
@@ -347,13 +344,19 @@ async def get_peer_review_lateness(
         # Create user name mapping using CanvasAPI best practices
         def get_users() -> List[Any]:
             """Get course users with optimal parameters."""
-            return list(course.get_users(
-                per_page=100,  # CanvasAPI best practice
-                enrollment_type=["student", "teacher", "ta"],  # Include relevant user types
-                enrollment_state=["active", "invited"],  # Only active/invited users
-                include=["email", "sis_user_id"]  # Include useful user data
-            ))
-        
+            return list(
+                course.get_users(
+                    per_page=100,  # CanvasAPI best practice
+                    enrollment_type=[
+                        "student",
+                        "teacher",
+                        "ta",
+                    ],  # Include relevant user types
+                    enrollment_state=["active", "invited"],  # Only active/invited users
+                    include=["email", "sis_user_id"],  # Include useful user data
+                )
+            )
+
         users = await loop.run_in_executor(thread_pool, get_users)
         name_map = {u.id: getattr(u, "name", str(u.id)) for u in users}
 

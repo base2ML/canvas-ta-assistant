@@ -6,14 +6,13 @@ Refactored to follow FastAPI best practices with dependency injection and modula
 import os
 import sys
 from pathlib import Path
-from typing import Annotated, Any, Dict
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
-from config import Settings, get_settings
+from config import get_settings
 from routers import (
     assignments,
     auth,
@@ -27,6 +26,7 @@ from routers import (
     submissions,
     ta_management,
 )
+
 
 # Create logs directory if it doesn't exist
 os.makedirs("logs", exist_ok=True)
@@ -96,7 +96,9 @@ def create_application() -> FastAPI:
         app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
         logger.info(f"Mounted static files from {static_dir}")
     else:
-        logger.warning(f"Static directory not found at {static_dir}. Running in API-only mode.")
+        logger.warning(
+            f"Static directory not found at {static_dir}. Running in API-only mode."
+        )
 
     return app
 

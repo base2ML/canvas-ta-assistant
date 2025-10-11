@@ -4,21 +4,17 @@ Following FastAPI best practices with dependency injection and proper error hand
 """
 
 import asyncio
-from typing import Annotated, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from canvasapi import Canvas
-from canvasapi.exceptions import CanvasException
-from fastapi import APIRouter, Depends, HTTPException, status, Path
+from fastapi import APIRouter, HTTPException, Path, status
 from loguru import logger
 
-from config import Settings
 from dependencies import (
     SettingsDep,
     ThreadPoolDep,
-    get_validated_canvas_client,
     resolve_credentials,
 )
-from services.cache import get_cached_assignments, set_cached_assignments
 from models import (
     Assignment,
     AssignmentRequest,
@@ -26,6 +22,8 @@ from models import (
     Course,
     DetailedAssignment,
 )
+from services.cache import get_cached_assignments, set_cached_assignments
+
 
 router = APIRouter(
     prefix="/api",
@@ -40,9 +38,7 @@ async def get_canvas_from_request(
     """Convert AssignmentRequest to Canvas client with env fallback."""
     from dependencies import validate_canvas_credentials
 
-    base_url, token = resolve_credentials(
-        request.base_url, request.api_token, settings
-    )
+    base_url, token = resolve_credentials(request.base_url, request.api_token, settings)
     return await validate_canvas_credentials(base_url, token, settings)
 
 
@@ -92,24 +88,36 @@ async def get_assignments(
                 course = await loop.run_in_executor(
                     thread_pool, lambda: canvas.get_course(course_id)
                 )
+
                 def get_assignments() -> List[Any]:
                     """Get assignments using CanvasAPI best practices."""
-                    return list(course.get_assignments(
-                        per_page=100,  # CanvasAPI best practice
-                        include=["submission", "assignment_group"],  # Include related data
-                        bucket="ungraded"  # Focus on ungraded assignments if available
-                    ))
-                
+                    return list(
+                        course.get_assignments(
+                            per_page=100,  # CanvasAPI best practice
+                            include=[
+                                "submission",
+                                "assignment_group",
+                            ],  # Include related data
+                            bucket="ungraded",  # Focus on ungraded assignments if available
+                        )
+                    )
+
                 try:
-                    assignments = await loop.run_in_executor(thread_pool, get_assignments)
+                    assignments = await loop.run_in_executor(
+                        thread_pool, get_assignments
+                    )
                 except Exception:
                     # Fallback without bucket filter if not supported
                     def get_assignments_fallback() -> List[Any]:
-                        return list(course.get_assignments(
-                            per_page=100,
-                            include=["submission", "assignment_group"]
-                        ))
-                    assignments = await loop.run_in_executor(thread_pool, get_assignments_fallback)
+                        return list(
+                            course.get_assignments(
+                                per_page=100, include=["submission", "assignment_group"]
+                            )
+                        )
+
+                    assignments = await loop.run_in_executor(
+                        thread_pool, get_assignments_fallback
+                    )
                 return course, assignments
             except Exception as e:
                 logger.error(f"Error fetching assignments for course {course_id}: {e}")
@@ -159,8 +167,12 @@ async def get_assignments(
                     def get_submission() -> Any:
                         """Get submission using CanvasAPI best practices."""
                         return assignment.get_submission(
-                            "self", 
-                            include=["submission_history", "submission_comments", "rubric_assessment"]
+                            "self",
+                            include=[
+                                "submission_history",
+                                "submission_comments",
+                                "rubric_assessment",
+                            ],
                         )
 
                     submission = await loop.run_in_executor(thread_pool, get_submission)

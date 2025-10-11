@@ -5,25 +5,16 @@ Refactored to use orchestration pattern with focused subrouters.
 """
 
 from __future__ import annotations
+
 import asyncio
-from typing import Any, Dict, List
+from typing import Any, List
 
-from loguru import logger
-from fastapi import APIRouter, HTTPException, status, Path, BackgroundTasks
 import httpx
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Path, status
+from loguru import logger
 
-from dependencies import SettingsDep, ThreadPoolDep, AssignmentThreadPoolDep
-from services.cache import (
-    get_cached_ta_groups,
-    set_cached_ta_groups,
-    get_cached_ta_groups_stale_ok,
-    should_refresh_ta_groups_cache,
-)
-from services.ta_processing import (
-    get_canvas_from_credentials,
-    get_canvas_from_ta_request,
-    get_group_members_with_memberships,
-)
+from config import get_settings
+from dependencies import AssignmentThreadPoolDep, SettingsDep, ThreadPoolDep
 from models import (
     CanvasCredentials,
     TAGradingRequest,
@@ -31,7 +22,17 @@ from models import (
     TAGroup,
     TAGroupsResponse,
 )
-from config import get_settings
+from services.cache import (
+    get_cached_ta_groups_stale_ok,
+    set_cached_ta_groups,
+    should_refresh_ta_groups_cache,
+)
+from services.ta_processing import (
+    get_canvas_from_credentials,
+    get_canvas_from_ta_request,
+    get_group_members_with_memberships,
+)
+
 
 _settings = get_settings()
 
@@ -52,7 +53,9 @@ async def get_ta_groups(
     settings: SettingsDep,
     thread_pool: ThreadPoolDep,
     course_id: str = Path(
-        ..., description="Canvas course ID", example=_settings.canvas_course_id or "12345"
+        ...,
+        description="Canvas course ID",
+        example=_settings.canvas_course_id or "12345",
     ),
 ) -> TAGroupsResponse:
     """
@@ -120,11 +123,16 @@ async def get_ta_groups(
 
         def get_groups() -> List[Any]:
             """Get all groups with optimal pagination and includes."""
-            return list(course.get_groups(
-                per_page=100,  # CanvasAPI best practice: explicit pagination
-                include=["users", "group_category"]  # Include related data in single request
-            ))
-        
+            return list(
+                course.get_groups(
+                    per_page=100,  # CanvasAPI best practice: explicit pagination
+                    include=[
+                        "users",
+                        "group_category",
+                    ],  # Include related data in single request
+                )
+            )
+
         groups = await loop.run_in_executor(thread_pool, get_groups)
 
         # Filter out Term Project groups and convert to TA groups
@@ -227,7 +235,10 @@ async def get_ta_grading_info(
                 "triggering background refresh"
             )
             # Import here to avoid circular dependency
-            from routers.background import refresh_ta_groups_task, refresh_assignment_stats_task
+            from routers.background import (
+                refresh_assignment_stats_task,
+                refresh_ta_groups_task,
+            )
 
             # Queue background refresh tasks
             background_tasks.add_task(
@@ -242,7 +253,11 @@ async def get_ta_grading_info(
             )
 
         # Ensure course_id is an integer for Canvas API
-        course_id = int(request.course_id) if isinstance(request.course_id, str) else request.course_id
+        course_id = (
+            int(request.course_id)
+            if isinstance(request.course_id, str)
+            else request.course_id
+        )
 
         # Get course information first
         canvas = await get_canvas_from_ta_request(request, settings)
@@ -306,11 +321,18 @@ async def get_ta_grading_info(
             grading_distribution = {}
             ta_groups = []
 
-            endpoint_names = ["ungraded submissions", "assignment statistics", "grading distribution", "ta groups"]
+            endpoint_names = [
+                "ungraded submissions",
+                "assignment statistics",
+                "grading distribution",
+                "ta groups",
+            ]
 
             for i, response in enumerate(responses):
                 if isinstance(response, Exception):
-                    logger.error(f"Error calling internal endpoint '{endpoint_names[i]}': {response}")
+                    logger.error(
+                        f"Error calling internal endpoint '{endpoint_names[i]}': {response}"
+                    )
                     continue
 
                 if response.status_code == 200:
