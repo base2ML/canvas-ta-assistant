@@ -93,6 +93,7 @@ jobs:
   codeql:
     name: CodeQL Security Analysis
     runs-on: ubuntu-latest
+    if: github.repository_security_and_analysis.advanced_security.status == 'enabled'
     strategy:
       matrix:
         language: ['python', 'javascript']
