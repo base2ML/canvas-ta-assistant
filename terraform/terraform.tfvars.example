@@ -1,0 +1,168 @@
+# Canvas TA Assistant - Terraform Variables Example
+# Copy this file to terraform.tfvars and update with your values
+# Or create environment-specific files: environments/dev.tfvars, environments/production.tfvars
+
+# ============================================================================
+# General Configuration
+# ============================================================================
+
+aws_region  = "us-east-1"
+project_name = "canvas-ta"
+environment  = "production"  # dev, staging, or production
+owner_email  = "your-email@example.com"
+
+# ============================================================================
+# VPC Configuration
+# ============================================================================
+
+vpc_cidr             = "10.0.0.0/16"
+public_subnet_count  = 2
+private_subnet_count = 2
+
+# NAT Gateway (set single_nat_gateway = true for dev to save costs)
+enable_nat_gateway = true
+single_nat_gateway = false  # true for dev/staging, false for production
+
+# VPC Flow Logs
+enable_vpc_flow_logs     = true
+flow_logs_retention_days = 30
+
+# ============================================================================
+# ECR Configuration
+# ============================================================================
+
+ecr_repository_name = "cda-ta-dashboard"
+
+# Security
+enable_ecr_image_scanning = true
+ecr_image_tag_mutability  = "MUTABLE"  # MUTABLE or IMMUTABLE
+ecr_encryption_type       = "AES256"   # AES256 or KMS
+
+# Lifecycle
+enable_ecr_lifecycle_policy = true
+ecr_max_image_count         = 30
+ecr_untagged_image_days     = 7
+
+# ============================================================================
+# IAM Configuration
+# ============================================================================
+
+# Secrets access (enable if using Secrets Manager)
+enable_secrets_access = false
+secrets_arns          = []
+# secrets_arns = [
+#   "arn:aws:secretsmanager:us-east-1:123456789012:secret:canvas-api-key-abc123"
+# ]
+
+# SSM Parameter Store access
+ssm_parameter_arns = []
+
+# Application permissions
+enable_s3_access          = false
+s3_bucket_arns            = []
+enable_dynamodb_access    = false
+dynamodb_table_arns       = []
+enable_cloudwatch_metrics = true
+enable_ses_access         = false
+
+# GitHub Actions OIDC (recommended for CI/CD)
+enable_github_actions_role = false
+github_oidc_provider_arn   = ""
+# github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+github_repository = "base2ML/canvas-ta-assistant"
+
+# ============================================================================
+# ALB Configuration
+# ============================================================================
+
+alb_internal                   = false
+alb_enable_deletion_protection = false  # Set to true for production
+alb_allowed_cidr_blocks        = ["0.0.0.0/0"]
+
+# Health check
+alb_health_check_path              = "/api/health"
+alb_health_check_interval          = 30
+alb_health_check_timeout           = 5
+alb_health_check_healthy_threshold = 2
+
+# HTTPS (configure after getting ACM certificate)
+enable_https          = false
+enable_https_redirect = false
+certificate_arn       = ""
+# certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/abc123"
+ssl_policy = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+
+# Monitoring
+enable_alb_cloudwatch_alarms = true
+alb_response_time_threshold  = 1.0
+alb_error_5xx_threshold      = 10
+
+# Access logs (optional)
+enable_alb_access_logs = false
+alb_access_logs_bucket = ""
+alb_access_logs_prefix = "alb-logs"
+
+# ============================================================================
+# ECS Configuration
+# ============================================================================
+
+container_name = "app"
+container_port = 8000
+
+# Container image (leave empty to use ECR repository)
+container_image = ""
+
+# Environment variables
+environment_variables = {
+  ENVIRONMENT = "production"
+  LOG_LEVEL   = "INFO"
+  PORT        = "8000"
+}
+
+# Secrets (from Secrets Manager or SSM)
+ecs_secrets = {}
+# ecs_secrets = {
+#   CANVAS_API_KEY = "arn:aws:secretsmanager:us-east-1:123456789012:secret:canvas-api-key-abc123"
+# }
+
+# Task sizing (adjust based on application needs)
+task_cpu    = 512   # 0.5 vCPU
+task_memory = 1024  # 1 GB RAM
+
+# Service configuration
+desired_count                       = 2
+deployment_minimum_healthy_percent  = 100
+deployment_maximum_percent          = 200
+enable_deployment_circuit_breaker   = true
+enable_deployment_rollback          = true
+
+# Fargate Spot (disable for production, enable for dev to save 70%)
+enable_fargate_spot   = false
+fargate_weight        = 100
+fargate_spot_weight   = 0
+fargate_base_capacity = 1
+
+# Auto scaling
+enable_autoscaling             = true
+autoscaling_min_capacity       = 1
+autoscaling_max_capacity       = 10
+autoscaling_cpu_target         = 70
+autoscaling_memory_target      = 80
+autoscaling_scale_in_cooldown  = 300  # 5 minutes
+autoscaling_scale_out_cooldown = 60   # 1 minute
+
+# Health checks
+enable_container_health_check = true
+ecs_health_check_command      = ["CMD-SHELL", "curl -f http://localhost:8000/api/health || exit 1"]
+
+# Monitoring
+enable_container_insights    = true
+enable_ecs_cloudwatch_alarms = true
+ecs_cpu_alarm_threshold      = 85
+ecs_memory_alarm_threshold   = 85
+log_retention_days           = 30
+
+# Advanced features
+enable_ecs_exec         = false  # Enable for debugging
+enable_service_discovery = false
+service_discovery_name   = "app"
