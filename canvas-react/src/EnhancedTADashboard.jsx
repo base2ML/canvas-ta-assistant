@@ -144,11 +144,41 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
     await loadCourseData(course.id);
   };
 
-  const refreshData = () => {
-    if (selectedCourse) {
-      loadCourseData(selectedCourse.id);
-    } else {
-      loadCourses();
+  const refreshData = async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      // First, trigger Canvas data sync
+      const headers = await getAuthHeaders();
+      const syncResponse = await fetch(`${backendUrl}/api/canvas/sync`, {
+        method: 'POST',
+        headers
+      });
+
+      if (!syncResponse.ok) {
+        throw new Error(`Sync failed: ${syncResponse.statusText}`);
+      }
+
+      const syncResult = await syncResponse.json();
+      console.log('Sync triggered:', syncResult);
+
+      // Show success message briefly
+      setError('✓ Data sync triggered! Refreshing in 5 seconds...');
+
+      // Wait a few seconds for data to be processed, then reload
+      setTimeout(() => {
+        if (selectedCourse) {
+          loadCourseData(selectedCourse.id);
+        } else {
+          loadCourses();
+        }
+      }, 5000);
+
+    } catch (err) {
+      console.error('Refresh error:', err);
+      setError(`Failed to refresh: ${err.message}`);
+      setLoading(false);
     }
   };
 
