@@ -1,0 +1,247 @@
+# =============================================================================
+# macOS System Files
+# =============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# =============================================================================
+# Python Backend (FastAPI)
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# =============================================================================
+# Node.js Frontend (React/Vite)
+# =============================================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Grunt intermediate storage
+.grunt
+
+# Bower dependency directory
+bower_components
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled binary addons
+build/Release
+
+# Dependency directories
+jspm_packages/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# Vite build output
+dist/
+dist-ssr/
+
+# Rollup cache
+.rollup.cache
+
+# =============================================================================
+# Environment Variables & Secrets
+# =============================================================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+# Note: .env.example is NOT ignored - it should be committed as a template
+
+# Canvas API credentials (if stored in files)
+canvas_credentials.json
+api_tokens.txt
+
+# =============================================================================
+# IDE & Editor Files
+# =============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+.netrwhist
+
+# =============================================================================
+# Logs & Temporary Files
+# =============================================================================
+*.log
+*.zip
+logs/
+*.tmp
+*.temp
+
+# Editor temporary files
+*.swp
+*.swo
+*~
+.#*
+
+# =============================================================================
+# Project-Specific
+# =============================================================================
+# Backup files
+*.backup
+*.bak
+App.backup.js
+
+# Cache directories
+.cache/
+.parcel-cache/
+
+# Test artifacts
+test-results/
+playwright-report/
+test-results.xml
+
+# Playwright MCP Server
+.playwright-mcp/
+
+# Modern Development Tools
+# UV Package Manager
+uv.lock
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# Documentation builds
+docs/_build/
+
+# Additional Python patterns
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# FastAPI specific
+.fastapi/
+.github/AWS_DEPLOYMENT_SETUP.md
+
+# =============================================================================
+# AWS Lambda & Terraform Build Artifacts
+# =============================================================================
+# Lambda deployment packages (auto-generated)
+lambda-package/
+lambda-packages/
+lambda-linux-package/
+lambda-pkg/
+lambda-deployment.zip
+lambda-enhanced.zip
+lambda-fixed.zip
+lambda-list-fix.zip
+lambda-updated.zip
+canvas-sync.zip
+
+# Terraform build artifacts
+terraform-serverless/
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+
+# Temporary CloudFront config
+cf-config-*.json

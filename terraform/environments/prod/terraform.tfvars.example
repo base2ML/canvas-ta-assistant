@@ -1,0 +1,15 @@
+# Production Environment Configuration
+# Copy this file to terraform.tfvars and fill in your values
+
+aws_region = "us-east-1"
+environment = "prod"
+
+# Canvas Configuration
+canvas_api_url = "https://your-institution.instructure.com"
+canvas_course_id = "12345"
+
+# ECR Configuration (update after creating ECR repository)
+ecr_repository_url = "741783034843.dkr.ecr.us-east-1.amazonaws.com/canvas-ta-dashboard"
+
+# Optional: Canvas API token (you can also set this via Secrets Manager after deployment)
+# canvas_api_token = "your_canvas_api_token_here"

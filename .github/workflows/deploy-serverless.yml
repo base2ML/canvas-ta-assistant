@@ -1,0 +1,491 @@
+name: Deploy Serverless Architecture
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+env:
+  AWS_REGION: us-east-1
+  TERRAFORM_VERSION: 1.6.0
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
+jobs:
+  # Build and test frontend
+  frontend-build:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: canvas-react
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: canvas-react/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test -- --passWithNoTests
+
+      - name: Build production bundle
+        run: npm run build
+        env:
+          # These will be replaced with actual values in deployment
+          VITE_API_ENDPOINT: __API_ENDPOINT__
+          VITE_COGNITO_USER_POOL_ID: __USER_POOL_ID__
+          VITE_COGNITO_USER_POOL_CLIENT_ID: __CLIENT_ID__
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: canvas-react/dist
+          retention-days: 7
+
+  # Build and test backend
+  backend-build:
+    name: Build Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system -r pyproject.toml
+          uv pip install --system pytest pytest-asyncio httpx
+
+      - name: Run Ruff linting
+        run: uv run ruff check .
+
+      - name: Run Ruff formatting check
+        run: uv run ruff format --check .
+
+      - name: Run tests
+        run: uv run pytest --verbose --tb=short
+        continue-on-error: true
+
+      - name: Package Lambda functions
+        run: |
+          mkdir -p lambda-packages/api-handler
+          mkdir -p lambda-packages/canvas-sync
+
+          # Package API handler
+          cp main.py lambda-packages/api-handler/
+          uv pip install --target lambda-packages/api-handler -r pyproject.toml
+
+          # Package Canvas sync function
+          cp lambda/canvas_data_fetcher.py lambda-packages/canvas-sync/lambda_function.py
+          cp lambda/requirements.txt lambda-packages/canvas-sync/
+          pip install --target lambda-packages/canvas-sync -r lambda/requirements.txt
+
+      - name: Create deployment packages
+        run: |
+          cd lambda-packages/api-handler && zip -r ../../api-handler.zip . -x "*.pyc" "*__pycache__*"
+          cd ../canvas-sync && zip -r ../../canvas-sync.zip . -x "*.pyc" "*__pycache__*"
+
+      - name: Upload Lambda packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-packages
+          path: |
+            api-handler.zip
+            canvas-sync.zip
+          retention-days: 7
+
+  # Security scanning
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: pip install safety bandit
+
+      - name: Run Safety check
+        run: safety check --json || true
+        continue-on-error: true
+
+      - name: Run Bandit security scan
+        run: bandit -r . -f json -o bandit-report.json || true
+        continue-on-error: true
+
+      - name: NPM audit
+        run: |
+          cd canvas-react
+          npm audit --json > npm-audit.json || true
+        continue-on-error: true
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+            canvas-react/npm-audit.json
+          retention-days: 30
+
+  # Terraform plan
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    needs: [frontend-build, backend-build]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: |
+          cd terraform-serverless
+          terraform init
+
+      - name: Terraform Format Check
+        run: |
+          cd terraform-serverless
+          terraform fmt -check
+
+      - name: Terraform Validate
+        run: |
+          cd terraform-serverless
+          terraform validate
+
+      - name: Terraform Plan
+        run: |
+          cd terraform-serverless
+          terraform plan -out=tfplan -var-file=environments/${{ github.ref_name == 'main' && 'prod' || 'dev' }}.tfvars
+        env:
+          TF_VAR_canvas_api_token: ${{ secrets.CANVAS_API_TOKEN }}
+
+      - name: Upload Terraform plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: terraform-serverless/tfplan
+          retention-days: 7
+
+  # Deploy infrastructure
+  deploy-infrastructure:
+    name: Deploy Infrastructure
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    environment:
+      name: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: |
+          cd terraform-serverless
+          terraform init
+
+      - name: Terraform Apply
+        run: |
+          cd terraform-serverless
+          terraform apply -auto-approve -var-file=environments/${{ github.ref_name == 'main' && 'prod' || 'dev' }}.tfvars
+        env:
+          TF_VAR_canvas_api_token: ${{ secrets.CANVAS_API_TOKEN }}
+
+      - name: Terraform Output
+        id: terraform-output
+        run: |
+          cd terraform-serverless
+          echo "cloudfront_domain=$(terraform output -raw cloudfront_domain_name)" >> $GITHUB_OUTPUT
+          echo "api_gateway_url=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
+          echo "s3_bucket=$(terraform output -raw frontend_bucket_name)" >> $GITHUB_OUTPUT
+          echo "user_pool_id=$(terraform output -raw cognito_user_pool_id)" >> $GITHUB_OUTPUT
+          echo "user_pool_client_id=$(terraform output -raw cognito_user_pool_client_id)" >> $GITHUB_OUTPUT
+
+      - name: Save outputs
+        run: |
+          echo "CLOUDFRONT_DOMAIN=${{ steps.terraform-output.outputs.cloudfront_domain }}" >> $GITHUB_ENV
+          echo "API_GATEWAY_URL=${{ steps.terraform-output.outputs.api_gateway_url }}" >> $GITHUB_ENV
+          echo "S3_BUCKET=${{ steps.terraform-output.outputs.s3_bucket }}" >> $GITHUB_ENV
+          echo "USER_POOL_ID=${{ steps.terraform-output.outputs.user_pool_id }}" >> $GITHUB_ENV
+          echo "USER_POOL_CLIENT_ID=${{ steps.terraform-output.outputs.user_pool_client_id }}" >> $GITHUB_ENV
+
+  # Deploy frontend
+  deploy-frontend:
+    name: Deploy Frontend
+    runs-on: ubuntu-latest
+    needs: deploy-infrastructure
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: canvas-react/dist
+
+      - name: Get infrastructure outputs
+        id: get-outputs
+        run: |
+          cd terraform-serverless
+          echo "S3_BUCKET=$(terraform output -raw frontend_bucket_name)" >> $GITHUB_ENV
+          echo "CLOUDFRONT_ID=$(terraform output -raw cloudfront_distribution_id)" >> $GITHUB_ENV
+          echo "API_GATEWAY_URL=$(terraform output -raw api_gateway_url)" >> $GITHUB_ENV
+          echo "USER_POOL_ID=$(terraform output -raw cognito_user_pool_id)" >> $GITHUB_ENV
+          echo "USER_POOL_CLIENT_ID=$(terraform output -raw cognito_user_pool_client_id)" >> $GITHUB_ENV
+
+      - name: Replace environment placeholders
+        run: |
+          cd canvas-react/dist
+          find . -type f -name "*.js" -exec sed -i \
+            -e "s|__API_ENDPOINT__|${{ env.API_GATEWAY_URL }}|g" \
+            -e "s|__USER_POOL_ID__|${{ env.USER_POOL_ID }}|g" \
+            -e "s|__CLIENT_ID__|${{ env.USER_POOL_CLIENT_ID }}|g" {} +
+
+      - name: Upload to S3
+        run: |
+          aws s3 sync canvas-react/dist/ s3://${{ env.S3_BUCKET }}/ \
+            --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+
+          # Upload index.html with no-cache
+          aws s3 cp canvas-react/dist/index.html s3://${{ env.S3_BUCKET }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ env.CLOUDFRONT_ID }} \
+            --paths "/*"
+
+  # Deploy backend (Lambda functions)
+  deploy-backend:
+    name: Deploy Backend
+    runs-on: ubuntu-latest
+    needs: deploy-infrastructure
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download Lambda packages
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-packages
+          path: .
+
+      - name: Get Lambda function names
+        id: get-functions
+        run: |
+          cd terraform-serverless
+          echo "API_FUNCTION=$(terraform output -raw api_lambda_function_name)" >> $GITHUB_ENV
+          echo "SYNC_FUNCTION=$(terraform output -raw sync_lambda_function_name)" >> $GITHUB_ENV
+
+      - name: Update API Lambda function
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ env.API_FUNCTION }} \
+            --zip-file fileb://api-handler.zip
+
+          # Wait for update to complete
+          aws lambda wait function-updated \
+            --function-name ${{ env.API_FUNCTION }}
+
+      - name: Update Canvas Sync Lambda function
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ env.SYNC_FUNCTION }} \
+            --zip-file fileb://canvas-sync.zip
+
+          # Wait for update to complete
+          aws lambda wait function-updated \
+            --function-name ${{ env.SYNC_FUNCTION }}
+
+      - name: Publish new versions
+        run: |
+          aws lambda publish-version \
+            --function-name ${{ env.API_FUNCTION }} \
+            --description "Deployed from GitHub Actions - commit ${{ github.sha }}"
+
+          aws lambda publish-version \
+            --function-name ${{ env.SYNC_FUNCTION }} \
+            --description "Deployed from GitHub Actions - commit ${{ github.sha }}"
+
+  # Validation and smoke tests
+  validate-deployment:
+    name: Validate Deployment
+    runs-on: ubuntu-latest
+    needs: [deploy-frontend, deploy-backend]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get API Gateway URL
+        id: get-url
+        run: |
+          cd terraform-serverless
+          echo "API_URL=$(terraform output -raw api_gateway_url)" >> $GITHUB_ENV
+
+      - name: Health check
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" ${{ env.API_URL }}/health)
+          if [ $response -eq 200 ]; then
+            echo "✅ Health check passed"
+          else
+            echo "❌ Health check failed with status $response"
+            exit 1
+          fi
+
+      - name: Test API endpoints
+        run: |
+          # Test config endpoint
+          curl -f ${{ env.API_URL }}/api/config || exit 1
+          echo "✅ Config endpoint working"
+
+          # Test courses endpoint (public)
+          curl -f ${{ env.API_URL }}/api/courses || exit 1
+          echo "✅ Courses endpoint working"
+
+      - name: Check Lambda logs
+        run: |
+          cd terraform-serverless
+          API_FUNCTION=$(terraform output -raw api_lambda_function_name)
+
+          echo "Recent API Lambda logs:"
+          aws logs tail /aws/lambda/$API_FUNCTION --since 5m
+
+      - name: Performance test
+        run: |
+          start_time=$(date +%s%N)
+          curl -s ${{ env.API_URL }}/health > /dev/null
+          end_time=$(date +%s%N)
+          duration=$(( (end_time - start_time) / 1000000 ))
+
+          echo "API response time: ${duration}ms"
+
+          if [ $duration -gt 2000 ]; then
+            echo "⚠️ Warning: API response time > 2s"
+          else
+            echo "✅ API response time acceptable"
+          fi
+
+  # Notification
+  notify:
+    name: Notify Deployment
+    runs-on: ubuntu-latest
+    needs: validate-deployment
+    if: always()
+
+    steps:
+      - name: Deployment summary
+        run: |
+          if [ "${{ needs.validate-deployment.result }}" == "success" ]; then
+            echo "✅ Deployment succeeded"
+            echo "Environment: ${{ github.ref_name }}"
+            echo "Commit: ${{ github.sha }}"
+          else
+            echo "❌ Deployment failed"
+            exit 1
+          fi

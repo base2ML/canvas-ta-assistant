@@ -1,0 +1,189 @@
+[project]
+name = "canvas-assignment-tracker"
+version = "2.0.0"
+description = "A FastAPI backend for tracking Canvas LMS assignment grading status"
+readme = "README.md"
+requires-python = ">=3.8.1"
+license = { text = "MIT" }
+authors = [
+    { name = "Canvas Assignment Tracker", email = "dev@example.com" },
+]
+
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "canvasapi>=3.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-multipart>=0.0.6",
+    "python-dateutil>=2.8.0",
+    "pandas>=2.0.0",
+    "loguru>=0.7.3",
+    "numpy>=1.24.4",
+    "httpx>=0.25.0",
+    "boto3>=1.28.0",
+    "PyJWT>=2.8.0",
+    "passlib[bcrypt]>=1.7.4",
+    "python-jose[cryptography]>=3.3.0",
+    "email-validator>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "httpx>=0.25.0",
+    "ruff>=0.8.0",
+    "mypy>=1.5.0",
+    "pre-commit>=3.4.0",
+]
+test = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.25.0",
+    "coverage>=7.3.0",
+]
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.2.0",
+    "mkdocstrings[python]>=0.23.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/canvas-assignment-tracker"
+Documentation = "https://yourusername.github.io/canvas-assignment-tracker"
+Repository = "https://github.com/yourusername/canvas-assignment-tracker.git"
+Issues = "https://github.com/yourusername/canvas-assignment-tracker/issues"
+
+[project.scripts]
+canvas-tracker = "main:main"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "httpx>=0.25.0",
+    "ruff>=0.8.0",
+    "mypy>=1.5.0",
+    "pre-commit>=3.4.0",
+    "pytest-cov>=4.1.0",
+    "coverage>=7.3.0",
+]
+
+
+
+# Ruff configuration - replaces Black, isort, and flake8
+[tool.ruff]
+line-length = 88
+target-version = "py38"
+
+# Exclude patterns
+exclude = [
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".tox",
+    ".venv",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "__pycache__",
+    "*.egg-info",
+]
+
+[tool.ruff.lint]
+# Enable flake8-style rules and more
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # flake8-bugbear
+    "C4",    # flake8-comprehensions
+    "UP",    # pyupgrade
+    "ARG",   # flake8-unused-arguments
+    "SIM",   # flake8-simplify
+]
+
+# Ignore specific rules
+ignore = [
+    "E203",  # whitespace before ':' (conflicts with formatter)
+]
+
+# Allow fix for all enabled rules
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.isort]
+# isort-compatible configuration
+known-first-party = ["canvas_assignment_tracker"]
+lines-after-imports = 2
+
+[tool.ruff.format]
+# Use double quotes for strings
+quote-style = "double"
+
+# Indent with spaces
+indent-style = "space"
+
+# Like Black, respect magic trailing commas
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect line endings
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers --strict-config"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/venv/*",
+    "*/.venv/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+# Note: Ruff replaces flake8 - configuration above in [tool.ruff]
