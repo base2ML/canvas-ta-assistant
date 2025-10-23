@@ -10,6 +10,7 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   // Filters
   const [selectedAssignment, setSelectedAssignment] = useState('all');
@@ -90,6 +91,9 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
         const data = await groupsRes.json();
         setGroups(data.groups || data || []);
       }
+
+      // Update last updated timestamp after successful data load
+      setLastUpdated(new Date());
     } catch (err) {
       console.error('Error loading course data:', err);
       setError(err.message);
@@ -200,6 +204,23 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
     };
   }, [submissions, selectedAssignment]);
 
+  // Format last updated time in EST
+  const formatLastUpdated = (date) => {
+    if (!date) return 'Never';
+
+    const options = {
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZone: 'America/New_York',
+      hour12: false
+    };
+
+    return new Intl.DateTimeFormat('en-US', options).format(date) + ' EST';
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -207,14 +228,21 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
         <div className="bg-white shadow-sm rounded-lg p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-3xl font-bold text-gray-900">TA Grading Dashboard</h1>
-            <button
-              onClick={refreshData}
-              disabled={loading}
-              className="inline-flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              <span>Refresh</span>
-            </button>
+            <div className="flex flex-col items-end space-y-2">
+              {lastUpdated && (
+                <div className="text-sm text-gray-500">
+                  Last Updated: {formatLastUpdated(lastUpdated)}
+                </div>
+              )}
+              <button
+                onClick={refreshData}
+                disabled={loading}
+                className="inline-flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
           </div>
 
           {/* Course Selection */}

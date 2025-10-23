@@ -523,6 +523,45 @@ def process_ta_grading_data(assignments, submissions, users):
         'last_updated': datetime.now(timezone.utc).isoformat()
     }
 
+# Data sync endpoint
+@app.post("/api/canvas/sync")
+async def trigger_data_sync(user: UserInfo = Depends(get_current_user)) -> Dict[str, Any]:
+    """
+    Trigger manual Canvas data sync
+    Invokes the data fetcher Lambda function to refresh Canvas data
+    """
+    lambda_client = boto3.client('lambda', region_name=AWS_REGION)
+    data_fetcher_function = 'canvas-ta-dashboard-canvas-data-fetcher-prod'
+
+    try:
+        logger.info(f"User {user.email} triggered manual data sync")
+
+        # Invoke data fetcher Lambda asynchronously
+        response = lambda_client.invoke(
+            FunctionName=data_fetcher_function,
+            InvocationType='Event',  # Asynchronous invocation
+            Payload=json.dumps({
+                'triggered_by': user.email,
+                'trigger_type': 'manual',
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            })
+        )
+
+        return {
+            'status': 'success',
+            'message': 'Data sync triggered successfully',
+            'triggered_by': user.email,
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'lambda_status_code': response['StatusCode']
+        }
+
+    except Exception as e:
+        logger.error(f"Error triggering data sync: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to trigger data sync: {str(e)}"
+        )
+
 # User management endpoints
 @app.get("/api/user/profile")
 async def get_user_profile(user: UserInfo = Depends(get_current_user)) -> UserInfo:

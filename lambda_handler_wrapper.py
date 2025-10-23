@@ -1,9 +1,8 @@
 """
-Lambda handler wrapper for FastAPI using Mangum
-Handles ASGI to AWS Lambda event conversion
+Lambda handler wrapper for FastAPI application
 """
 from mangum import Mangum
 from main import app
 
-# Create Lambda handler
+# Create the Mangum handler for AWS Lambda
 handler = Mangum(app, lifespan="off")
