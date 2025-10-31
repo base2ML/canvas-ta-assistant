@@ -210,11 +210,36 @@ resource "aws_lb_target_group" "app" {
   tags = var.tags
 }
 
-# Listener
+# HTTP Listener - Redirect to HTTPS if certificate provided, otherwise forward
 resource "aws_lb_listener" "app" {
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
   protocol          = "HTTP"
+
+  default_action {
+    type             = var.certificate_arn != "" ? "redirect" : "forward"
+    target_group_arn = var.certificate_arn != "" ? null : aws_lb_target_group.app.arn
+
+    dynamic "redirect" {
+      for_each = var.certificate_arn != "" ? [1] : []
+      content {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+  }
+}
+
+# HTTPS Listener - Only created if certificate ARN is provided
+resource "aws_lb_listener" "app_https" {
+  count = var.certificate_arn != "" ? 1 : 0
+
+  load_balancer_arn = aws_lb.main.arn
+  port              = "443"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = var.certificate_arn
 
   default_action {
     type             = "forward"
@@ -317,17 +342,6 @@ resource "aws_iam_role_policy" "ecs_task_role_policy" {
         Resource = [
           var.s3_bucket_arn,
           "${var.s3_bucket_arn}/*"
-        ]
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "cognito-idp:AdminGetUser",
-          "cognito-idp:AdminListGroupsForUser",
-          "cognito-idp:ListUsers"
-        ]
-        Resource = [
-          var.cognito_user_pool_arn
         ]
       }
     ]

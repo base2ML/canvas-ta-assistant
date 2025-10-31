@@ -35,3 +35,11 @@ variable "canvas_api_token" {
   sensitive   = true
   default     = ""
 }
+
+# JWT secret key for authentication
+variable "jwt_secret_key" {
+  description = "Secret key for JWT token signing (change in production)"
+  type        = string
+  sensitive   = true
+  default     = "your-secret-key-change-in-production-use-secrets-manager"
+}

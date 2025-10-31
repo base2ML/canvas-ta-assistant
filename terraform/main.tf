@@ -27,29 +27,8 @@ locals {
   }
 }
 
-# Cognito User Pool for Authentication
-module "cognito" {
-  source = "./modules/cognito"
-
-  project_name = local.project_name
-  environment  = local.environment
-
-  # User pool configuration
-  auto_verified_attributes = ["email"]
-  username_attributes      = ["email"]
-
-  # Password policy
-  minimum_length    = 8
-  require_lowercase = true
-  require_numbers   = true
-  require_symbols   = false
-  require_uppercase = true
-
-  # Email configuration
-  email_sending_account = "COGNITO_DEFAULT"
-
-  tags = local.common_tags
-}
+# Note: Cognito has been removed - now using simple JWT authentication
+# User management is handled via S3-stored user file (auth/users.json)
 
 # S3 Bucket for Canvas Data Storage
 module "s3" {
@@ -161,22 +140,17 @@ module "ecs" {
       value = module.s3.bucket_name
     },
     {
-      name  = "COGNITO_USER_POOL_ID"
-      value = module.cognito.user_pool_id
-    },
-    {
-      name  = "COGNITO_USER_POOL_CLIENT_ID"
-      value = module.cognito.user_pool_client_id
-    },
-    {
       name  = "AWS_REGION"
       value = var.aws_region
+    },
+    {
+      name  = "JWT_SECRET_KEY"
+      value = var.jwt_secret_key
     }
   ]
 
   # IAM permissions for ECS tasks
   s3_bucket_arn = module.s3.bucket_arn
-  cognito_user_pool_arn = module.cognito.user_pool_arn
 
   tags = local.common_tags
 }

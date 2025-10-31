@@ -1,6 +1,6 @@
 """
-Enhanced Canvas TA Dashboard FastAPI Application
-Integrated with S3 for data storage and Cognito for authentication
+Canvas TA Dashboard FastAPI Application
+Simple authentication with S3 data storage
 """
 
 import os
@@ -15,38 +15,40 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-import jwt
-from jwt import PyJWKClient
-import logging
+from loguru import logger
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Import our simple authentication system
+from auth import (
+    auth_service,
+    user_manager,
+    LoginRequest,
+    LoginResponse,
+    User
+)
+
+# Configure loguru
+logger.add("logs/app.log", rotation="500 MB", retention="10 days", level="INFO")
 
 # AWS clients - with error handling for local development
 try:
     s3_client = boto3.client('s3')
-    cognito_client = boto3.client('cognito-idp')
     aws_available = True
-    logger.info("AWS clients initialized successfully")
+    logger.info("AWS S3 client initialized successfully")
 except Exception as e:
-    logger.warning(f"AWS clients not available: {e}")
+    logger.warning(f"AWS S3 client not available: {e}")
     s3_client = None
-    cognito_client = None
     aws_available = False
 
 # Environment variables
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'dev')
 S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME', '')
-COGNITO_USER_POOL_ID = os.getenv('COGNITO_USER_POOL_ID', '')
-COGNITO_USER_POOL_CLIENT_ID = os.getenv('COGNITO_USER_POOL_CLIENT_ID', '')
 AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
 
 # FastAPI app
 app = FastAPI(
-    title="Canvas TA Dashboard API - Enhanced",
-    description="Enhanced Canvas TA Dashboard with S3 integration and Cognito authentication",
-    version="3.0.0",
+    title="Canvas TA Dashboard API",
+    description="Simple Canvas TA Dashboard with S3 data storage and JWT authentication",
+    version="4.0.0",
 )
 
 # CORS middleware - production configured
@@ -62,17 +64,6 @@ app.add_middleware(
 # Security
 security = HTTPBearer()
 
-# JWT verification setup
-jwks_client = None
-if COGNITO_USER_POOL_ID and aws_available:
-    try:
-        jwks_url = f'https://cognito-idp.{AWS_REGION}.amazonaws.com/{COGNITO_USER_POOL_ID}/.well-known/jwks.json'
-        jwks_client = PyJWKClient(jwks_url)
-        logger.info("JWT client initialized successfully")
-    except Exception as e:
-        logger.warning(f"JWT client initialization failed: {e}")
-        jwks_client = None
-
 # Pydantic models
 class HealthResponse(BaseModel):
     status: str
@@ -82,9 +73,9 @@ class HealthResponse(BaseModel):
     services: Dict[str, str]
 
 class UserInfo(BaseModel):
-    username: str
     email: str
-    user_id: str
+    name: str
+    role: str
 
 class CanvasData(BaseModel):
     course_id: str
@@ -95,41 +86,51 @@ class CanvasData(BaseModel):
     enrollments: List[Dict[str, Any]]
     groups: List[Dict[str, Any]]
 
+class SubmissionStatusMetrics(BaseModel):
+    on_time: int
+    late: int
+    missing: int
+    on_time_percentage: float
+    late_percentage: float
+    missing_percentage: float
+    total_expected: int
+
+class AssignmentStatusBreakdown(BaseModel):
+    assignment_id: str
+    assignment_name: str
+    due_date: Optional[str]
+    metrics: SubmissionStatusMetrics
+
+class TAStatusMetrics(BaseModel):
+    ta_name: str
+    student_count: int
+    on_time: int
+    late: int
+    missing: int
+    on_time_percentage: float
+    late_percentage: float
+    missing_percentage: float
+
 # Authentication dependency
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> UserInfo:
     """
     Validate JWT token and return user information
+    Simple JWT validation without Cognito
     """
-    if not jwks_client:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Authentication not configured"
-        )
+    token_payload = auth_service.verify_token(credentials.credentials)
 
-    try:
-        # Get the signing key
-        signing_key = jwks_client.get_signing_key_from_jwt(credentials.credentials)
-
-        # Decode and verify the token
-        payload = jwt.decode(
-            credentials.credentials,
-            signing_key.key,
-            algorithms=["RS256"],
-            audience=COGNITO_USER_POOL_CLIENT_ID,
-            issuer=f'https://cognito-idp.{AWS_REGION}.amazonaws.com/{COGNITO_USER_POOL_ID}'
-        )
-
-        return UserInfo(
-            username=payload.get('cognito:username', ''),
-            email=payload.get('email', ''),
-            user_id=payload.get('sub', '')
-        )
-
-    except jwt.InvalidTokenError as e:
+    if not token_payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {str(e)}"
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
         )
+
+    return UserInfo(
+        email=token_payload.get('email', ''),
+        name=token_payload.get('name', ''),
+        role=token_payload.get('role', 'ta')
+    )
 
 # S3 data access functions
 class S3DataManager:
@@ -255,8 +256,233 @@ class S3DataManager:
             logger.error(f"Error retrieving groups: {str(e)}")
             return []
 
+# Submission status helper functions
+def classify_submission_status(submission: Dict, assignment: Dict) -> str:
+    """
+    Classify submission as on_time, late, or missing
+
+    Args:
+        submission: Submission data from Canvas
+        assignment: Assignment data from Canvas
+
+    Returns:
+        Status string: 'on_time', 'late', or 'missing'
+    """
+    workflow_state = submission.get('workflow_state', '')
+    submitted_at = submission.get('submitted_at')
+    due_at = assignment.get('due_at')
+    late = submission.get('late', False)
+
+    # Missing: not submitted or pending review
+    if workflow_state in ['unsubmitted', 'pending_review'] or not submitted_at:
+        return 'missing'
+
+    # Late: explicit late flag or submitted after due date
+    if late:
+        return 'late'
+
+    if submitted_at and due_at:
+        try:
+            from dateutil import parser
+            submitted_datetime = parser.parse(submitted_at)
+            due_datetime = parser.parse(due_at)
+            if submitted_datetime > due_datetime:
+                return 'late'
+        except Exception as e:
+            logger.debug(f"Error parsing dates: {e}")
+
+    return 'on_time'
+
+def calculate_submission_status_metrics(
+    assignments: List[Dict],
+    submissions: List[Dict],
+    users: List[Dict],
+    groups: List[Dict],
+    assignment_filter: Optional[str] = None,
+    ta_group_filter: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Calculate comprehensive submission status metrics
+
+    Args:
+        assignments: List of assignment data
+        submissions: List of submission data
+        users: List of user data
+        groups: List of group data
+        assignment_filter: Optional assignment ID to filter by
+        ta_group_filter: Optional TA group name to filter by
+
+    Returns:
+        Dict with overall_metrics, by_assignment, and by_ta breakdowns
+    """
+    # Filter assignments if specified
+    if assignment_filter and assignment_filter != 'all':
+        assignments = [a for a in assignments if str(a.get('id')) == assignment_filter]
+
+    # Create submission lookup by user and assignment
+    submission_lookup = {}
+    for sub in submissions:
+        key = (sub.get('user_id'), sub.get('assignment_id'))
+        submission_lookup[key] = sub
+
+    # Filter users by TA group if specified
+    if ta_group_filter and ta_group_filter != 'all':
+        # Get students in the specified TA group
+        ta_group_students = set()
+        for group in groups:
+            if group.get('name') == ta_group_filter:
+                members = group.get('members', [])
+                for member in members:
+                    ta_group_students.add(member.get('id'))
+        users = [u for u in users if u.get('id') in ta_group_students]
+
+    # Initialize counters
+    overall_on_time = 0
+    overall_late = 0
+    overall_missing = 0
+
+    # Metrics by assignment
+    assignment_metrics = {}
+
+    # Metrics by TA
+    ta_metrics = {}
+
+    # Calculate metrics
+    for assignment in assignments:
+        assignment_id = assignment.get('id')
+        assignment_name = assignment.get('name', 'Unnamed Assignment')
+        due_date = assignment.get('due_at')
+
+        # Initialize assignment metrics
+        assignment_on_time = 0
+        assignment_late = 0
+        assignment_missing = 0
+
+        for user in users:
+            user_id = user.get('id')
+            key = (user_id, assignment_id)
+
+            # Get submission or create missing entry
+            submission = submission_lookup.get(key, {
+                'workflow_state': 'unsubmitted',
+                'user_id': user_id,
+                'assignment_id': assignment_id
+            })
+
+            # Classify status
+            status = classify_submission_status(submission, assignment)
+
+            # Update counters
+            if status == 'on_time':
+                overall_on_time += 1
+                assignment_on_time += 1
+            elif status == 'late':
+                overall_late += 1
+                assignment_late += 1
+            else:  # missing
+                overall_missing += 1
+                assignment_missing += 1
+
+            # Update TA metrics if applicable
+            # Find user's TA group
+            user_ta_group = None
+            for group in groups:
+                members = group.get('members', [])
+                if any(m.get('user_id') == user_id for m in members):
+                    user_ta_group = group.get('name')
+                    break
+
+            if user_ta_group:
+                if user_ta_group not in ta_metrics:
+                    ta_metrics[user_ta_group] = {
+                        'ta_name': user_ta_group,
+                        'student_count': 0,
+                        'on_time': 0,
+                        'late': 0,
+                        'missing': 0
+                    }
+                ta_metrics[user_ta_group]['student_count'] += 1
+                if status == 'on_time':
+                    ta_metrics[user_ta_group]['on_time'] += 1
+                elif status == 'late':
+                    ta_metrics[user_ta_group]['late'] += 1
+                else:
+                    ta_metrics[user_ta_group]['missing'] += 1
+
+        # Calculate assignment percentages
+        total_assignment_submissions = len(users)
+        assignment_metrics[str(assignment_id)] = {
+            'assignment_id': str(assignment_id),
+            'assignment_name': assignment_name,
+            'due_date': due_date,
+            'metrics': {
+                'on_time': assignment_on_time,
+                'late': assignment_late,
+                'missing': assignment_missing,
+                'on_time_percentage': (assignment_on_time / total_assignment_submissions * 100) if total_assignment_submissions > 0 else 0,
+                'late_percentage': (assignment_late / total_assignment_submissions * 100) if total_assignment_submissions > 0 else 0,
+                'missing_percentage': (assignment_missing / total_assignment_submissions * 100) if total_assignment_submissions > 0 else 0,
+                'total_expected': total_assignment_submissions
+            }
+        }
+
+    # Calculate overall percentages
+    total_expected = len(assignments) * len(users)
+
+    # Calculate TA percentages
+    for ta_name, metrics in ta_metrics.items():
+        total = metrics['on_time'] + metrics['late'] + metrics['missing']
+        if total > 0:
+            metrics['on_time_percentage'] = metrics['on_time'] / total * 100
+            metrics['late_percentage'] = metrics['late'] / total * 100
+            metrics['missing_percentage'] = metrics['missing'] / total * 100
+        else:
+            metrics['on_time_percentage'] = 0
+            metrics['late_percentage'] = 0
+            metrics['missing_percentage'] = 0
+
+    return {
+        'overall_metrics': {
+            'on_time': overall_on_time,
+            'late': overall_late,
+            'missing': overall_missing,
+            'on_time_percentage': (overall_on_time / total_expected * 100) if total_expected > 0 else 0,
+            'late_percentage': (overall_late / total_expected * 100) if total_expected > 0 else 0,
+            'missing_percentage': (overall_missing / total_expected * 100) if total_expected > 0 else 0,
+            'total_expected': total_expected
+        },
+        'by_assignment': list(assignment_metrics.values()),
+        'by_ta': list(ta_metrics.values())
+    }
+
 # Initialize S3 data manager
 s3_manager = S3DataManager(S3_BUCKET_NAME) if S3_BUCKET_NAME and s3_client else None
+
+# Authentication endpoints
+@app.post("/api/auth/login", response_model=LoginResponse)
+async def login(login_request: LoginRequest):
+    """
+    Login endpoint - validates email/password and returns JWT token
+    """
+    logger.info(f"Login attempt for user: {login_request.email}")
+    return auth_service.login(login_request)
+
+
+@app.post("/api/auth/logout")
+async def logout(user: UserInfo = Depends(get_current_user)):
+    """
+    Logout endpoint - currently just validates token
+    Client should discard the JWT token
+    """
+    logger.info(f"User logged out: {user.email}")
+    return {"message": "Logged out successfully"}
+
+
+@app.get("/api/auth/me")
+async def get_current_user_info(user: UserInfo = Depends(get_current_user)):
+    """Get current user information from JWT token"""
+    return user
+
 
 # Health check endpoint
 @app.get("/api/health", response_model=HealthResponse)
@@ -264,7 +490,7 @@ async def health_check():
     """Health check endpoint with service status"""
     services = {
         "s3": "not_configured",
-        "cognito": "not_configured",
+        "authentication": "simple_jwt",
         "aws_client": "available" if aws_available else "unavailable"
     }
 
@@ -278,20 +504,10 @@ async def health_check():
             logger.warning(f"S3 health check failed: {e}")
             services["s3"] = "unhealthy"
 
-    # Check Cognito status
-    if COGNITO_USER_POOL_ID and cognito_client:
-        services["cognito"] = "configured"
-        try:
-            cognito_client.describe_user_pool(UserPoolId=COGNITO_USER_POOL_ID)
-            services["cognito"] = "healthy"
-        except Exception as e:
-            logger.warning(f"Cognito health check failed: {e}")
-            services["cognito"] = "unhealthy"
-
     return HealthResponse(
         status="healthy",
         timestamp=datetime.now(timezone.utc).isoformat(),
-        version="3.0.0",
+        version="4.0.0",
         environment=ENVIRONMENT,
         services=services
     )
@@ -449,6 +665,55 @@ async def get_groups(
     return s3_manager.get_groups(course_id)
 
 # Dashboard specific endpoints
+@app.get("/api/dashboard/submission-status/{course_id}")
+async def get_submission_status_metrics(
+    course_id: str,
+    assignment_id: Optional[str] = None,
+    ta_group: Optional[str] = None,
+    user: UserInfo = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Get submission status metrics (on_time, late, missing)
+
+    Query Parameters:
+        assignment_id: Optional assignment ID to filter by
+        ta_group: Optional TA group name to filter by
+
+    Returns:
+        Dict with overall_metrics, by_assignment, and by_ta breakdowns
+    """
+    if not s3_manager:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="S3 not configured"
+        )
+
+    try:
+        # Get all data from S3
+        assignments = s3_manager.get_assignments(course_id)
+        submissions = s3_manager.get_submissions(course_id)
+        users = s3_manager.get_users(course_id)
+        groups = s3_manager.get_groups(course_id)
+
+        # Calculate metrics
+        metrics = calculate_submission_status_metrics(
+            assignments=assignments,
+            submissions=submissions,
+            users=users,
+            groups=groups,
+            assignment_filter=assignment_id,
+            ta_group_filter=ta_group
+        )
+
+        return metrics
+
+    except Exception as e:
+        logger.error(f"Error calculating submission status metrics: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error calculating metrics: {str(e)}"
+        )
+
 @app.get("/api/dashboard/ta-grading/{course_id}")
 async def get_ta_grading_data(
     course_id: str,

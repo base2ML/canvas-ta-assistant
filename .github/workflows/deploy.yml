@@ -9,7 +9,7 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: cda-ta-dashboard
+  ECR_REPOSITORY: canvas-ta-dashboard
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:

@@ -64,13 +64,14 @@ variable "s3_bucket_arn" {
   type        = string
 }
 
-variable "cognito_user_pool_arn" {
-  description = "ARN of the Cognito User Pool"
-  type        = string
-}
-
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)
   default     = {}
+}
+
+variable "certificate_arn" {
+  description = "ARN of SSL certificate for HTTPS listener (optional)"
+  type        = string
+  default     = ""
 }

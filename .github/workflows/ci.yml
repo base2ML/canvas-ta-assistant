@@ -14,6 +14,12 @@ jobs:
   backend-tests:
     name: Backend Tests (Python)
     runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' ||
+      contains(github.event.head_commit.modified, 'main.py') ||
+      contains(github.event.head_commit.modified, 'pyproject.toml') ||
+      contains(github.event.head_commit.added, 'main.py') ||
+      contains(github.event.head_commit.added, 'pyproject.toml')
     defaults:
       run:
         working-directory: ./backend-canvas-fastapi
@@ -63,6 +69,10 @@ jobs:
   frontend-tests:
     name: Frontend Tests (React)
     runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' ||
+      contains(github.event.head_commit.modified, 'canvas-react') ||
+      contains(github.event.head_commit.added, 'canvas-react')
     defaults:
       run:
         working-directory: ./canvas-react
@@ -99,6 +109,11 @@ jobs:
   docker-build:
     name: Docker Build Test
     runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' ||
+      contains(github.event.head_commit.modified, 'Dockerfile') ||
+      contains(github.event.head_commit.modified, 'main.py') ||
+      contains(github.event.head_commit.modified, 'canvas-react')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
