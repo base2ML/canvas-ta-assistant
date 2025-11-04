@@ -33,7 +33,7 @@ RUN uv pip install --system --no-cache -r pyproject.toml
 RUN uv pip install --system --no-cache boto3 PyJWT cryptography
 
 # Copy backend application code
-COPY main.py ./
+COPY main.py auth.py ./
 
 # Copy static files from frontend build
 COPY --from=frontend-builder /frontend/dist ./static
