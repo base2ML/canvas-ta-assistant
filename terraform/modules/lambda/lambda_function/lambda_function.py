@@ -157,34 +157,81 @@ def fetch_canvas_data(canvas_api: CanvasAPIClient, course_id: str) -> Dict[str, 
         canvas_data['users'] = users
         logger.info(f"Fetched {len(users)} users")
 
-        # Fetch enrollments
-        enrollments = canvas_api.get_paginated(f"courses/{course_id}/enrollments")
-        canvas_data['enrollments'] = enrollments
-        logger.info(f"Fetched {len(enrollments)} enrollments")
+        # Skip enrollments - not needed for dashboard and very slow for large courses
+        canvas_data['enrollments'] = []
+        logger.info("Skipped enrollments fetch (not needed for dashboard)")
 
-        # Fetch submissions for all assignments
-        all_submissions = []
-        for assignment in assignments:
-            try:
-                submissions = canvas_api.get_paginated(
-                    f"courses/{course_id}/assignments/{assignment['id']}/submissions",
-                    params={'include[]': ['submission_history', 'submission_comments', 'rubric_assessment']}
-                )
-                # Add assignment_id to each submission for easier processing
-                for submission in submissions:
-                    submission['assignment_id'] = assignment['id']
-                all_submissions.extend(submissions)
-            except Exception as e:
-                logger.warning(f"Failed to fetch submissions for assignment {assignment['id']}: {str(e)}")
+        # Fetch submissions per assignment (matching notebook approach)
+        try:
+            import time
+            start_time = time.time()
+            max_fetch_time = 240  # 4 minutes max for submissions (longer since per-assignment)
 
-        canvas_data['submissions'] = all_submissions
-        logger.info(f"Fetched {len(all_submissions)} submissions")
+            logger.info(f"Starting per-assignment submissions fetch for {len(assignments)} assignments with time limit")
+            all_submissions = []
+            assignments_processed = 0
 
-        # Fetch groups (for TA assignments)
+            for assignment in assignments:
+                # Check if we've exceeded time limit
+                elapsed = time.time() - start_time
+                if elapsed > max_fetch_time:
+                    logger.warning(f"Submissions fetch timed out after {elapsed:.1f}s, processed {assignments_processed}/{len(assignments)} assignments, collected {len(all_submissions)} submissions")
+                    break
+
+                try:
+                    assignment_id = assignment.get('id')
+                    assignment_name = assignment.get('name', 'Unknown')
+
+                    # Fetch submissions for this assignment
+                    assignment_submissions = canvas_api.get_paginated(
+                        f"courses/{course_id}/assignments/{assignment_id}/submissions"
+                    )
+
+                    if isinstance(assignment_submissions, list):
+                        all_submissions.extend(assignment_submissions)
+                        assignments_processed += 1
+                        logger.info(f"Fetched {len(assignment_submissions)} submissions for assignment '{assignment_name}' ({assignments_processed}/{len(assignments)}, total: {len(all_submissions)})")
+
+                except Exception as assignment_error:
+                    logger.warning(f"Error fetching submissions for assignment {assignment.get('name', 'Unknown')}: {str(assignment_error)}")
+                    continue
+
+            canvas_data['submissions'] = all_submissions
+            logger.info(f"Fetched {len(all_submissions)} submissions across {assignments_processed} assignments in {time.time() - start_time:.1f}s")
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch submissions: {str(e)}")
+            canvas_data['submissions'] = []
+
+        # Fetch groups with memberships (for TA assignments)
         try:
             groups = canvas_api.get_paginated(f"courses/{course_id}/groups")
-            canvas_data['groups'] = groups
             logger.info(f"Fetched {len(groups)} groups")
+
+            # Fetch memberships for each group (matching notebook approach)
+            groups_with_members = []
+            for group in groups:
+                try:
+                    group_id = group.get('id')
+                    group_name = group.get('name', 'Unknown')
+
+                    # Fetch memberships for this group
+                    memberships = canvas_api.get_paginated(f"groups/{group_id}/memberships")
+
+                    # Add members array to group
+                    group['members'] = memberships
+                    groups_with_members.append(group)
+
+                    logger.info(f"Fetched {len(memberships)} members for group '{group_name}'")
+
+                except Exception as group_error:
+                    logger.warning(f"Error fetching memberships for group {group.get('name', 'Unknown')}: {str(group_error)}")
+                    # Keep group without members rather than failing completely
+                    group['members'] = []
+                    groups_with_members.append(group)
+
+            canvas_data['groups'] = groups_with_members
+            logger.info(f"Completed fetching memberships for {len(groups_with_members)} groups")
         except Exception as e:
             logger.warning(f"Failed to fetch groups: {str(e)}")
             canvas_data['groups'] = []
@@ -197,46 +244,56 @@ def fetch_canvas_data(canvas_api: CanvasAPIClient, course_id: str) -> Dict[str, 
 
 def store_data_in_s3(bucket_name: str, canvas_data: Dict[str, Any], course_id: str):
     """
-    Store Canvas data in S3 bucket
+    Store Canvas data in S3 bucket under both long and short course ID formats
     """
     try:
         timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
 
-        # Store complete data dump
-        complete_data_key = f"canvas_data/course_{course_id}/complete/canvas_data_{timestamp}.json"
-        s3_client.put_object(
-            Bucket=bucket_name,
-            Key=complete_data_key,
-            Body=json.dumps(canvas_data, default=str, indent=2),
-            ContentType='application/json'
-        )
+        # Generate both long and short form course IDs
+        course_ids = [course_id]
+        if len(course_id) > 10:
+            # Extract short form (last 6 digits)
+            short_id = course_id[-6:]
+            course_ids.append(short_id)
+            logger.info(f"Storing data for both course IDs: {course_id} and {short_id}")
 
-        # Store latest data (for dashboard to consume)
-        latest_data_key = f"canvas_data/course_{course_id}/latest.json"
-        s3_client.put_object(
-            Bucket=bucket_name,
-            Key=latest_data_key,
-            Body=json.dumps(canvas_data, default=str, indent=2),
-            ContentType='application/json'
-        )
+        # Store data under both course ID formats
+        for cid in course_ids:
+            # Store complete data dump
+            complete_data_key = f"canvas_data/course_{cid}/complete/canvas_data_{timestamp}.json"
+            s3_client.put_object(
+                Bucket=bucket_name,
+                Key=complete_data_key,
+                Body=json.dumps(canvas_data, default=str, indent=2),
+                ContentType='application/json'
+            )
 
-        # Store individual data types for easier access
-        data_types = ['assignments', 'submissions', 'users', 'enrollments', 'groups']
-        for data_type in data_types:
-            if data_type in canvas_data and canvas_data[data_type]:
-                data_key = f"canvas_data/course_{course_id}/latest_{data_type}.json"
-                s3_client.put_object(
-                    Bucket=bucket_name,
-                    Key=data_key,
-                    Body=json.dumps({
-                        'timestamp': canvas_data['timestamp'],
-                        'course_id': course_id,
-                        data_type: canvas_data[data_type]
-                    }, default=str, indent=2),
-                    ContentType='application/json'
-                )
+            # Store latest data (for dashboard to consume)
+            latest_data_key = f"canvas_data/course_{cid}/latest.json"
+            s3_client.put_object(
+                Bucket=bucket_name,
+                Key=latest_data_key,
+                Body=json.dumps(canvas_data, default=str, indent=2),
+                ContentType='application/json'
+            )
 
-        logger.info(f"Stored Canvas data in S3: {complete_data_key}")
+            # Store individual data types for easier access
+            data_types = ['assignments', 'submissions', 'users', 'enrollments', 'groups']
+            for data_type in data_types:
+                if data_type in canvas_data and canvas_data[data_type]:
+                    data_key = f"canvas_data/course_{cid}/latest_{data_type}.json"
+                    s3_client.put_object(
+                        Bucket=bucket_name,
+                        Key=data_key,
+                        Body=json.dumps({
+                            'timestamp': canvas_data['timestamp'],
+                            'course_id': cid,
+                            data_type: canvas_data[data_type]
+                        }, default=str, indent=2),
+                        ContentType='application/json'
+                    )
+
+        logger.info(f"Stored Canvas data in S3 for course IDs: {', '.join(course_ids)}")
 
     except Exception as e:
         logger.error(f"Error storing data in S3: {str(e)}")

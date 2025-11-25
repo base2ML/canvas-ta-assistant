@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, Users, Filter, TrendingUp, CheckCircle, XCircle } from 'lucide-react';
+import { RefreshCw, Users, Filter, TrendingUp, CheckCircle, XCircle, Clock } from 'lucide-react';
+import SubmissionStatusCards from './components/SubmissionStatusCards';
+import AssignmentStatusBreakdown from './components/AssignmentStatusBreakdown';
 
 const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
   const [courses, setCourses] = useState([]);
@@ -11,6 +13,7 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [submissionMetrics, setSubmissionMetrics] = useState(null);
 
   // Filters
   const [selectedAssignment, setSelectedAssignment] = useState('all');
@@ -22,7 +25,7 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
     groupList.forEach(group => {
       // Filter out non-TA groups (like "Term Project" groups)
       if (group.name && !group.name.toLowerCase().includes('project') && group.members && group.members.length > 0) {
-        taAssignments[group.name] = new Set(group.members.map(m => String(m)));
+        taAssignments[group.name] = new Set(group.members.map(m => String(m.user_id)));
       }
     });
 
@@ -65,6 +68,7 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
     try {
       const headers = await getAuthHeaders();
 
+      // Get S3 pre-signed URLs from API
       const [assignmentsRes, submissionsRes, usersRes, groupsRes] = await Promise.all([
         fetch(`${backendUrl}/api/canvas/assignments/${courseId}`, { headers }),
         fetch(`${backendUrl}/api/canvas/submissions/${courseId}`, { headers }),
@@ -72,24 +76,17 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
         fetch(`${backendUrl}/api/canvas/groups/${courseId}`, { headers })
       ]);
 
+      // Fetch full Canvas data from S3 using pre-signed URL
       if (assignmentsRes.ok) {
-        const data = await assignmentsRes.json();
-        setAssignments(data.assignments || data || []);
-      }
-
-      if (submissionsRes.ok) {
-        const data = await submissionsRes.json();
-        setSubmissions(data.submissions || data || []);
-      }
-
-      if (usersRes.ok) {
-        const data = await usersRes.json();
-        setUsers(data.users || data || []);
-      }
-
-      if (groupsRes.ok) {
-        const data = await groupsRes.json();
-        setGroups(data.groups || data || []);
+        const urlData = await assignmentsRes.json();
+        if (urlData.data_url) {
+          const s3Response = await fetch(urlData.data_url);
+          const canvasData = await s3Response.json();
+          setAssignments(canvasData.assignments || []);
+          setSubmissions(canvasData.submissions || []);
+          setUsers(canvasData.users || []);
+          setGroups(canvasData.groups || []);
+        }
       }
 
       // Update last updated timestamp after successful data load
@@ -101,6 +98,37 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
       setLoading(false);
     }
   };
+
+  const loadSubmissionMetrics = async (courseId, assignmentId = null) => {
+    if (!courseId) return;
+
+    try {
+      const headers = await getAuthHeaders();
+      const params = new URLSearchParams();
+      if (assignmentId && assignmentId !== 'all') {
+        params.append('assignment_id', assignmentId);
+      }
+
+      const url = `${backendUrl}/api/dashboard/submission-status/${courseId}?${params}`;
+      const response = await fetch(url, { headers });
+
+      if (!response.ok) {
+        throw new Error(`Failed to load metrics: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setSubmissionMetrics(data);
+    } catch (err) {
+      console.error('Error loading submission metrics:', err);
+      setError(err.message);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedCourse) {
+      loadSubmissionMetrics(selectedCourse.id, selectedAssignment);
+    }
+  }, [selectedCourse, selectedAssignment]);
 
   // Compute TA statistics with assignment filtering
   const taStats = useMemo(() => {
@@ -304,6 +332,16 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
                 </div>
               </div>
             </div>
+
+            {/* Submission Status Cards */}
+            {submissionMetrics && (
+              <SubmissionStatusCards metrics={submissionMetrics.overall_metrics} />
+            )}
+
+            {/* Assignment Status Breakdown */}
+            {submissionMetrics && submissionMetrics.by_assignment && (
+              <AssignmentStatusBreakdown assignmentMetrics={submissionMetrics.by_assignment} />
+            )}
 
             {/* Overall Statistics */}
             <div className="bg-white shadow-sm rounded-lg p-6 mb-6">

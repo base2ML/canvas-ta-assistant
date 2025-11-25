@@ -6,8 +6,8 @@ environment = "prod"
 project_name = "canvas-ta-dashboard"
 
 # Canvas Configuration
-canvas_api_url = "https://your-institution.instructure.com"
-canvas_course_id = "12345"
+canvas_api_url = "https://gatech.instructure.com"
+canvas_course_id = "20960000000516212"
 
 # ECR Configuration (will be updated by deployment script)
 ecr_repository_url = ""

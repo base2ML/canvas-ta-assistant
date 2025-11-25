@@ -26,8 +26,13 @@ from auth import (
     User
 )
 
-# Configure loguru
-logger.add("logs/app.log", rotation="500 MB", retention="10 days", level="INFO")
+# Configure loguru - in Lambda, logs go to CloudWatch
+# Only write to file if not in Lambda environment (which has read-only filesystem)
+if os.getenv('AWS_LAMBDA_FUNCTION_NAME') is None:
+    logger.add("logs/app.log", rotation="500 MB", retention="10 days", level="INFO")
+else:
+    # In Lambda, loguru will output to stdout which goes to CloudWatch Logs
+    logger.info("Running in AWS Lambda - logs will go to CloudWatch")
 
 # AWS clients - with error handling for local development
 try:
@@ -140,6 +145,27 @@ class S3DataManager:
 
     def __init__(self, bucket_name: str):
         self.bucket_name = bucket_name
+
+    def generate_presigned_url(self, key: str, expiration: int = 3600) -> Optional[str]:
+        """
+        Generate a pre-signed URL for S3 object access
+        Args:
+            key: S3 object key
+            expiration: URL expiration time in seconds (default 1 hour)
+        Returns:
+            Pre-signed URL string or None if error
+        """
+        try:
+            url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': self.bucket_name, 'Key': key},
+                ExpiresIn=expiration
+            )
+            logger.info(f"Generated pre-signed URL for key: {key}")
+            return url
+        except Exception as e:
+            logger.error(f"Error generating pre-signed URL for {key}: {str(e)}")
+            return None
 
     def get_latest_canvas_data(self, course_id: str) -> Optional[CanvasData]:
         """
@@ -604,9 +630,9 @@ async def get_canvas_data(
 async def get_assignments(
     course_id: str,
     user: UserInfo = Depends(get_current_user)
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """
-    Get assignments for a course
+    Get assignments for a course - returns S3 pre-signed URL for large datasets
     """
     if not s3_manager:
         raise HTTPException(
@@ -614,15 +640,31 @@ async def get_assignments(
             detail="S3 not configured"
         )
 
-    return s3_manager.get_assignments(course_id)
+    # Try both short and long form course IDs
+    course_ids_to_try = [course_id]
+    if len(course_id) > 10:
+        course_ids_to_try.append(course_id[-6:])
+    elif len(course_id) <= 6:
+        course_ids_to_try.append(f"20960000000{course_id}")
+
+    for cid in course_ids_to_try:
+        key = f"canvas_data/course_{cid}/latest.json"
+        url = s3_manager.generate_presigned_url(key, expiration=3600)
+        if url:
+            return {"data_url": url, "course_id": cid, "data_type": "assignments"}
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"No data found for course {course_id}"
+    )
 
 @app.get("/api/canvas/submissions/{course_id}")
 async def get_submissions(
     course_id: str,
     user: UserInfo = Depends(get_current_user)
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """
-    Get submissions for a course
+    Get submissions for a course - returns S3 pre-signed URL for large datasets
     """
     if not s3_manager:
         raise HTTPException(
@@ -630,15 +672,31 @@ async def get_submissions(
             detail="S3 not configured"
         )
 
-    return s3_manager.get_submissions(course_id)
+    # Try both short and long form course IDs
+    course_ids_to_try = [course_id]
+    if len(course_id) > 10:
+        course_ids_to_try.append(course_id[-6:])
+    elif len(course_id) <= 6:
+        course_ids_to_try.append(f"20960000000{course_id}")
+
+    for cid in course_ids_to_try:
+        key = f"canvas_data/course_{cid}/latest.json"
+        url = s3_manager.generate_presigned_url(key, expiration=3600)
+        if url:
+            return {"data_url": url, "course_id": cid, "data_type": "submissions"}
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"No data found for course {course_id}"
+    )
 
 @app.get("/api/canvas/users/{course_id}")
 async def get_users(
     course_id: str,
     user: UserInfo = Depends(get_current_user)
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """
-    Get users for a course
+    Get users for a course - returns S3 pre-signed URL for large datasets
     """
     if not s3_manager:
         raise HTTPException(
@@ -646,15 +704,31 @@ async def get_users(
             detail="S3 not configured"
         )
 
-    return s3_manager.get_users(course_id)
+    # Try both short and long form course IDs
+    course_ids_to_try = [course_id]
+    if len(course_id) > 10:
+        course_ids_to_try.append(course_id[-6:])
+    elif len(course_id) <= 6:
+        course_ids_to_try.append(f"20960000000{course_id}")
+
+    for cid in course_ids_to_try:
+        key = f"canvas_data/course_{cid}/latest.json"
+        url = s3_manager.generate_presigned_url(key, expiration=3600)
+        if url:
+            return {"data_url": url, "course_id": cid, "data_type": "users"}
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"No data found for course {course_id}"
+    )
 
 @app.get("/api/canvas/groups/{course_id}")
 async def get_groups(
     course_id: str,
     user: UserInfo = Depends(get_current_user)
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """
-    Get groups for a course
+    Get groups for a course - returns S3 pre-signed URL for large datasets
     """
     if not s3_manager:
         raise HTTPException(
@@ -662,7 +736,23 @@ async def get_groups(
             detail="S3 not configured"
         )
 
-    return s3_manager.get_groups(course_id)
+    # Try both short and long form course IDs
+    course_ids_to_try = [course_id]
+    if len(course_id) > 10:
+        course_ids_to_try.append(course_id[-6:])
+    elif len(course_id) <= 6:
+        course_ids_to_try.append(f"20960000000{course_id}")
+
+    for cid in course_ids_to_try:
+        key = f"canvas_data/course_{cid}/latest.json"
+        url = s3_manager.generate_presigned_url(key, expiration=3600)
+        if url:
+            return {"data_url": url, "course_id": cid, "data_type": "groups"}
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"No data found for course {course_id}"
+    )
 
 # Dashboard specific endpoints
 @app.get("/api/dashboard/submission-status/{course_id}")
