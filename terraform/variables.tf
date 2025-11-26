@@ -23,11 +23,6 @@ variable "canvas_course_id" {
   type        = string
 }
 
-variable "ecr_repository_url" {
-  description = "ECR repository URL for the application container"
-  type        = string
-}
-
 # Optional: Canvas API token (will be stored in Secrets Manager)
 variable "canvas_api_token" {
   description = "Canvas API token (sensitive)"
@@ -36,10 +31,9 @@ variable "canvas_api_token" {
   default     = ""
 }
 
-# JWT secret key for authentication
-variable "jwt_secret_key" {
-  description = "Secret key for JWT token signing (change in production)"
-  type        = string
-  sensitive   = true
-  default     = "your-secret-key-change-in-production-use-secrets-manager"
+# CORS configuration
+variable "cors_allowed_origins" {
+  description = "List of allowed CORS origins"
+  type        = list(string)
+  default     = ["*"]
 }
