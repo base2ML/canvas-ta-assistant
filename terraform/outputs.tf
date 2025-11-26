@@ -2,12 +2,12 @@
 
 output "frontend_url" {
   description = "URL of the CloudFront distribution"
-  value       = module.cloudfront.cloudfront_domain_name
+  value       = "https://${module.cloudfront.cloudfront_domain}"
 }
 
 output "frontend_bucket_name" {
   description = "Name of the S3 bucket for frontend hosting"
-  value       = module.cloudfront.bucket_name
+  value       = module.cloudfront.s3_bucket_name
 }
 
 output "cloudfront_distribution_id" {
