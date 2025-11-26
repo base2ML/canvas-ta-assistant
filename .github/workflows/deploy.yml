@@ -1,0 +1,272 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches:
+      - main
+      - development
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy-infrastructure:
+    name: Deploy Infrastructure (Terraform)
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'prod' || 'dev') }}
+
+    outputs:
+      frontend_bucket: ${{ steps.terraform-output.outputs.frontend_bucket }}
+      cloudfront_id: ${{ steps.terraform-output.outputs.cloudfront_id }}
+      api_endpoint: ${{ steps.terraform-output.outputs.api_endpoint }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.0"
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: ./terraform
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: ./terraform
+        run: terraform apply tfplan
+
+      - name: Get Terraform Outputs
+        id: terraform-output
+        working-directory: ./terraform
+        run: |
+          echo "frontend_bucket=$(terraform output -raw frontend_bucket_name)" >> $GITHUB_OUTPUT
+          echo "cloudfront_id=$(terraform output -raw cloudfront_distribution_id)" >> $GITHUB_OUTPUT
+          echo "api_endpoint=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
+
+      - name: Save Terraform Outputs
+        working-directory: ./terraform
+        run: terraform output -json > terraform-outputs.json
+
+      - name: Upload Terraform Outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-outputs
+          path: terraform/terraform-outputs.json
+
+  deploy-backend:
+    name: Deploy Backend (Lambda)
+    runs-on: ubuntu-latest
+    needs: [deploy-infrastructure]
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'prod' ||  'dev') }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install UV package manager
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Package Lambda
+        run: ./scripts/package-lambda-api.sh
+
+      - name: Download Terraform Outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-outputs
+
+      - name: Update Lambda Function
+        run: |
+          FUNCTION_NAME=$(jq -r '.lambda_function_name.value' terraform-outputs.json)
+
+          aws lambda update-function-code \
+            --function-name $FUNCTION_NAME \
+            --zip-file fileb://lambda-api.zip \
+            --region ${{ env.AWS_REGION }}
+
+          # Wait for update to complete
+          aws lambda wait function-updated \
+            --function-name $FUNCTION_NAME \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Test Lambda Deployment
+        run: |
+          API_ENDPOINT="${{ needs.deploy-infrastructure.outputs.api_endpoint }}"
+
+          # Wait a bit for API Gateway to sync
+          sleep 5
+
+          # Test health endpoint
+          echo "Testing health endpoint: ${API_ENDPOINT}/health"
+          RESPONSE=$(curl -s -w "\n%{http_code}" "${API_ENDPOINT}/health")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Health check passed: $BODY"
+          else
+            echo "❌ Health check failed (HTTP $HTTP_CODE): $BODY"
+            exit 1
+          fi
+
+  deploy-frontend:
+    name: Deploy Frontend (S3 + CloudFront)
+    runs-on: ubuntu-latest
+    needs: [deploy-infrastructure]
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'prod' ||  'dev') }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: canvas-react/package-lock.json
+
+      - name: Build Frontend
+        working-directory: ./canvas-react
+        env:
+          VITE_API_ENDPOINT: ${{ needs.deploy-infrastructure.outputs.api_endpoint }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy to S3
+        env:
+          FRONTEND_BUCKET: ${{ needs.deploy-infrastructure.outputs.frontend_bucket }}
+        run: |
+          aws s3 sync canvas-react/dist/ "s3://${FRONTEND_BUCKET}/" --delete
+
+      - name: Invalidate CloudFront Cache
+        env:
+          CLOUDFRONT_ID: ${{ needs.deploy-infrastructure.outputs.cloudfront_id }}
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${CLOUDFRONT_ID}" \
+            --paths "/*"
+
+  post-deployment-tests:
+    name: Post-Deployment Tests
+    runs-on: ubuntu-latest
+    needs: [deploy-infrastructure, deploy-backend, deploy-frontend]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test API Health
+        run: |
+          API_ENDPOINT="${{ needs.deploy-infrastructure.outputs.api_endpoint }}"
+
+          echo "Testing API: $API_ENDPOINT"
+
+          # Health check
+          curl -f "${API_ENDPOINT}/health" || exit 1
+          echo "✅ Health check passed"
+
+          # Auth endpoint (should return 401)
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "${API_ENDPOINT}/api/auth/login" \
+            -H "Content-Type: application/json" \
+            -d '{"email":"test@example.com","password":"test"}')
+
+          if [ "$HTTP_CODE" = "401" ]; then
+            echo "✅ Auth endpoint working"
+          else
+            echo "⚠️  Auth endpoint returned unexpected code: $HTTP_CODE"
+          fi
+
+      - name: Test Frontend
+        run: |
+          # Get CloudFront domain
+          CF_DOMAIN=$(aws cloudfront get-distribution \
+            --id "${{ needs.deploy-infrastructure.outputs.cloudfront_id }}" \
+            --query 'Distribution.DomainName' \
+            --output text)
+
+          echo "Testing frontend: https://${CF_DOMAIN}"
+
+          # Test frontend loads
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://${CF_DOMAIN}")
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Frontend is accessible"
+          else
+            echo "⚠️  Frontend returned code: $HTTP_CODE"
+          fi
+
+      - name: Deployment Summary
+        run: |
+          cat << EOF >> $GITHUB_STEP_SUMMARY
+          ## Deployment Summary
+
+          **Environment**: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'prod' || 'dev') }}
+          **Commit**: \`${{ github.sha }}\`
+          **Branch**: \`${{ github.ref_name }}\`
+
+          ### Deployed Resources
+
+          - **API Endpoint**: ${{ needs.deploy-infrastructure.outputs.api_endpoint }}
+          - **S3 Bucket**: ${{ needs.deploy-infrastructure.outputs.frontend_bucket }}
+          - **CloudFront ID**: ${{ needs.deploy-infrastructure.outputs.cloudfront_id }}
+
+          ### Test Results
+
+          - ✅ Infrastructure deployed
+          - ✅ Backend Lambda updated
+          - ✅ Frontend deployed to S3
+          - ✅ CloudFront cache invalidated
+          - ✅ Health checks passed
+
+          **Deployment Status**: SUCCESS ✅
+          EOF

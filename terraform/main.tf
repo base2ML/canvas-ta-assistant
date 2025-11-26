@@ -111,46 +111,49 @@ module "eventbridge" {
   tags = local.common_tags
 }
 
-# ECS Infrastructure for Dashboard
-module "ecs" {
-  source = "./modules/ecs"
+# Lambda API Backend
+module "lambda_api" {
+  source = "./modules/lambda-api"
 
   project_name = local.project_name
   environment  = local.environment
 
-  # VPC Configuration
-  vpc_cidr = "10.0.0.0/16"
-  availability_zones = ["${var.aws_region}a", "${var.aws_region}b"]
-
-  # ECS Configuration
-  container_image = "${var.ecr_repository_url}:latest"
-  container_port  = 8000
-  cpu             = 512
-  memory          = 1024
-  desired_count   = 2
-
-  # Environment variables for ECS container
-  container_environment = [
-    {
-      name  = "ENVIRONMENT"
-      value = local.environment
-    },
-    {
-      name  = "S3_BUCKET_NAME"
-      value = module.s3.bucket_name
-    },
-    {
-      name  = "AWS_REGION"
-      value = var.aws_region
-    },
-    {
-      name  = "JWT_SECRET_KEY"
-      value = var.jwt_secret_key
-    }
-  ]
-
-  # IAM permissions for ECS tasks
   s3_bucket_arn = module.s3.bucket_arn
+  s3_bucket_name = module.s3.bucket_name
+
+  environment_variables = {
+    ENVIRONMENT       = local.environment
+    S3_BUCKET_NAME    = module.s3.bucket_name
+    AWS_REGION        = var.aws_region
+    JWT_SECRET_KEY    = var.jwt_secret_key
+    CORS_ORIGINS      = join(",", var.cors_origins)
+  }
+
+  tags = local.common_tags
+}
+
+# API Gateway
+module "api_gateway" {
+  source = "./modules/api-gateway"
+
+  project_name = local.project_name
+  environment  = local.environment
+
+  lambda_function_arn = module.lambda_api.function_arn
+  lambda_function_name = module.lambda_api.function_name
+  cors_origins = var.cors_origins
+
+  tags = local.common_tags
+}
+
+# CloudFront for Frontend
+module "cloudfront" {
+  source = "./modules/cloudfront"
+
+  project_name = local.project_name
+  environment  = local.environment
+
+  api_gateway_domain = module.api_gateway.api_endpoint
 
   tags = local.common_tags
 }

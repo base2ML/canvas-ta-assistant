@@ -10,12 +10,16 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from loguru import logger
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from mangum import Mangum
 
 # Import our simple authentication system
 from auth import (
@@ -56,8 +60,39 @@ app = FastAPI(
     version="4.0.0",
 )
 
+# Rate Limiting
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+@app.on_event("startup")
+async def validate_environment():
+    """Validate required environment variables on startup"""
+    required_vars = {
+        'S3_BUCKET_NAME': 'S3 bucket for Canvas data storage',
+        'JWT_SECRET_KEY': 'JWT signing secret',  # pragma: allowlist secret
+        'AWS_REGION': 'AWS region for services',
+    }
+
+    missing = [var for var in required_vars if not os.getenv(var)]
+
+    if missing and os.getenv('ENVIRONMENT') != 'dev':
+        error_msg = "Missing required environment variables:\n"
+        for var in missing:
+            error_msg += f"  - {var}: {required_vars[var]}\n"
+        raise ValueError(error_msg)
+
 # CORS middleware - production configured
-CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://localhost:5173').split(',')
+# Development CORS - permissive for local testing
+DEV_CORS_ORIGINS = ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8000']
+
+# Production CORS - strict domain whitelist
+PROD_CORS_ORIGINS = os.getenv('CORS_ORIGINS', '').split(',') if os.getenv('CORS_ORIGINS') else []
+
+CORS_ORIGINS = DEV_CORS_ORIGINS if ENVIRONMENT == 'dev' else PROD_CORS_ORIGINS
+
+if ENVIRONMENT != 'dev' and not PROD_CORS_ORIGINS:
+    raise ValueError("CORS_ORIGINS environment variable required in production")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS if ENVIRONMENT == 'dev' else CORS_ORIGINS,
@@ -345,22 +380,25 @@ def calculate_submission_status_metrics(
     if assignment_filter and assignment_filter != 'all':
         assignments = [a for a in assignments if str(a.get('id')) == assignment_filter]
 
-    # Create submission lookup by user and assignment
+    # Pre-compute user to TA group mapping - O(Users)
+    user_to_ta_group = {}
+    for group in groups:
+        group_name = group.get('name')
+        for member in group.get('members', []):
+            # Handle both 'id' and 'user_id' formats
+            user_id = member.get('user_id') or member.get('id')
+            if user_id:
+                user_to_ta_group[user_id] = group_name
+
+    # Filter users by TA group if specified
+    if ta_group_filter and ta_group_filter != 'all':
+        users = [u for u in users if user_to_ta_group.get(u.get('id')) == ta_group_filter]
+
+    # Create submission lookup by user and assignment - O(Submissions)
     submission_lookup = {}
     for sub in submissions:
         key = (sub.get('user_id'), sub.get('assignment_id'))
         submission_lookup[key] = sub
-
-    # Filter users by TA group if specified
-    if ta_group_filter and ta_group_filter != 'all':
-        # Get students in the specified TA group
-        ta_group_students = set()
-        for group in groups:
-            if group.get('name') == ta_group_filter:
-                members = group.get('members', [])
-                for member in members:
-                    ta_group_students.add(member.get('id'))
-        users = [u for u in users if u.get('id') in ta_group_students]
 
     # Initialize counters
     overall_on_time = 0
@@ -370,10 +408,23 @@ def calculate_submission_status_metrics(
     # Metrics by assignment
     assignment_metrics = {}
 
-    # Metrics by TA
+    # Metrics by TA - Initialize with all groups
     ta_metrics = {}
+    for group in groups:
+        group_name = group.get('name')
+        if ta_group_filter and ta_group_filter != 'all' and group_name != ta_group_filter:
+            continue
 
-    # Calculate metrics
+        ta_metrics[group_name] = {
+            'ta_name': group_name,
+            'student_count': 0, # Will be calculated based on active students
+            'on_time': 0,
+            'late': 0,
+            'missing': 0
+        }
+
+    # Calculate metrics - O(Assignments * Users)
+    # This is the dominant term, but much faster than previous O(A*U*G*M)
     for assignment in assignments:
         assignment_id = assignment.get('id')
         assignment_name = assignment.get('name', 'Unnamed Assignment')
@@ -388,7 +439,7 @@ def calculate_submission_status_metrics(
             user_id = user.get('id')
             key = (user_id, assignment_id)
 
-            # Get submission or create missing entry
+            # Get submission or create missing entry - O(1)
             submission = submission_lookup.get(key, {
                 'workflow_state': 'unsubmitted',
                 'user_id': user_id,
@@ -409,25 +460,12 @@ def calculate_submission_status_metrics(
                 overall_missing += 1
                 assignment_missing += 1
 
-            # Update TA metrics if applicable
-            # Find user's TA group
-            user_ta_group = None
-            for group in groups:
-                members = group.get('members', [])
-                if any(m.get('user_id') == user_id for m in members):
-                    user_ta_group = group.get('name')
-                    break
-
-            if user_ta_group:
-                if user_ta_group not in ta_metrics:
-                    ta_metrics[user_ta_group] = {
-                        'ta_name': user_ta_group,
-                        'student_count': 0,
-                        'on_time': 0,
-                        'late': 0,
-                        'missing': 0
-                    }
-                ta_metrics[user_ta_group]['student_count'] += 1
+            # Update TA metrics - O(1) lookup
+            user_ta_group = user_to_ta_group.get(user_id)
+            if user_ta_group and user_ta_group in ta_metrics:
+                # We only increment student count once per user, but here we are inside assignment loop
+                # So we don't increment student_count here to avoid multiplication
+                # Instead we just update status counts
                 if status == 'on_time':
                     ta_metrics[user_ta_group]['on_time'] += 1
                 elif status == 'late':
@@ -451,6 +489,14 @@ def calculate_submission_status_metrics(
                 'total_expected': total_assignment_submissions
             }
         }
+
+    # Fix student counts in TA metrics
+    # We need to count unique students per TA group
+    for user in users:
+        user_id = user.get('id')
+        user_ta_group = user_to_ta_group.get(user_id)
+        if user_ta_group and user_ta_group in ta_metrics:
+            ta_metrics[user_ta_group]['student_count'] += 1
 
     # Calculate overall percentages
     total_expected = len(assignments) * len(users)
@@ -486,7 +532,8 @@ s3_manager = S3DataManager(S3_BUCKET_NAME) if S3_BUCKET_NAME and s3_client else 
 
 # Authentication endpoints
 @app.post("/api/auth/login", response_model=LoginResponse)
-async def login(login_request: LoginRequest):
+@limiter.limit("5/minute")
+async def login(request: Request, login_request: LoginRequest):
     """
     Login endpoint - validates email/password and returns JWT token
     """
@@ -993,6 +1040,9 @@ if static_dir.exists():
     logger.info(f"Mounted static files from {static_dir}")
 else:
     logger.warning(f"Static directory not found at {static_dir}")
+
+# AWS Lambda handler
+handler = Mangum(app, lifespan="off")
 
 if __name__ == "__main__":
     import uvicorn

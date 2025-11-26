@@ -16,7 +16,13 @@ from loguru import logger
 
 # Environment configuration
 S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME', '')
-JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'your-secret-key-change-in-production')
+JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY')
+if not JWT_SECRET_KEY:
+    if os.getenv('ENVIRONMENT') == 'dev':
+        logger.warning("Using development JWT secret")
+        JWT_SECRET_KEY = 'dev-only-secret-key'  # pragma: allowlist secret
+    else:
+        raise ValueError("JWT_SECRET_KEY environment variable required in production")
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRATION_DAYS = 7
 
