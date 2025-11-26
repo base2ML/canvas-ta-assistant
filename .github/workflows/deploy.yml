@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - development
+      - 'dev**'
   workflow_dispatch:
     inputs:
       environment:
@@ -54,13 +54,32 @@ jobs:
         working-directory: ./terraform
         run: terraform init
 
+      - name: Set Environment
+        id: set-env
+        run: |
+          if [[ "${{ github.event.inputs.environment }}" != "" ]]; then
+            echo "env_name=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "env_name=prod" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_name }}" == dev* ]]; then
+            echo "env_name=dev" >> $GITHUB_OUTPUT
+          else
+            echo "env_name=dev" >> $GITHUB_OUTPUT
+          fi
+
       - name: Terraform Plan
         working-directory: ./terraform
-        run: terraform plan -out=tfplan
+        env:
+          TF_VAR_environment: ${{ steps.set-env.outputs.env_name }}
+          TF_VAR_canvas_api_token: ${{ secrets.CANVAS_API_TOKEN }}
+        run: |
+          terraform plan \
+            -var-file="environments/${{ steps.set-env.outputs.env_name }}.tfvars" \
+            -out=tfplan
 
       - name: Terraform Apply
         working-directory: ./terraform
-        run: terraform apply tfplan
+        run: terraform apply -auto-approve tfplan
 
       - name: Get Terraform Outputs
         id: terraform-output
