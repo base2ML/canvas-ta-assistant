@@ -140,7 +140,7 @@ module "api_gateway" {
 
   lambda_function_arn = module.lambda_api.function_arn
   lambda_function_name = module.lambda_api.function_name
-  cors_allowed_origins = var.cors_allowed_origins
+  cors_origins = var.cors_allowed_origins
 
   tags = local.common_tags
 }
