@@ -10,6 +10,19 @@ mkdir -p lambda-package
 # Install dependencies using AWS-recommended approach for Lambda Python 3.11
 # https://repost.aws/knowledge-center/lambda-python-package-compatible
 echo "Installing dependencies for Lambda runtime (manylinux2014_x86_64)..."
+
+# Generate requirements without version pinning that might not have manylinux wheels
+echo "Generating requirements from pyproject.toml..."
+python3 -c "
+import tomllib
+with open('pyproject.toml', 'rb') as f:
+    data = tomllib.load(f)
+    deps = data['project']['dependencies']
+    # Remove version specifiers that might not have manylinux wheels
+    for dep in deps:
+        print(dep.split('[')[0].split('>')[0].split('=')[0].split('<')[0])
+" > requirements-lambda.txt
+
 pip install \
     --platform manylinux2014_x86_64 \
     --target=lambda-package \
@@ -17,7 +30,10 @@ pip install \
     --python-version 3.11 \
     --only-binary=:all: \
     --upgrade \
-    -r <(uv pip compile pyproject.toml)
+    -r requirements-lambda.txt
+
+# Clean up temporary requirements
+rm -f requirements-lambda.txt
 
 # Copy application code
 cp main.py lambda-package/
