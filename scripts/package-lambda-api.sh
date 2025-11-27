@@ -15,9 +15,10 @@ uv pip compile pyproject.toml -o requirements.txt
 if command -v docker &> /dev/null; then
     echo "Using Docker to build Lambda-compatible package..."
     # Use official AWS Lambda Python 3.11 base image to build dependencies
+    # Use --only-binary to avoid building from source (no compilers in Lambda image)
     docker run --rm --platform linux/amd64 --entrypoint="" \
         -v "$PWD":/var/task public.ecr.aws/lambda/python:3.11 \
-        bash -c "pip install -r /var/task/requirements.txt --target /var/task/lambda-package --no-cache-dir"
+        bash -c "pip install -r /var/task/requirements.txt --target /var/task/lambda-package --no-cache-dir --only-binary :all:"
 else
     echo "Docker not available, building with uv..."
     cd lambda-package
