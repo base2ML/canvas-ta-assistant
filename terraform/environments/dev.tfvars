@@ -10,3 +10,7 @@ canvas_course_id = "REPLACE_WITH_YOUR_COURSE_ID"
 
 # CORS Configuration
 cors_allowed_origins = ["*"]
+
+# Domain Configuration
+domain_aliases = ["ta-dashboard-isye6740-dev.base2ml.com"]
+# acm_certificate_arn = "arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/CERTIFICATE_ID"

@@ -37,3 +37,15 @@ variable "cors_allowed_origins" {
   type        = list(string)
   default     = ["*"]
 }
+
+variable "domain_aliases" {
+  description = "List of alternate domain names for CloudFront"
+  type        = list(string)
+  default     = []
+}
+
+variable "acm_certificate_arn" {
+  description = "ARN of the ACM certificate for custom domains"
+  type        = string
+  default     = ""
+}

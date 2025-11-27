@@ -153,5 +153,9 @@ module "cloudfront" {
 
   api_gateway_domain = module.api_gateway.api_endpoint
 
+  description         = "Canvas TA Dashboard Frontend - ${local.environment}"
+  aliases             = var.domain_aliases
+  acm_certificate_arn = var.acm_certificate_arn
+
   tags = local.common_tags
 }

@@ -22,6 +22,8 @@ resource "aws_cloudfront_origin_access_control" "main" {
 resource "aws_cloudfront_distribution" "main" {
   enabled             = true
   is_ipv6_enabled     = true
+  comment             = var.description
+  aliases             = var.aliases
   default_root_object = "index.html"
   price_class         = "PriceClass_100" # Use lowest price class for cost savings
 
@@ -57,7 +59,10 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    cloudfront_default_certificate = length(var.aliases) == 0
+    acm_certificate_arn            = length(var.aliases) > 0 ? var.acm_certificate_arn : null
+    ssl_support_method             = length(var.aliases) > 0 ? "sni-only" : null
+    minimum_protocol_version       = length(var.aliases) > 0 ? "TLSv1.2_2021" : null
   }
 
   custom_error_response {

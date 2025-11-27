@@ -9,7 +9,7 @@ mkdir -p lambda-package
 
 # Install dependencies with uv
 cd lambda-package
-uv pip install --target . -r ../requirements.txt --no-deps
+uv pip install --target . -r <(uv pip compile ../pyproject.toml) --no-deps
 
 # Copy application code
 cp ../main.py .
