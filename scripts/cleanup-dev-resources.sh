@@ -62,17 +62,38 @@ done
 echo "Deleting Secrets Manager secret..."
 aws secretsmanager delete-secret --secret-id canvas-ta-dashboard-canvas-api-token-dev --force-delete-without-recovery --region $REGION || echo "Secret not found or already deleted"
 
+echo "Deleting CloudFront Distribution..."
+# Find distribution using the OAC
+DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Origins.Items[0].OriginAccessControlId=='$OAC_IDS'].Id" --output text)
+
+if [ "$DIST_ID" != "None" ] && [ -n "$DIST_ID" ]; then
+    echo "Found Distribution: $DIST_ID"
+    ETAG=$(aws cloudfront get-distribution --id $DIST_ID --query "ETag" --output text)
+
+    echo "Disabling Distribution..."
+    aws cloudfront update-distribution --id $DIST_ID --if-match $ETAG --distribution-config "{\"Enabled\":false}" >/dev/null 2>&1 || echo "Could not disable distribution (might need full config)"
+
+    # Wait for disabled state (simplified)
+    echo "Waiting for distribution to be disabled (this might take a while)..."
+    sleep 10
+
+    echo "Deleting Distribution..."
+    aws cloudfront delete-distribution --id $DIST_ID --if-match $ETAG || echo "Could not delete distribution (might not be disabled yet)"
+fi
+
 echo "Deleting CloudFront Origin Access Control..."
 # Get all OAC IDs with the matching name
 OAC_IDS=$(aws cloudfront list-origin-access-controls --query "OriginAccessControlList.Items[?Name=='canvas-ta-dashboard-oac-dev'].Id" --output text)
 
-for OAC_ID in $OAC_IDS; do
-    if [ "$OAC_ID" != "None" ] && [ -n "$OAC_ID" ]; then
+if [ "$OAC_IDS" == "None" ] || [ -z "$OAC_IDS" ]; then
+    echo "No OAC found with name 'canvas-ta-dashboard-oac-dev'"
+else
+    for OAC_ID in $OAC_IDS; do
         echo "Found OAC: $OAC_ID"
         ETAG=$(aws cloudfront get-origin-access-control --id $OAC_ID --query "ETag" --output text)
         aws cloudfront delete-origin-access-control --id $OAC_ID --if-match $ETAG
         echo "Deleted OAC: $OAC_ID"
-    fi
-done
+    done
+fi
 
 echo "Cleanup complete. You can now retry the deployment."
