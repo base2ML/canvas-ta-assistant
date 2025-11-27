@@ -124,7 +124,6 @@ module "lambda_api" {
   environment_variables = {
     ENVIRONMENT       = local.environment
     S3_BUCKET_NAME    = module.s3.bucket_name
-    AWS_REGION        = var.aws_region
     CORS_ORIGINS      = join(",", var.cors_allowed_origins)
   }
 

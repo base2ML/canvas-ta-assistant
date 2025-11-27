@@ -61,6 +61,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "canvas_data" {
       id     = rule.value.id
       status = rule.value.status
 
+      filter {
+        prefix = ""
+      }
+
       dynamic "transition" {
         for_each = rule.value.transitions
         content {
@@ -79,7 +83,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "canvas_data" {
   }
 }
 
-# S3 Bucket Policy for Lambda and ECS access
+# S3 Bucket Policy for Lambda access
 resource "aws_s3_bucket_policy" "canvas_data" {
   bucket = aws_s3_bucket.canvas_data.id
 
@@ -87,12 +91,12 @@ resource "aws_s3_bucket_policy" "canvas_data" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "AllowApplicationAccess"
+        Sid    = "AllowLambdaAccess"
         Effect = "Allow"
         Principal = {
           AWS = [
             "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-lambda-role-${var.environment}",
-            "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-ecs-task-role-${var.environment}"
+            "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-lambda-api-role-${var.environment}"
           ]
         }
         Action = [

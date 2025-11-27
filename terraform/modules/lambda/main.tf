@@ -101,6 +101,10 @@ resource "aws_secretsmanager_secret" "canvas_api_token" {
   description             = "Canvas API token for data fetching"
   recovery_window_in_days = 7
 
+  lifecycle {
+    ignore_changes = [name]
+  }
+
   tags = var.tags
 }
 
