@@ -7,27 +7,17 @@ echo "Packaging Lambda function..."
 rm -rf lambda-package
 mkdir -p lambda-package
 
-# Generate requirements.txt from pyproject.toml
-echo "Generating requirements.txt..."
-uv pip compile pyproject.toml -o requirements.txt
-
-# Check if Docker is available for Lambda-compatible builds
-if command -v docker &> /dev/null; then
-    echo "Using Docker to build Lambda-compatible package..."
-    # Use official AWS Lambda Python 3.11 base image to build dependencies
-    # Use --only-binary to avoid building from source (no compilers in Lambda image)
-    docker run --rm --platform linux/amd64 --entrypoint="" \
-        -v "$PWD":/var/task public.ecr.aws/lambda/python:3.11 \
-        bash -c "pip install -r /var/task/requirements.txt --target /var/task/lambda-package --no-cache-dir --only-binary :all:"
-else
-    echo "Docker not available, building with uv..."
-    cd lambda-package
-    uv pip install -r ../requirements.txt --target .
-    cd ..
-fi
-
-# Clean up requirements.txt
-rm -f requirements.txt
+# Install dependencies using AWS-recommended approach for Lambda Python 3.11
+# https://repost.aws/knowledge-center/lambda-python-package-compatible
+echo "Installing dependencies for Lambda runtime (manylinux2014_x86_64)..."
+pip install \
+    --platform manylinux2014_x86_64 \
+    --target=lambda-package \
+    --implementation cp \
+    --python-version 3.11 \
+    --only-binary=:all: \
+    --upgrade \
+    -r <(uv pip compile pyproject.toml)
 
 # Copy application code
 cp main.py lambda-package/
