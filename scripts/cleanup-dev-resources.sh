@@ -40,6 +40,12 @@ for role in "canvas-ta-dashboard-lambda-api-role-dev" "canvas-ta-dashboard-lambd
     aws iam delete-role --role-name $role || echo "Role $role not found or already deleted"
 done
 
+echo "Deleting Lambda functions..."
+for func in "canvas-ta-dashboard-canvas-data-fetcher-dev" "canvas-ta-dashboard-api-dev"; do
+    echo "Deleting function: $func"
+    aws lambda delete-function --function-name $func --region $REGION || echo "Function $func not found or already deleted"
+done
+
 echo "Deleting Secrets Manager secret..."
 aws secretsmanager delete-secret --secret-id canvas-ta-dashboard-canvas-api-token-dev --force-delete-without-recovery --region $REGION || echo "Secret not found or already deleted"
 
