@@ -46,6 +46,12 @@ for func in "canvas-ta-dashboard-canvas-data-fetcher-dev" "canvas-ta-dashboard-a
     aws lambda delete-function --function-name $func --region $REGION || echo "Function $func not found or already deleted"
 done
 
+echo "Deleting CloudWatch Log Groups..."
+for group in "/aws/lambda/canvas-ta-dashboard-canvas-data-fetcher-dev" "/aws/lambda/canvas-ta-dashboard-api-dev" "/aws/api-gateway/canvas-ta-dashboard-api-dev"; do
+    echo "Deleting log group: $group"
+    aws logs delete-log-group --log-group-name $group --region $REGION || echo "Log group $group not found or already deleted"
+done
+
 echo "Deleting Secrets Manager secret..."
 aws secretsmanager delete-secret --secret-id canvas-ta-dashboard-canvas-api-token-dev --force-delete-without-recovery --region $REGION || echo "Secret not found or already deleted"
 
