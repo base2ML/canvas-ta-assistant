@@ -8,6 +8,14 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+# Default environment
+ENV="dev"
+
+# Parse arguments
+if [ "$1" ]; then
+    ENV=$1
+fi
+
 print_header() {
     echo -e "\n${BLUE}=== $1 ===${NC}\n"
 }
@@ -19,6 +27,8 @@ print_success() {
 print_error() {
     echo -e "${RED}❌ $1${NC}"
 }
+
+print_header "Deploying to Environment: $ENV"
 
 # Check prerequisites
 print_header "Checking Prerequisites"
@@ -35,8 +45,12 @@ print_header "Step 1: Packaging Lambda Backend"
 # 2. Apply Terraform
 print_header "Step 2: Deploying Infrastructure with Terraform"
 cd terraform
+
+# Select workspace
+terraform workspace select $ENV || terraform workspace new $ENV
+
 terraform init
-terraform apply -auto-approve
+terraform apply -var-file="environments/${ENV}.tfvars" -auto-approve
 
 # Capture outputs for frontend deployment
 print_header "Step 3: Capturing Infrastructure Outputs"

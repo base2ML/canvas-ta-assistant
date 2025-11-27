@@ -5,8 +5,8 @@ aws_region  = "us-east-1"
 environment = "dev"
 
 # Canvas Configuration
-canvas_api_url   = "https://canvas.instructure.com"
-canvas_course_id = "REPLACE_WITH_YOUR_COURSE_ID"
+canvas_api_url   = "https://gatech.instructure.com"
+canvas_course_id = "20960000000516212"
 
 # CORS Configuration
 cors_allowed_origins = ["*"]

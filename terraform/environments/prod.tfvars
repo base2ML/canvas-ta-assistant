@@ -6,7 +6,7 @@ environment = "prod"
 
 # Canvas Configuration
 canvas_api_url   = "https://canvas.instructure.com"
-canvas_course_id = "REPLACE_WITH_YOUR_COURSE_ID"
+canvas_course_id = "20960000000516212"
 
 # CORS Configuration
 cors_allowed_origins = [
