@@ -11,7 +11,8 @@ mkdir -p lambda-package
 if command -v docker &> /dev/null; then
     echo "Using Docker to build Lambda-compatible package..."
     # Use official AWS Lambda Python 3.11 base image to build dependencies
-    docker run --rm --platform linux/amd64 -v "$PWD":/var/task public.ecr.aws/lambda/python:3.11 \
+    docker run --rm --platform linux/amd64 --entrypoint="" \
+        -v "$PWD":/var/task public.ecr.aws/lambda/python:3.11 \
         bash -c "cd /var/task && pip install . --target /var/task/lambda-package --no-cache-dir"
 else
     echo "Docker not available, building with uv (may have compatibility issues)..."
