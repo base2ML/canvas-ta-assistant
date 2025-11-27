@@ -15,5 +15,5 @@ cors_allowed_origins = [
 ]
 
 # Domain Configuration
-domain_aliases = ["ta-dashboard-isye6740-prod.base2ml.com"]
-# acm_certificate_arn = "arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/CERTIFICATE_ID"
+domain_aliases      = ["ta-dashboard-isye6740-prod.base2ml.com"]
+acm_certificate_arn = "arn:aws:acm:us-east-1:741783034843:certificate/ab17a163-4221-45b8-87e0-96409365a138"
