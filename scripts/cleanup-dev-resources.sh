@@ -1,6 +1,13 @@
 #!/bin/bash
 set -e
 
+# Log output to file
+LOG_FILE="cleanup.log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+echo "Starting cleanup at $(date)"
+
+
 echo "WARNING: This script will delete dev environment resources to allow a clean Terraform deployment."
 echo "Resources to be deleted:"
 echo "- S3 Bucket: canvas-ta-dashboard-frontend-dev"
@@ -56,13 +63,16 @@ echo "Deleting Secrets Manager secret..."
 aws secretsmanager delete-secret --secret-id canvas-ta-dashboard-canvas-api-token-dev --force-delete-without-recovery --region $REGION || echo "Secret not found or already deleted"
 
 echo "Deleting CloudFront Origin Access Control..."
-OAC_ID=$(aws cloudfront list-origin-access-controls --query "OriginAccessControlList.Items[?Name=='canvas-ta-dashboard-oac-dev'].Id" --output text)
-if [ -n "$OAC_ID" ]; then
-    ETAG=$(aws cloudfront get-origin-access-control --id $OAC_ID --query "ETag" --output text)
-    aws cloudfront delete-origin-access-control --id $OAC_ID --if-match $ETAG
-    echo "Deleted OAC: $OAC_ID"
-else
-    echo "OAC not found"
-fi
+# Get all OAC IDs with the matching name
+OAC_IDS=$(aws cloudfront list-origin-access-controls --query "OriginAccessControlList.Items[?Name=='canvas-ta-dashboard-oac-dev'].Id" --output text)
+
+for OAC_ID in $OAC_IDS; do
+    if [ "$OAC_ID" != "None" ] && [ -n "$OAC_ID" ]; then
+        echo "Found OAC: $OAC_ID"
+        ETAG=$(aws cloudfront get-origin-access-control --id $OAC_ID --query "ETag" --output text)
+        aws cloudfront delete-origin-access-control --id $OAC_ID --if-match $ETAG
+        echo "Deleted OAC: $OAC_ID"
+    fi
+done
 
 echo "Cleanup complete. You can now retry the deployment."
