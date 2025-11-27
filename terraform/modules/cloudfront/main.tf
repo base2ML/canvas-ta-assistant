@@ -58,11 +58,23 @@ resource "aws_cloudfront_distribution" "main" {
     }
   }
 
-  viewer_certificate {
-    cloudfront_default_certificate = length(var.aliases) == 0
-    acm_certificate_arn            = length(var.aliases) > 0 ? var.acm_certificate_arn : null
-    ssl_support_method             = length(var.aliases) > 0 ? "sni-only" : null
-    minimum_protocol_version       = length(var.aliases) > 0 ? "TLSv1.2_2021" : null
+  # Use default CloudFront certificate
+  dynamic "viewer_certificate" {
+    for_each = length(var.aliases) == 0 || var.acm_certificate_arn == "" ? [1] : []
+    content {
+      cloudfront_default_certificate = true
+      minimum_protocol_version       = "TLSv1"
+    }
+  }
+
+  # Use custom ACM certificate
+  dynamic "viewer_certificate" {
+    for_each = length(var.aliases) > 0 && var.acm_certificate_arn != "" ? [1] : []
+    content {
+      acm_certificate_arn      = var.acm_certificate_arn
+      ssl_support_method       = "sni-only"
+      minimum_protocol_version = "TLSv1.2_2021"
+    }
   }
 
   custom_error_response {

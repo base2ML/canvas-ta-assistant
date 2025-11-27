@@ -249,3 +249,4 @@ cf-config-*.json
 
 
 lambda-build/boto3/data/cloudformation/*
+claudedocs/
