@@ -19,22 +19,22 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
   const [selectedAssignment, setSelectedAssignment] = useState('all');
 
   // Build TA assignments from Canvas groups
-  const buildTAAssignments = (groupList) => {
+  const buildTAAssignments = React.useCallback((groupList) => {
     const taAssignments = {};
 
     groupList.forEach(group => {
       // Filter out non-TA groups (like "Term Project" groups)
       if (group.name && !group.name.toLowerCase().includes('project') && group.members && group.members.length > 0) {
-        taAssignments[group.name] = new Set(group.members.map(m => String(m.user_id)));
+        taAssignments[group.name] = new Set(group.members.map(m => String(m.user_id || m)));
       }
     });
 
     return taAssignments;
-  };
+  }, []);
 
   useEffect(() => {
     loadCourses();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadCourses = async () => {
@@ -69,7 +69,7 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
       const headers = await getAuthHeaders();
 
       // Get S3 pre-signed URLs from API
-      const [assignmentsRes, submissionsRes, usersRes, groupsRes] = await Promise.all([
+      const [assignmentsRes] = await Promise.all([
         fetch(`${backendUrl}/api/canvas/assignments/${courseId}`, { headers }),
         fetch(`${backendUrl}/api/canvas/submissions/${courseId}`, { headers }),
         fetch(`${backendUrl}/api/canvas/users/${courseId}`, { headers }),
@@ -99,7 +99,7 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
     }
   };
 
-  const loadSubmissionMetrics = async (courseId, assignmentId = null) => {
+  const loadSubmissionMetrics = React.useCallback(async (courseId, assignmentId = null) => {
     if (!courseId) return;
 
     try {
@@ -122,13 +122,13 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
       console.error('Error loading submission metrics:', err);
       setError(err.message);
     }
-  };
+  }, [backendUrl, getAuthHeaders]);
 
   useEffect(() => {
     if (selectedCourse) {
       loadSubmissionMetrics(selectedCourse.id, selectedAssignment);
     }
-  }, [selectedCourse, selectedAssignment]);
+  }, [selectedCourse, selectedAssignment, loadSubmissionMetrics]);
 
   // Compute TA statistics with assignment filtering
   const taStats = useMemo(() => {

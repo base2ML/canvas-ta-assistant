@@ -50,3 +50,10 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "canvas_api_token" {
+  description = "Canvas API token for data fetching"
+  type        = string
+  sensitive   = true
+  default     = ""
+}

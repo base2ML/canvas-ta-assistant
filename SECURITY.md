@@ -47,11 +47,12 @@ Before making this repository public or if tokens are compromised:
 
 Required environment variables are documented in `.env.example` files:
 
-**Backend** (`backend-canvas-fastapi/.env.example`):
+**Backend** (Terraform/Lambda environment variables):
 ```bash
 CANVAS_API_TOKEN=your-canvas-api-token-here
-CANVAS_BASE_URL=https://your-school.instructure.com
+CANVAS_API_URL=https://your-school.instructure.com
 CANVAS_COURSE_ID=your-course-id
+JWT_SECRET_KEY=your-production-secret
 ```
 
 **Frontend** (`canvas-react/.env.example`):
@@ -70,8 +71,8 @@ Before deploying to production:
 
 1. **Disable Debug Mode**
    ```bash
-   # In backend-canvas-fastapi/.env
-   DEBUG=false
+   # In Terraform variables or Lambda environment
+   ENVIRONMENT=prod
    ```
 
 2. **Configure CORS Properly**

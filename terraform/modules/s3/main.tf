@@ -48,6 +48,20 @@ resource "aws_s3_bucket_public_access_block" "canvas_data" {
   restrict_public_buckets = true
 }
 
+# S3 Bucket CORS Configuration
+resource "aws_s3_bucket_cors_configuration" "canvas_data" {
+  bucket = aws_s3_bucket.canvas_data.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "HEAD"]
+    allowed_origins = var.cors_allowed_origins
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
+
 # S3 Bucket Lifecycle Configuration
 resource "aws_s3_bucket_lifecycle_configuration" "canvas_data" {
   count      = length(var.lifecycle_rules) > 0 ? 1 : 0
@@ -60,6 +74,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "canvas_data" {
     content {
       id     = rule.value.id
       status = rule.value.status
+
+      filter {
+        prefix = ""
+      }
 
       dynamic "transition" {
         for_each = rule.value.transitions
@@ -79,7 +97,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "canvas_data" {
   }
 }
 
-# S3 Bucket Policy for Lambda and ECS access
+# S3 Bucket Policy for Lambda access
 resource "aws_s3_bucket_policy" "canvas_data" {
   bucket = aws_s3_bucket.canvas_data.id
 
@@ -87,12 +105,12 @@ resource "aws_s3_bucket_policy" "canvas_data" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "AllowApplicationAccess"
+        Sid    = "AllowLambdaAccess"
         Effect = "Allow"
         Principal = {
           AWS = [
             "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-lambda-role-${var.environment}",
-            "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-ecs-task-role-${var.environment}"
+            "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-lambda-api-role-${var.environment}"
           ]
         }
         Action = [

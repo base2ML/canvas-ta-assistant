@@ -1,0 +1,75 @@
+{
+    "resource": "/{proxy+}",
+    "path": "/api/health",
+    "httpMethod": "GET",
+    "headers": {
+        "Accept": "*/*",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Host": "example.com",
+        "User-Agent": "PostmanRuntime/7.26.8",
+        "X-Amzn-Trace-Id": "Root=1-5f0f0f0f-5f0f0f0f5f0f0f0f5f0f0f0f",
+        "X-Forwarded-Port": "443",
+        "X-Forwarded-Proto": "https"
+    },
+    "multiValueHeaders": {
+        "Accept": [
+            "*/*"
+        ],
+        "Accept-Encoding": [
+            "gzip, deflate, br"
+        ],
+        "Host": [
+            "example.com"
+        ],
+        "User-Agent": [
+            "PostmanRuntime/7.26.8"
+        ],
+        "X-Amzn-Trace-Id": [
+            "Root=1-5f0f0f0f-5f0f0f0f5f0f0f0f5f0f0f0f"
+        ],
+        "X-Forwarded-Port": [
+            "443"
+        ],
+        "X-Forwarded-Proto": [
+            "https"
+        ]
+    },
+    "queryStringParameters": null,
+    "multiValueQueryStringParameters": null,
+    "pathParameters": {
+        "proxy": "api/health"
+    },
+    "stageVariables": null,
+    "requestContext": {
+        "resourceId": "123456",
+        "resourcePath": "/{proxy+}",
+        "httpMethod": "GET",
+        "extendedRequestId": "P0f0fP0f0fP0f0f=",
+        "requestTime": "15/Jul/2020:19:56:31 +0000",
+        "path": "/api/health",
+        "accountId": "123456789012",
+        "protocol": "HTTP/1.1",
+        "stage": "test",
+        "domainPrefix": "example",
+        "requestTimeEpoch": 1594842991000,
+        "requestId": "c6af9ac6-7b61-11e6-9a41-93e8deadbeef",
+        "identity": {
+            "cognitoIdentityPoolId": null,
+            "accountId": null,
+            "cognitoIdentityId": null,
+            "caller": null,
+            "sourceIp": "127.0.0.1",
+            "principalOrgId": null,
+            "accessKey": null,
+            "cognitoAuthenticationType": null,
+            "cognitoAuthenticationProvider": null,
+            "userArn": null,
+            "userAgent": "PostmanRuntime/7.26.8",
+            "user": null
+        },
+        "domainName": "example.com",
+        "apiId": "1234567890"
+    },
+    "body": null,
+    "isBase64Encoded": false
+}

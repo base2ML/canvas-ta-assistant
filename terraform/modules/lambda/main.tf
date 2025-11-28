@@ -101,17 +101,18 @@ resource "aws_secretsmanager_secret" "canvas_api_token" {
   description             = "Canvas API token for data fetching"
   recovery_window_in_days = 7
 
+  lifecycle {
+    ignore_changes = [name]
+  }
+
   tags = var.tags
 }
 
-# Secrets Manager secret version (placeholder - will be updated after deployment)
+# Secrets Manager secret version
+# Note: Terraform will update this whenever canvas_api_token variable changes
 resource "aws_secretsmanager_secret_version" "canvas_api_token" {
   secret_id     = aws_secretsmanager_secret.canvas_api_token.id
   secret_string = jsonencode({
-    canvas_api_token = "PLACEHOLDER_TOKEN_UPDATE_AFTER_DEPLOYMENT"
+    canvas_api_token = var.canvas_api_token
   })
-
-  lifecycle {
-    ignore_changes = [secret_string]
-  }
 }

@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Canvas LMS TA Dashboard application with a FastAPI backend and React frontend, designed specifically for Teaching Assistants to manage grading workflow and monitor assignment status across courses.
 
-**Backend**: FastAPI application with AWS S3/Lambda integration for Canvas data and Cognito authentication
-**Frontend**: React 19.1.1 application built with Vite, styled with Tailwind CSS v4, integrated with AWS Cognito
-**Infrastructure**: AWS-based deployment using Terraform with ECS Fargate, S3, Lambda, and Cognito
+**Backend**: FastAPI application with AWS S3/Lambda integration for Canvas data and custom JWT authentication
+**Frontend**: React 19.1.1 application built with Vite 7.1.2, styled with Tailwind CSS v4, deployed to CloudFront
+**Infrastructure**: Fully serverless AWS deployment using Terraform with Lambda, API Gateway, CloudFront, S3, Secrets Manager, and CloudWatch
 
 ## Modern Development Stack
 
@@ -46,13 +46,45 @@ uv run pytest
 ### Infrastructure Deployment
 ```bash
 # Deploy complete AWS infrastructure with Terraform
-./deploy-infrastructure.sh
+./deploy.sh
 
 # Navigate to terraform directory for manual operations
 cd terraform/
 terraform plan
 terraform apply
 ```
+
+### CI/CD Pipeline (GitHub Actions)
+The project includes automated CI/CD workflows:
+
+- **ci.yml**: Continuous integration with linting, testing, and code quality checks
+- **deploy.yml**: Full deployment pipeline for infrastructure and application
+- **deploy-lambda.yml**: Specialized Lambda function deployment workflow
+
+**Automated Deployments:**
+- Triggered on push to `dev-*` and `main` branches
+- Runs tests, builds frontend, packages Lambda functions
+- Deploys Terraform infrastructure changes
+- Updates Lambda function code and CloudFront distributions
+- Runs post-deployment validation tests
+
+### Utility Scripts (scripts/ directory)
+
+**Deployment Scripts:**
+- `package-lambda-api.sh` - Package main FastAPI application for Lambda deployment
+- `package-lambda-refresh.sh` - Package Canvas data fetcher Lambda function
+- `deploy-frontend.sh` - Deploy frontend to S3/CloudFront (if applicable)
+- `setup-backend.sh` - Initialize backend development environment
+
+**Testing Scripts:**
+- `test-backend-local.sh` - Run backend tests locally with coverage
+- `test-frontend-local.sh` - Run frontend tests locally
+- `test-integration.sh` - Run end-to-end integration tests
+- `test-canvas-extraction.py` - Test Canvas API data extraction logic
+
+**Management Scripts:**
+- `manage_users.py` - User management utilities (create, delete, update users)
+- `cleanup-dev-resources.sh` - Clean up development AWS resources
 
 ### Frontend (React + Vite)
 Navigate to `canvas-react/` directory:
@@ -77,59 +109,127 @@ npm run lint
 npm test
 ```
 
+## Project Structure
+
+```
+cda-ta-dashboard/
+├── canvas-react/              # Frontend React application
+│   ├── src/
+│   │   ├── components/        # Reusable UI components
+│   │   ├── hooks/             # Custom React hooks
+│   │   ├── EnhancedTADashboard.jsx
+│   │   ├── SimpleDashboard.jsx
+│   │   ├── TAGradingDashboard.jsx
+│   │   ├── LateDaysTracking.jsx
+│   │   └── PeerReviewTracking.jsx
+│   └── package.json           # Frontend dependencies
+├── lambda/                    # Lambda function code
+│   ├── canvas_data_fetcher.py # Canvas API data refresh Lambda
+│   ├── lambda_function.py     # Lambda entry point
+│   └── requirements.txt       # Lambda dependencies
+├── scripts/                   # Utility and deployment scripts
+├── terraform/                 # Infrastructure as Code
+│   ├── modules/               # Terraform modules
+│   ├── environments/          # Environment-specific configs
+│   ├── main.tf                # Main Terraform configuration
+│   ├── variables.tf           # Terraform variables
+│   └── outputs.tf             # Terraform outputs
+├── .github/workflows/         # GitHub Actions CI/CD pipelines
+├── main.py                    # FastAPI backend application
+├── auth.py                    # Authentication module
+├── sync_canvas_data.py        # Canvas data sync script (local dev)
+├── pyproject.toml             # Backend dependencies (uv)
+├── deploy.sh                  # Main deployment script
+└── AGENTS.md                  # This file - Claude Code documentation
+```
+
 ## Architecture
 
 ### Backend Structure (AWS-Integrated)
-- **main.py**: Single FastAPI application with S3 data integration and Cognito authentication
-- **Dependencies**: Uses boto3 for AWS services, FastAPI for REST API, Pydantic for data validation, PyJWT for Cognito token validation
+- **main.py**: Single FastAPI application with S3 data integration and custom authentication
+- **auth.py**: Custom authentication module with JWT token validation
+- **Dependencies**: Uses boto3 for AWS services, FastAPI for REST API, Pydantic for data validation, PyJWT for token validation, bcrypt for password hashing
 - **Endpoints**:
   - `GET /health` - Health check (simple, no AWS dependencies)
-  - `GET /api/canvas/courses` - Get available courses from S3 data
-  - `POST /api/assignments` - Fetch assignments from S3 data (Canvas data refreshed via Lambda)
-  - `POST /api/assignment/{id}/details` - Get detailed assignment information from S3
-  - `POST /api/ta-groups/{course_id}` - Fetch TA groups from S3 data
-  - `POST /api/ta-grading` - Get ungraded submissions with TA assignment information from S3
-- **Authentication**: AWS Cognito JWT token validation for all API endpoints
+  - `GET /api/health` - Detailed health check with response model
+  - **Authentication endpoints**:
+    - `POST /api/auth/login` - User authentication with JWT token generation
+    - `POST /api/auth/logout` - User logout
+    - `GET /api/auth/me` - Get current authenticated user information
+  - **Canvas data endpoints**:
+    - `GET /api/canvas/courses` - Get available courses from S3 data
+    - `GET /api/canvas/data/{course_id}` - Get complete course data from S3
+    - `GET /api/canvas/assignments/{course_id}` - Fetch assignments from S3 data
+    - `GET /api/canvas/submissions/{course_id}` - Get submissions for a course
+    - `GET /api/canvas/users/{course_id}` - Get users enrolled in a course
+    - `GET /api/canvas/groups/{course_id}` - Get TA groups from S3 data
+    - `POST /api/canvas/sync` - Trigger Canvas data synchronization
+  - **Dashboard endpoints**:
+    - `GET /api/dashboard/submission-status/{course_id}` - Get submission status breakdown
+    - `GET /api/dashboard/ta-grading/{course_id}` - Get ungraded submissions with TA assignment information
+  - **User and configuration**:
+    - `GET /api/user/profile` - Get user profile information
+    - `GET /api/config` - Get application configuration
+    - `GET /api/courses` - Get list of available courses
+- **Authentication**: Custom JWT token-based authentication with bcrypt password hashing
 - **Data Source**: S3 bucket with Canvas data refreshed every 15 minutes by Lambda function
-- **Deployment**: ECS Fargate containers behind Application Load Balancer
+- **Deployment**: Serverless deployment with AWS Lambda behind API Gateway
 
-### Frontend Structure (Cognito-Integrated)
-- **React 19.1.1** with Vite build system
-- **AWS Amplify** for Cognito authentication integration
+### Frontend Structure (Authentication-Integrated)
+- **React 19.1.1** with Vite 7.1.2 build system
+- **Custom Authentication** using JWT tokens (no AWS Amplify dependency)
 - **Tailwind CSS v4** for styling (configured as dev dependency via @tailwindcss/vite)
 - **Lucide React** for icons
 - **Modern Hooks**: Uses useCallback, useEffect, useState with proper dependency arrays
-- **ESLint**: Configured with react-hooks rules and modern JavaScript standards
-- **Components**:
-  - `App.jsx` - Main TA dashboard with Cognito authentication and S3 data integration
-  - `AuthWrapper.jsx` - Cognito authentication wrapper component
+- **ESLint 9.x**: Configured with react-hooks rules and modern JavaScript standards
+- **Main Dashboard Views**:
+  - `App.jsx` - Basic TA dashboard entry point
+  - `EnhancedTADashboard.jsx` - Advanced TA dashboard with enhanced features
+  - `SimpleDashboard.jsx` - Simplified dashboard view
   - `TAGradingDashboard.jsx` - Specialized TA grading management interface
+- **Tracking Components**:
   - `LateDaysTracking.jsx` - Late days tracking component
   - `PeerReviewTracking.jsx` - Peer review tracking component
+- **Authentication Components** (in components/):
+  - `AuthWrapper.jsx` - Full authentication wrapper with login/logout
+  - `SimpleAuthWrapper.jsx` - Simplified authentication wrapper
+  - `LoginForm.jsx` - Login form component
+- **UI Components** (in components/):
+  - `AssignmentStatusBreakdown.jsx` - Assignment status visualization
+  - `SubmissionStatusCards.jsx` - Submission status card components
 - **Features**:
-  - AWS Cognito user authentication with JWT tokens
+  - Custom JWT-based user authentication
   - Assignment status tracking with due dates and direct Canvas links
   - TA grading dashboard with workload distribution across TA groups
   - Course and assignment filtering for efficient workflow
   - S3-based Canvas data integration (no direct Canvas API calls)
-  - Dual view system: Assignment List + TA Grading Management
+  - Multiple dashboard views: Basic, Enhanced, Simple, and TA Grading
 
 ### Data Models
 The backend defines comprehensive Pydantic models for:
-- AWS Cognito user information and JWT token validation
+- User authentication and JWT token validation (LoginRequest, LoginResponse, UserProfile)
+- Health check responses (HealthResponse)
 - Course and assignment information from S3 data
 - Assignment status tracking (not_submitted, pending, graded, excused)
 - TA groups and grading management (TAGroup, UngradedSubmission, TAGradingResponse)
 - S3 data structures and API responses with error handling
+- Configuration models for application settings
 
 ### AWS Infrastructure Components
-- **Cognito User Pool**: User authentication and JWT token management
-- **S3 Bucket**: Canvas data storage with organized structure (course_data/, assignments/, etc.)
-- **Lambda Function**: Scheduled Canvas API data refresh every 15 minutes
-- **ECS Fargate**: Container hosting with auto-scaling
-- **Application Load Balancer**: HTTP/HTTPS traffic routing
-- **ECR Repository**: Docker image storage
-- **Terraform**: Infrastructure as Code for reproducible deployments
+- **Lambda Functions**:
+  - Main API backend (main.py) - FastAPI application handling all API endpoints
+  - Canvas data fetcher (canvas_data_fetcher.py) - Scheduled Canvas API data refresh every 15 minutes
+- **API Gateway**: REST API endpoint routing with custom domain support
+- **CloudFront**: CDN for frontend React application with HTTPS support
+- **S3 Buckets**:
+  - Canvas data storage with organized structure (course_data/, assignments/, etc.)
+  - Frontend static asset hosting
+- **Secrets Manager**: Secure storage for Canvas API tokens, JWT secrets, and credentials
+- **CloudWatch**:
+  - Lambda function logs and metrics
+  - EventBridge rules for scheduled Lambda executions
+- **Route 53**: DNS management and custom domain routing (optional)
+- **Terraform**: Infrastructure as Code for reproducible deployments with modular structure
 
 ## Package Management
 
@@ -139,39 +239,41 @@ The backend defines comprehensive Pydantic models for:
 
 ## Key Integration Points
 
-- AWS Cognito authentication via JWT tokens
+- Custom JWT-based authentication with bcrypt password hashing
 - S3-based Canvas data access with structured JSON storage
-- Lambda-scheduled Canvas API data refresh (every 15 minutes)
+- Lambda-scheduled Canvas API data refresh (every 15 minutes via canvas_data_fetcher.py)
 - Assignment status determination based on S3-stored submission state
-- ECS Fargate container orchestration with health checks
-- Application Load Balancer for high availability
-- Terraform-managed AWS infrastructure
+- Fully serverless architecture: Lambda + API Gateway + CloudFront
+- Health check endpoints for monitoring Lambda functions
+- Terraform-managed AWS infrastructure with modular design
+- AWS Secrets Manager for secure credential storage
+- CloudWatch EventBridge for scheduled Canvas data synchronization
 
 ## Environment Setup
 
 ### AWS Configuration
-The application requires AWS infrastructure deployed via Terraform. Backend automatically detects AWS services via environment variables set by ECS.
+The application requires AWS infrastructure deployed via Terraform. Backend Lambda functions automatically detect AWS services via environment variables set by Lambda execution environment.
 
 ### Frontend Environment Variables
-The React frontend uses AWS Cognito for authentication. Create a `.env` file in the `canvas-react/` directory:
+The React frontend uses custom JWT authentication. Create a `.env` file in the `canvas-react/` directory:
 
 ```bash
-# AWS Cognito Configuration - From Terraform Output
-VITE_COGNITO_USER_POOL_ID=us-east-1_XXXXXXXXX
-VITE_COGNITO_USER_POOL_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxx
-VITE_API_ENDPOINT=https://your-alb-endpoint.us-east-1.elb.amazonaws.com
+# API Configuration - From Terraform Output or Local Development
+VITE_API_ENDPOINT=https://your-api-endpoint.amazonaws.com
+# For local development:
+# VITE_API_ENDPOINT=http://localhost:8000
 ```
 
 **Configuration Sources:**
-1. **Terraform outputs** - Use `terraform output` to get Cognito User Pool IDs and API endpoints
+1. **Terraform outputs** - Use `terraform output` to get API endpoints
 2. **Environment variables** (.env file) - For local development
 3. **aws-config.js** - Contains fallback defaults from deployed infrastructure
 
 **Security Notes:**
 - No Canvas API tokens stored in frontend (handled by Lambda function)
-- Cognito User Pool IDs are safe to include in frontend code
+- User credentials handled via POST /api/auth/login endpoint
 - Use HTTPS endpoints for production deployments
-- JWT tokens are managed automatically by AWS Amplify
+- JWT tokens are stored in browser localStorage and included in API request headers
 
 ## Security Best Practices
 
@@ -240,13 +342,16 @@ When developing:
 
 Before deploying to production:
 
-1. **Configure Canvas API tokens in Lambda environment** (not in frontend)
-2. **Use HTTPS ALB endpoints** (automatically configured by Terraform)
-3. **Configure CORS** with specific allowed origins in main.py
-4. **Enable ECS task security** with least-privilege IAM roles
-5. **Use Cognito for all authentication** (no local credential storage)
-6. **Review SECURITY.md** for complete deployment checklist
-7. **Monitor CloudWatch logs** for security events
+1. **Configure Canvas API tokens in Lambda environment via Secrets Manager** (not in frontend)
+2. **Use HTTPS endpoints** via API Gateway custom domain with CloudFront
+3. **Configure CORS** with specific allowed origins in main.py Lambda handler
+4. **Enable least-privilege IAM roles** for Lambda functions with minimal permissions
+5. **Use JWT token authentication** with secure secret keys stored in Secrets Manager
+6. **Configure bcrypt password hashing** for user credentials
+7. **Enable API Gateway throttling** to prevent abuse and DDoS attacks
+8. **Configure CloudFront WAF** for web application firewall protection (optional)
+9. **Review SECURITY.md** for complete deployment checklist
+10. **Monitor CloudWatch logs** for security events, authentication failures, and Lambda errors
 
 ### Security Resources
 
@@ -294,7 +399,7 @@ resolve-library-id "react"
 get-library-docs "/facebook/react" topic:"hooks"
 
 # Before modifying Vite config
-resolve-library-id "vite" 
+resolve-library-id "vite"
 get-library-docs "/vitejs/vite" topic:"configuration"
 
 # Before styling changes
