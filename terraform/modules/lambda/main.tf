@@ -109,14 +109,10 @@ resource "aws_secretsmanager_secret" "canvas_api_token" {
 }
 
 # Secrets Manager secret version
+# Note: Terraform will update this whenever canvas_api_token variable changes
 resource "aws_secretsmanager_secret_version" "canvas_api_token" {
   secret_id     = aws_secretsmanager_secret.canvas_api_token.id
   secret_string = jsonencode({
     canvas_api_token = var.canvas_api_token != "" ? var.canvas_api_token : "PLACEHOLDER_TOKEN_UPDATE_AFTER_DEPLOYMENT"
   })
-
-  lifecycle {
-    # Only ignore changes if no token was provided (placeholder mode)
-    ignore_changes = var.canvas_api_token == "" ? [secret_string] : []
-  }
 }
