@@ -280,6 +280,71 @@ jobs:
             echo "⚠️  Frontend returned code: $HTTP_CODE"
           fi
 
+      - name: Test CORS and Login Functionality
+        run: |
+          API_ENDPOINT="${{ needs.deploy-infrastructure.outputs.api_endpoint }}"
+
+          # Get CloudFront domain for dev environment
+          ENV="${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'prod' || 'dev') }}"
+          if [ "$ENV" = "dev" ]; then
+            FRONTEND_ORIGIN="https://ta-dashboard-isye6740-dev.base2ml.com"
+          else
+            FRONTEND_ORIGIN="https://ta-dashboard-isye6740-prod.base2ml.com"
+          fi
+
+          echo "Testing CORS from origin: $FRONTEND_ORIGIN"
+
+          # Test CORS preflight (OPTIONS request)
+          echo "Testing CORS preflight request..."
+          CORS_RESPONSE=$(curl -s -X OPTIONS "${API_ENDPOINT}/api/auth/login" \
+            -H "Origin: ${FRONTEND_ORIGIN}" \
+            -H "Access-Control-Request-Method: POST" \
+            -H "Access-Control-Request-Headers: content-type" \
+            -w "\nHTTP_CODE:%{http_code}" \
+            -i)
+
+          HTTP_CODE=$(echo "$CORS_RESPONSE" | grep "HTTP_CODE:" | cut -d: -f2)
+
+          # Check for CORS headers
+          if echo "$CORS_RESPONSE" | grep -qi "access-control-allow-origin"; then
+            echo "✅ CORS headers present"
+          else
+            echo "❌ CORS headers missing"
+            exit 1
+          fi
+
+          # Preflight should return 200 or 204
+          if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "204" ]; then
+            echo "✅ CORS preflight passed (HTTP $HTTP_CODE)"
+          else
+            echo "❌ CORS preflight failed (HTTP $HTTP_CODE)"
+            echo "$CORS_RESPONSE"
+            exit 1
+          fi
+
+          # Test actual login request with CORS
+          echo "Testing login endpoint with CORS headers..."
+          LOGIN_RESPONSE=$(curl -s -X POST "${API_ENDPOINT}/api/auth/login" \
+            -H "Origin: ${FRONTEND_ORIGIN}" \
+            -H "Content-Type: application/json" \
+            -d '{"email":"test@example.com","password":"test"}' \
+            -w "\nHTTP_CODE:%{http_code}")
+
+          HTTP_CODE=$(echo "$LOGIN_RESPONSE" | grep "HTTP_CODE:" | cut -d: -f2)
+          RESPONSE_BODY=$(echo "$LOGIN_RESPONSE" | grep -v "HTTP_CODE:")
+
+          # Should return 401 for invalid credentials
+          if [ "$HTTP_CODE" = "401" ]; then
+            echo "✅ Login endpoint accessible with proper authentication error"
+            echo "   Response: $RESPONSE_BODY"
+          else
+            echo "❌ Login endpoint returned unexpected code: $HTTP_CODE"
+            echo "   Response: $RESPONSE_BODY"
+            exit 1
+          fi
+
+          echo "✅ All CORS and login functionality tests passed"
+
       - name: Deployment Summary
         run: |
           cat << EOF >> $GITHUB_STEP_SUMMARY
@@ -302,6 +367,8 @@ jobs:
           - ✅ Frontend deployed to S3
           - ✅ CloudFront cache invalidated
           - ✅ Health checks passed
+          - ✅ CORS preflight validated
+          - ✅ Login functionality tested
 
           **Deployment Status**: SUCCESS ✅
           EOF
