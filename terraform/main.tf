@@ -64,6 +64,9 @@ module "s3" {
     }
   ]
 
+  # CORS configuration for frontend access
+  cors_allowed_origins = var.cors_allowed_origins
+
   tags = local.common_tags
 }
 

@@ -48,6 +48,20 @@ resource "aws_s3_bucket_public_access_block" "canvas_data" {
   restrict_public_buckets = true
 }
 
+# S3 Bucket CORS Configuration
+resource "aws_s3_bucket_cors_configuration" "canvas_data" {
+  bucket = aws_s3_bucket.canvas_data.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "HEAD"]
+    allowed_origins = var.cors_allowed_origins
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
+
 # S3 Bucket Lifecycle Configuration
 resource "aws_s3_bucket_lifecycle_configuration" "canvas_data" {
   count      = length(var.lifecycle_rules) > 0 ? 1 : 0
