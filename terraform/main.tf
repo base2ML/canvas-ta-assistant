@@ -80,6 +80,9 @@ module "lambda" {
   timeout       = 900  # 15 minutes max execution time
   memory_size   = 512
 
+  # Canvas API token (from GitHub secret)
+  canvas_api_token = var.canvas_api_token
+
   # Environment variables
   environment_variables = {
     S3_BUCKET_NAME    = module.s3.bucket_name

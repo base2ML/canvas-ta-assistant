@@ -108,14 +108,15 @@ resource "aws_secretsmanager_secret" "canvas_api_token" {
   tags = var.tags
 }
 
-# Secrets Manager secret version (placeholder - will be updated after deployment)
+# Secrets Manager secret version
 resource "aws_secretsmanager_secret_version" "canvas_api_token" {
   secret_id     = aws_secretsmanager_secret.canvas_api_token.id
   secret_string = jsonencode({
-    canvas_api_token = "PLACEHOLDER_TOKEN_UPDATE_AFTER_DEPLOYMENT"
+    canvas_api_token = var.canvas_api_token != "" ? var.canvas_api_token : "PLACEHOLDER_TOKEN_UPDATE_AFTER_DEPLOYMENT"
   })
 
   lifecycle {
-    ignore_changes = [secret_string]
+    # Only ignore changes if no token was provided (placeholder mode)
+    ignore_changes = var.canvas_api_token == "" ? [secret_string] : []
   }
 }
