@@ -59,10 +59,6 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ env.AWS_REGION }}
 
-      - name: Terraform Init
-        working-directory: ./terraform
-        run: terraform init
-
       - name: Set Environment
         id: set-env
         run: |
@@ -75,6 +71,12 @@ jobs:
           else
             echo "env_name=dev" >> $GITHUB_OUTPUT
           fi
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: |
+          terraform init \
+            -backend-config="key=env:/${{ steps.set-env.outputs.env_name }}/terraform.tfstate"
 
       - name: Terraform Plan
         working-directory: ./terraform
