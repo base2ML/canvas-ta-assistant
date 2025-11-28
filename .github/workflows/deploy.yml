@@ -83,6 +83,7 @@ jobs:
         env:
           TF_VAR_environment: ${{ steps.set-env.outputs.env_name }}
           TF_VAR_canvas_api_token: ${{ secrets.CANVAS_API_TOKEN }}
+          TF_VAR_jwt_secret_key: ${{ steps.set-env.outputs.env_name == 'prod' && secrets.JWT_SECRET_KEY_PROD || secrets.JWT_SECRET_KEY_DEV }}
         run: |
           terraform plan \
             -var-file="environments/${{ steps.set-env.outputs.env_name }}.tfvars" \

@@ -131,6 +131,7 @@ module "lambda_api" {
     ENVIRONMENT       = local.environment
     S3_BUCKET_NAME    = module.s3.bucket_name
     CORS_ORIGINS      = join(",", var.cors_allowed_origins)
+    JWT_SECRET_KEY    = var.jwt_secret_key
   }
 
   tags = local.common_tags

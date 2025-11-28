@@ -31,6 +31,13 @@ variable "canvas_api_token" {
   default     = ""
 }
 
+# JWT Secret Key for API authentication
+variable "jwt_secret_key" {
+  description = "JWT secret key for API authentication (sensitive)"
+  type        = string
+  sensitive   = true
+}
+
 # CORS configuration
 variable "cors_allowed_origins" {
   description = "List of allowed CORS origins"
