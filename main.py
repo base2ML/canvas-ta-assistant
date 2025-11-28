@@ -84,7 +84,12 @@ async def validate_environment():
 
 # CORS middleware - production configured
 # Development CORS - permissive for local testing
-DEV_CORS_ORIGINS = ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8000']
+DEV_CORS_ORIGINS = [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:8000',
+    'https://ta-dashboard-isye6740-dev.base2ml.com'  # CloudFront dev domain
+]
 
 # Production CORS - strict domain whitelist
 PROD_CORS_ORIGINS = os.getenv('CORS_ORIGINS', '').split(',') if os.getenv('CORS_ORIGINS') else []
