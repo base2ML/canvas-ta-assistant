@@ -130,11 +130,16 @@ def fetch_course_data(course) -> Dict[str, Any]:
         if "Term Project" not in getattr(group, 'name', ''):  # Filter out project groups if needed
             members = []
             for member in getattr(group, 'users', []):
-                members.append({
-                    'id': member.id,
-                    'user_id': member.id,
-                    'name': member.name
-                })
+                # Handle both dict and object types from Canvas API
+                member_id = member.get('id') if isinstance(member, dict) else getattr(member, 'id', None)
+                member_name = member.get('name') if isinstance(member, dict) else getattr(member, 'name', None)
+
+                if member_id:  # Only add if we have a valid ID
+                    members.append({
+                        'id': member_id,
+                        'user_id': member_id,
+                        'name': member_name
+                    })
 
             groups.append({
                 'id': group.id,
