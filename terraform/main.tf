@@ -88,10 +88,11 @@ module "lambda" {
 
   # Environment variables
   environment_variables = {
-    S3_BUCKET_NAME    = module.s3.bucket_name
-    CANVAS_API_URL    = var.canvas_api_url
-    CANVAS_COURSE_ID  = var.canvas_course_id
-    ENVIRONMENT       = local.environment
+    S3_BUCKET_NAME      = module.s3.bucket_name
+    CANVAS_API_URL      = var.canvas_api_url
+    CANVAS_COURSE_ID    = var.canvas_course_id
+    ENVIRONMENT         = local.environment
+    CANVAS_TOKENS_SECRET = "${local.project_name}-canvas-api-token-${local.environment}"
   }
 
   # IAM permissions
