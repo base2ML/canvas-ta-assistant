@@ -22,7 +22,7 @@ const TAGradingDashboard = ({ backendUrl, onBack, getAuthHeaders }) => {
   // Load courses on component mount
   useEffect(() => {
     loadAvailableCourses();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadAvailableCourses = async () => {
@@ -64,11 +64,9 @@ const TAGradingDashboard = ({ backendUrl, onBack, getAuthHeaders }) => {
   const fetchTAGroups = async (courseId) => {
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`${backendUrl}/api/ta-groups/${courseId}`, {
-        method: 'POST',
+      const response = await fetch(`${backendUrl}/api/canvas/groups/${courseId}`, {
         headers
       });
-
 
       const data = await response.json();
 
@@ -77,8 +75,11 @@ const TAGradingDashboard = ({ backendUrl, onBack, getAuthHeaders }) => {
         throw new Error(`Failed to fetch TA groups (${response.status}): ${errorMessage}`);
       }
 
-      _setTAGroups(data.ta_groups || []);
-      return data.course_info;
+      _setTAGroups(data.groups || []);
+      return {
+        id: courseId,
+        name: currentCourse?.name || `Course ${courseId}`
+      };
     } catch (err) {
       const errorMessage = err.message || (typeof err === 'string' ? err : JSON.stringify(err));
       throw new Error(`Error fetching TA groups: ${errorMessage}`);
@@ -88,26 +89,66 @@ const TAGradingDashboard = ({ backendUrl, onBack, getAuthHeaders }) => {
   const fetchUngradedSubmissions = async (courseId) => {
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`${backendUrl}/api/ta-grading`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          course_id: courseId
-        })
+
+      // Fetch all necessary data from existing endpoints
+      const [assignmentsRes, submissionsRes] = await Promise.all([
+        fetch(`${backendUrl}/api/canvas/assignments/${courseId}`, { headers }),
+        fetch(`${backendUrl}/api/canvas/submissions/${courseId}`, { headers })
+      ]);
+
+      const assignmentsData = await assignmentsRes.json();
+      const submissionsData = await submissionsRes.json();
+
+      // Handle both S3 URL mode and direct data mode
+      let assignments = [];
+      let submissions = [];
+
+      if (assignmentsData.data_url) {
+        const s3Response = await fetch(assignmentsData.data_url);
+        const canvasData = await s3Response.json();
+        assignments = canvasData.assignments || [];
+        submissions = canvasData.submissions || [];
+      } else {
+        assignments = assignmentsData.assignments || [];
+        submissions = submissionsData.submissions || [];
+      }
+
+      // Calculate ungraded submissions and stats locally
+      const ungradedSubs = submissions.filter(
+        sub => sub.workflow_state === 'submitted' ||
+          sub.workflow_state === 'unsubmitted' ||
+          !sub.graded_at
+      );
+
+      const assignmentStatsMap = {};
+      assignments.forEach(assignment => {
+        const assignmentSubs = submissions.filter(s => s.assignment_id === assignment.id);
+        const graded = assignmentSubs.filter(s => s.graded_at).length;
+
+        assignmentStatsMap[assignment.id] = {
+          assignment_id: assignment.id,
+          assignment_name: assignment.name,
+          total_submissions: assignmentSubs.length,
+          graded: graded,
+          ungraded: assignmentSubs.length - graded,
+          due_at: assignment.due_at
+        };
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        const errorMessage = handleApiError(data, response);
-        throw new Error(`Failed to fetch ungraded submissions (${response.status}): ${errorMessage}`);
-      }
+      const data = {
+        ungraded_submissions: ungradedSubs,
+        assignment_stats: Object.values(assignmentStatsMap),
+        total_ungraded: ungradedSubs.length
+      };
 
       setUngradedSubmissions(data.ungraded_submissions || []);
       _setTAAssignments(data.grading_distribution || {});
       _setTotalUngraded(data.total_ungraded || 0);
 
-      return data.course_info;
+      return {
+        id: courseId,
+        name: currentCourse?.name || `Course ${courseId}`
+      };
     } catch (err) {
       const errorMessage = err.message || (typeof err === 'string' ? err : JSON.stringify(err));
       throw new Error(`Error fetching ungraded submissions: ${errorMessage}`);
@@ -347,7 +388,7 @@ const TAGradingDashboard = ({ backendUrl, onBack, getAuthHeaders }) => {
                       ))}
                     </select>
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">TA</label>
                     <select
@@ -381,170 +422,166 @@ const TAGradingDashboard = ({ backendUrl, onBack, getAuthHeaders }) => {
                       return new Date(a.due_at) - new Date(b.due_at);
                     })
                     .map(assignment => {
-                    const progressPercent = assignment.percentage_graded;
-                    const isCompleted = progressPercent === 100;
-                    const isExpanded = expandedAssignments.has(assignment.assignment_id);
-                    
-                    // Use the backend-provided TA grading breakdown directly
-                    let taBreakdown = assignment.ta_grading_breakdown || [];
-                    
-                    const hasBreakdown = taBreakdown && taBreakdown.length > 0;
-                    
-                    
-                    return (
-                      <div
-                        key={assignment.assignment_id}
-                        className="border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
-                      >
-                        <div 
-                          className="p-4 cursor-pointer"
-                          onClick={() => toggleAssignmentExpanded(assignment.assignment_id)}
+                      const progressPercent = assignment.percentage_graded;
+                      const isCompleted = progressPercent === 100;
+                      const isExpanded = expandedAssignments.has(assignment.assignment_id);
+
+                      // Use the backend-provided TA grading breakdown directly
+                      let taBreakdown = assignment.ta_grading_breakdown || [];
+
+                      const hasBreakdown = taBreakdown && taBreakdown.length > 0;
+
+
+                      return (
+                        <div
+                          key={assignment.assignment_id}
+                          className="border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
                         >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-3">
-                                <div className={`p-2 rounded-full ${isCompleted ? 'bg-green-100' : 'bg-yellow-100'}`}>
-                                  {isCompleted ? (
-                                    <CheckCircle className="h-4 w-4 text-green-600" />
-                                  ) : (
-                                    <Clock className="h-4 w-4 text-yellow-600" />
-                                  )}
-                                </div>
-                                <div className="flex-1">
-                                  <div className="flex items-center justify-between">
-                                    <div>
-                                      <h4 className="font-medium text-gray-900">{assignment.assignment_name}</h4>
-                                      <p className="text-sm text-gray-600">
-                                        {assignment.graded_submissions}/{assignment.total_submissions} submissions graded
-                                      </p>
+                          <div
+                            className="p-4 cursor-pointer"
+                            onClick={() => toggleAssignmentExpanded(assignment.assignment_id)}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-3">
+                                  <div className={`p-2 rounded-full ${isCompleted ? 'bg-green-100' : 'bg-yellow-100'}`}>
+                                    {isCompleted ? (
+                                      <CheckCircle className="h-4 w-4 text-green-600" />
+                                    ) : (
+                                      <Clock className="h-4 w-4 text-yellow-600" />
+                                    )}
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="flex items-center justify-between">
+                                      <div>
+                                        <h4 className="font-medium text-gray-900">{assignment.assignment_name}</h4>
+                                        <p className="text-sm text-gray-600">
+                                          {assignment.graded_submissions}/{assignment.total_submissions} submissions graded
+                                        </p>
+                                      </div>
+                                      <button className="ml-2 p-1 hover:bg-gray-100 rounded">
+                                        {isExpanded ? (
+                                          <ChevronDown className="h-4 w-4 text-gray-500" />
+                                        ) : (
+                                          <ChevronRight className="h-4 w-4 text-gray-500" />
+                                        )}
+                                      </button>
                                     </div>
-                                    <button className="ml-2 p-1 hover:bg-gray-100 rounded">
-                                      {isExpanded ? (
-                                        <ChevronDown className="h-4 w-4 text-gray-500" />
-                                      ) : (
-                                        <ChevronRight className="h-4 w-4 text-gray-500" />
-                                      )}
-                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="ml-9 mt-3">
+                                  {/* Progress Bar */}
+                                  <div className="w-full bg-gray-200 rounded-full h-2">
+                                    <div
+                                      className={`h-2 rounded-full transition-all duration-300 ${isCompleted ? 'bg-green-500' : 'bg-yellow-500'
+                                        }`}
+                                      style={{ width: `${progressPercent}%` }}
+                                    ></div>
+                                  </div>
+                                  <div className="flex justify-between items-center mt-2 text-sm text-gray-500">
+                                    <span>{progressPercent}% Complete</span>
+                                    {assignment.due_at && (
+                                      <div className="flex items-center">
+                                        <Calendar className="h-4 w-4 mr-1" />
+                                        Due: {formatDate(assignment.due_at)}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-gray-400 mt-1">
+                                    {hasBreakdown ?
+                                      `Click to view TA grading breakdown (${taBreakdown?.length || 0} TAs assigned)` :
+                                      `Click to view details (no TA assignments found in Canvas)`
+                                    }
                                   </div>
                                 </div>
                               </div>
-                              
-                              <div className="ml-9 mt-3">
-                                {/* Progress Bar */}
-                                <div className="w-full bg-gray-200 rounded-full h-2">
-                                  <div
-                                    className={`h-2 rounded-full transition-all duration-300 ${
-                                      isCompleted ? 'bg-green-500' : 'bg-yellow-500'
-                                    }`}
-                                    style={{ width: `${progressPercent}%` }}
-                                  ></div>
+
+                              <div className="text-right ml-4">
+                                <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${isCompleted
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-yellow-100 text-yellow-800'
+                                  }`}>
+                                  {isCompleted ? 'Complete' : `${assignment.ungraded_submissions} Pending`}
                                 </div>
-                                <div className="flex justify-between items-center mt-2 text-sm text-gray-500">
-                                  <span>{progressPercent}% Complete</span>
-                                  {assignment.due_at && (
-                                    <div className="flex items-center">
-                                      <Calendar className="h-4 w-4 mr-1" />
-                                      Due: {formatDate(assignment.due_at)}
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="text-xs text-gray-400 mt-1">
-                                  {hasBreakdown ? 
-                                    `Click to view TA grading breakdown (${taBreakdown?.length || 0} TAs assigned)` : 
-                                    `Click to view details (no TA assignments found in Canvas)`
-                                  }
-                                </div>
+                                {assignment.html_url && (
+                                  <a
+                                    href={assignment.html_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center text-blue-500 hover:text-blue-600 text-sm mt-2"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <Eye className="h-4 w-4 mr-1" />
+                                    View Assignment
+                                  </a>
+                                )}
                               </div>
                             </div>
-                            
-                            <div className="text-right ml-4">
-                              <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                isCompleted 
-                                  ? 'bg-green-100 text-green-800' 
-                                  : 'bg-yellow-100 text-yellow-800'
-                              }`}>
-                                {isCompleted ? 'Complete' : `${assignment.ungraded_submissions} Pending`}
-                              </div>
-                              {assignment.html_url && (
-                                <a
-                                  href={assignment.html_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center text-blue-500 hover:text-blue-600 text-sm mt-2"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <Eye className="h-4 w-4 mr-1" />
-                                  View Assignment
-                                </a>
+                          </div>
+
+                          {/* TA Grading Breakdown - Expandable */}
+                          {isExpanded && (
+                            <div className="border-t border-gray-100 p-4 bg-gray-50">
+                              <h5 className="font-medium text-gray-900 mb-3">TA Grading Breakdown</h5>
+                              {hasBreakdown ? (
+                                <div className="overflow-x-auto">
+                                  <table className="min-w-full bg-white border border-gray-200 rounded-lg">
+                                    <thead className="bg-gray-50">
+                                      <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">TA Name</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Students</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Graded</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">On Time</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Late</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Missing</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200">
+                                      {taBreakdown.map((taStats, index) => (
+                                        <tr key={index} className="hover:bg-gray-50">
+                                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{taStats.ta_name}</td>
+                                          <td className="px-4 py-3 text-sm text-gray-600">{taStats.total_assigned}</td>
+                                          <td className="px-4 py-3 text-sm text-gray-600">{taStats.graded}/{taStats.total_assigned}</td>
+                                          <td className="px-4 py-3 text-sm">
+                                            <div className="flex items-center space-x-2">
+                                              <div className="w-16 bg-gray-200 rounded-full h-2">
+                                                <div
+                                                  className={`h-2 rounded-full ${taStats.percentage_complete === 100 ? 'bg-green-500' : 'bg-yellow-500'
+                                                    }`}
+                                                  style={{ width: `${taStats.percentage_complete}%` }}
+                                                ></div>
+                                              </div>
+                                              <span className={`text-xs font-medium ${taStats.percentage_complete === 100 ? 'text-green-600' : 'text-yellow-600'
+                                                }`}>
+                                                {taStats.percentage_complete}%
+                                              </span>
+                                            </div>
+                                          </td>
+                                          <td className="px-4 py-3 text-sm text-green-600">{taStats.submitted_on_time}</td>
+                                          <td className="px-4 py-3 text-sm text-yellow-600">{taStats.submitted_late}</td>
+                                          <td className="px-4 py-3 text-sm text-red-600">{taStats.not_submitted}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                                  <div className="flex items-center">
+                                    <AlertTriangle className="h-4 w-4 text-yellow-600 mr-2" />
+                                    <span className="text-sm text-yellow-700">
+                                      No TA assignments found for this assignment in Canvas.
+                                    </span>
+                                  </div>
+                                </div>
                               )}
                             </div>
-                          </div>
+                          )}
                         </div>
-                        
-                        {/* TA Grading Breakdown - Expandable */}
-                        {isExpanded && (
-                          <div className="border-t border-gray-100 p-4 bg-gray-50">
-                            <h5 className="font-medium text-gray-900 mb-3">TA Grading Breakdown</h5>
-                            {hasBreakdown ? (
-                              <div className="overflow-x-auto">
-                                <table className="min-w-full bg-white border border-gray-200 rounded-lg">
-                                  <thead className="bg-gray-50">
-                                    <tr>
-                                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">TA Name</th>
-                                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Students</th>
-                                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Graded</th>
-                                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
-                                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">On Time</th>
-                                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Late</th>
-                                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Missing</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-gray-200">
-                                    {taBreakdown.map((taStats, index) => (
-                                      <tr key={index} className="hover:bg-gray-50">
-                                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{taStats.ta_name}</td>
-                                        <td className="px-4 py-3 text-sm text-gray-600">{taStats.total_assigned}</td>
-                                        <td className="px-4 py-3 text-sm text-gray-600">{taStats.graded}/{taStats.total_assigned}</td>
-                                        <td className="px-4 py-3 text-sm">
-                                          <div className="flex items-center space-x-2">
-                                            <div className="w-16 bg-gray-200 rounded-full h-2">
-                                              <div
-                                                className={`h-2 rounded-full ${
-                                                  taStats.percentage_complete === 100 ? 'bg-green-500' : 'bg-yellow-500'
-                                                }`}
-                                                style={{ width: `${taStats.percentage_complete}%` }}
-                                              ></div>
-                                            </div>
-                                            <span className={`text-xs font-medium ${
-                                              taStats.percentage_complete === 100 ? 'text-green-600' : 'text-yellow-600'
-                                            }`}>
-                                              {taStats.percentage_complete}%
-                                            </span>
-                                          </div>
-                                        </td>
-                                        <td className="px-4 py-3 text-sm text-green-600">{taStats.submitted_on_time}</td>
-                                        <td className="px-4 py-3 text-sm text-yellow-600">{taStats.submitted_late}</td>
-                                        <td className="px-4 py-3 text-sm text-red-600">{taStats.not_submitted}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            ) : (
-                              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
-                                <div className="flex items-center">
-                                  <AlertTriangle className="h-4 w-4 text-yellow-600 mr-2" />
-                                  <span className="text-sm text-yellow-700">
-                                    No TA assignments found for this assignment in Canvas.
-                                  </span>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
                 </div>
               </div>
             )}

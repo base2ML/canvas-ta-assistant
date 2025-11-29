@@ -250,3 +250,5 @@ cf-config-*.json
 
 lambda-build/boto3/data/cloudformation/*
 claudedocs/
+users.json
+mock_canvas_data.json

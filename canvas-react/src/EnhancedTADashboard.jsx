@@ -79,6 +79,8 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
       // Fetch full Canvas data from S3 using pre-signed URL
       if (assignmentsRes.ok) {
         const urlData = await assignmentsRes.json();
+
+        // Handle S3 pre-signed URL mode (production)
         if (urlData.data_url) {
           const s3Response = await fetch(urlData.data_url);
           const canvasData = await s3Response.json();
@@ -86,6 +88,29 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
           setSubmissions(canvasData.submissions || []);
           setUsers(canvasData.users || []);
           setGroups(canvasData.groups || []);
+        }
+        // Handle direct data mode (local mock data)
+        else if (urlData.assignments) {
+          setAssignments(urlData.assignments || []);
+          // For mock mode, we need to fetch additional data
+          const [submissionsRes, usersRes, groupsRes] = await Promise.all([
+            fetch(`${backendUrl}/api/canvas/submissions/${selectedCourse.id}`, { headers }),
+            fetch(`${backendUrl}/api/canvas/users/${selectedCourse.id}`, { headers }),
+            fetch(`${backendUrl}/api/canvas/groups/${selectedCourse.id}`, { headers })
+          ]);
+
+          if (submissionsRes.ok) {
+            const subData = await submissionsRes.json();
+            setSubmissions(subData.submissions || []);
+          }
+          if (usersRes.ok) {
+            const userData = await usersRes.json();
+            setUsers(userData.users || []);
+          }
+          if (groupsRes.ok) {
+            const groupData = await groupsRes.json();
+            setGroups(groupData.groups || []);
+          }
         }
       }
 

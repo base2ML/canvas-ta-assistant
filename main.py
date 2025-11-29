@@ -76,7 +76,7 @@ async def validate_environment():
 
     missing = [var for var in required_vars if not os.getenv(var)]
 
-    if missing and os.getenv('ENVIRONMENT') != 'dev':
+    if missing and os.getenv('ENVIRONMENT', 'dev') != 'dev':
         error_msg = "Missing required environment variables:\n"
         for var in missing:
             error_msg += f"  - {var}: {required_vars[var]}\n"
@@ -535,6 +535,23 @@ def calculate_submission_status_metrics(
 # Initialize S3 data manager
 s3_manager = S3DataManager(S3_BUCKET_NAME) if S3_BUCKET_NAME and s3_client else None
 
+# Mock data loader for local development
+def load_mock_data() -> Dict[str, Any]:
+    """Load mock Canvas data from JSON file for local testing"""
+    mock_file_path = Path("mock_canvas_data.json")
+    if mock_file_path.exists():
+        try:
+            with open(mock_file_path, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading mock data: {e}")
+            return {}
+    return {}
+
+# Load mock data if available
+MOCK_DATA = load_mock_data()
+
+
 # Authentication endpoints
 @app.post("/api/auth/login", response_model=LoginResponse)
 @limiter.limit("5/minute")
@@ -602,13 +619,28 @@ async def get_available_courses(
     user: UserInfo = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
-    Get list of available courses from S3 data
+    Get list of available courses from S3 data or return demo data for local testing
     """
     if not s3_manager:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="S3 not configured"
-        )
+        # Return demo/mock courses for local development
+        logger.info("S3 not configured, returning demo courses for local testing")
+        return {
+            'courses': [
+                {
+                    'id': 'demo-001',
+                    'name': 'Demo Course - Introduction to Computer Science',
+                    'last_updated': datetime.now(timezone.utc).isoformat()
+                },
+                {
+                    'id': 'demo-002',
+                    'name': 'Demo Course - Data Structures and Algorithms',
+                    'last_updated': datetime.now(timezone.utc).isoformat()
+                }
+            ],
+            'total': 2,
+            'last_updated': datetime.now(timezone.utc).isoformat(),
+            'demo_mode': True
+        }
 
     try:
         # List all course data in S3 bucket
@@ -661,12 +693,16 @@ async def get_canvas_data(
     user: UserInfo = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
-    Get complete Canvas data for a course
+    Get complete Canvas data for a course (from S3 or mock data)
     """
     if not s3_manager:
+        # Return mock data for local testing
+        if course_id in MOCK_DATA:
+            logger.info(f"Returning mock data for course {course_id}")
+            return MOCK_DATA[course_id]
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="S3 not configured"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No mock data found for course {course_id}"
         )
 
     data = s3_manager.get_latest_canvas_data(course_id)
@@ -684,12 +720,16 @@ async def get_assignments(
     user: UserInfo = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
-    Get assignments for a course - returns S3 pre-signed URL for large datasets
+    Get assignments for a course - returns S3 pre-signed URL or mock data
     """
     if not s3_manager:
+        # Return mock data for local testing
+        if course_id in MOCK_DATA:
+            logger.info(f"Returning mock assignments for course {course_id}")
+            return {"assignments": MOCK_DATA[course_id]["assignments"]}
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="S3 not configured"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No mock data found for course {course_id}"
         )
 
     # Try both short and long form course IDs
@@ -716,12 +756,16 @@ async def get_submissions(
     user: UserInfo = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
-    Get submissions for a course - returns S3 pre-signed URL for large datasets
+    Get submissions for a course - returns S3 pre-signed URL or mock data
     """
     if not s3_manager:
+        # Return mock data for local testing
+        if course_id in MOCK_DATA:
+            logger.info(f"Returning mock submissions for course {course_id}")
+            return {"submissions": MOCK_DATA[course_id]["submissions"]}
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="S3 not configured"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No mock data found for course {course_id}"
         )
 
     # Try both short and long form course IDs
@@ -748,12 +792,16 @@ async def get_users(
     user: UserInfo = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
-    Get users for a course - returns S3 pre-signed URL for large datasets
+    Get users for a course - returns S3 pre-signed URL or mock data
     """
     if not s3_manager:
+        # Return mock data for local testing
+        if course_id in MOCK_DATA:
+            logger.info(f"Returning mock users for course {course_id}")
+            return {"users": MOCK_DATA[course_id]["users"]}
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="S3 not configured"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No mock data found for course {course_id}"
         )
 
     # Try both short and long form course IDs
@@ -780,12 +828,16 @@ async def get_groups(
     user: UserInfo = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
-    Get groups for a course - returns S3 pre-signed URL for large datasets
+    Get groups for a course - returns S3 pre-signed URL or mock data
     """
     if not s3_manager:
+        # Return mock data for local testing
+        if course_id in MOCK_DATA:
+            logger.info(f"Returning mock groups for course {course_id}")
+            return {"groups": MOCK_DATA[course_id]["groups"]}
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="S3 not configured"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No mock data found for course {course_id}"
         )
 
     # Try both short and long form course IDs
@@ -825,10 +877,30 @@ async def get_submission_status_metrics(
         Dict with overall_metrics, by_assignment, and by_ta breakdowns
     """
     if not s3_manager:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="S3 not configured"
-        )
+        # Use mock data for local testing
+        if course_id in MOCK_DATA:
+            logger.info(f"Calculating metrics from mock data for course {course_id}")
+            course_data = MOCK_DATA[course_id]
+            assignments = course_data.get("assignments", [])
+            submissions = course_data.get("submissions", [])
+            users = course_data.get("users", [])
+            groups = course_data.get("groups", [])
+
+            # Calculate metrics
+            metrics = calculate_submission_status_metrics(
+                assignments=assignments,
+                submissions=submissions,
+                users=users,
+                groups=groups,
+                assignment_filter=assignment_id,
+                ta_group_filter=ta_group
+            )
+            return metrics
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No mock data found for course {course_id}"
+            )
 
     try:
         # Get all data from S3
