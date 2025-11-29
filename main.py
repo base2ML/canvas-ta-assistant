@@ -1010,7 +1010,7 @@ async def trigger_data_sync(user: UserInfo = Depends(get_current_user)) -> Dict[
     Invokes the data fetcher Lambda function to refresh Canvas data
     """
     lambda_client = boto3.client('lambda', region_name=AWS_REGION)
-    data_fetcher_function = 'canvas-ta-dashboard-canvas-data-fetcher-prod'
+    data_fetcher_function = f'canvas-ta-dashboard-canvas-data-fetcher-{ENVIRONMENT}'
 
     try:
         logger.info(f"User {user.email} triggered manual data sync")
