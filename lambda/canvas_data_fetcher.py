@@ -80,7 +80,7 @@ def get_api_token() -> Optional[str]:
         try:
             response = secrets_client.get_secret_value(SecretId=CANVAS_TOKENS_SECRET)
             secret_data = json.loads(response['SecretString'])
-            return secret_data.get('default_token')
+            return secret_data.get('canvas_api_token')
         except Exception as e:
             logger.error(f"Error getting secret: {e}")
             return None
