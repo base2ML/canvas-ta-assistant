@@ -1002,6 +1002,126 @@ def process_ta_grading_data(assignments, submissions, users):
         'last_updated': datetime.now(timezone.utc).isoformat()
     }
 
+@app.get("/api/dashboard/late-days/{course_id}")
+async def get_late_days_data(
+    course_id: str,
+    user: UserInfo = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Calculate late days for all students in a course
+
+    Returns data in format expected by LateDaysTracking component:
+    {
+        students: [{ student_id, student_name, student_email, ta_group_name,
+                     total_late_days, assignments: {assignment_id: late_days} }],
+        assignments: [{ id, name, due_at }],
+        course_info: { name, course_code }
+    }
+    """
+    try:
+        # Load all S3 data
+        assignments = s3_manager.get_assignments(course_id)
+        submissions = s3_manager.get_submissions(course_id)
+        users = s3_manager.get_users(course_id)
+        groups = s3_manager.get_groups(course_id)
+
+        # Create user to TA group mapping
+        user_to_ta_group = {}
+        for group in groups:
+            group_name = group.get('name', '')
+            for member in group.get('members', []):
+                user_id = member.get('user_id') or member.get('id')
+                if user_id:
+                    user_to_ta_group[user_id] = group_name
+
+        # Create submission lookup
+        submission_lookup = {}
+        for sub in submissions:
+            key = (sub.get('user_id'), sub.get('assignment_id'))
+            submission_lookup[key] = sub
+
+        # Calculate late days per student
+        students_data = []
+
+        for user in users:
+            user_id = user.get('id')
+            student_data = {
+                'student_id': str(user_id),
+                'student_name': user.get('name', ''),
+                'student_email': user.get('email', ''),
+                'ta_group_name': user_to_ta_group.get(user_id, 'Unassigned'),
+                'total_late_days': 0,
+                'assignments': {}
+            }
+
+            # Calculate late days for each assignment
+            for assignment in assignments:
+                assignment_id = assignment.get('id')
+                due_at = assignment.get('due_at')
+
+                # Skip assignments without due dates
+                if not due_at:
+                    continue
+
+                # Get submission for this student-assignment pair
+                key = (user_id, assignment_id)
+                submission = submission_lookup.get(key)
+
+                if submission:
+                    submitted_at = submission.get('submitted_at')
+                    workflow_state = submission.get('workflow_state', '')
+
+                    # Only calculate late days if submitted
+                    if submitted_at and workflow_state not in ['unsubmitted', 'pending_review']:
+                        try:
+                            from dateutil import parser
+                            submitted_datetime = parser.parse(submitted_at)
+                            due_datetime = parser.parse(due_at)
+
+                            # Calculate days late (only positive values)
+                            if submitted_datetime > due_datetime:
+                                time_diff = submitted_datetime - due_datetime
+                                days_late = max(0, time_diff.days)
+
+                                # Store late days for this assignment
+                                student_data['assignments'][str(assignment_id)] = days_late
+                                student_data['total_late_days'] += days_late
+                        except Exception as e:
+                            logger.debug(f"Error parsing dates for user {user_id}, assignment {assignment_id}: {e}")
+
+            students_data.append(student_data)
+
+        # Format assignments data
+        assignments_data = [
+            {
+                'id': a.get('id'),
+                'name': a.get('name', 'Unnamed Assignment'),
+                'due_at': a.get('due_at')
+            }
+            for a in assignments
+            if a.get('due_at')  # Only include assignments with due dates
+        ]
+
+        # Get course info (simplified - could enhance with actual course data from S3)
+        course_info = {
+            'name': f'Course {course_id}',
+            'course_code': course_id
+        }
+
+        return {
+            'students': students_data,
+            'assignments': assignments_data,
+            'course_info': course_info,
+            'last_updated': datetime.now(timezone.utc).isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Error calculating late days data: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to calculate late days data: {str(e)}"
+        )
+
 # Data sync endpoint
 @app.post("/api/canvas/sync")
 async def trigger_data_sync(user: UserInfo = Depends(get_current_user)) -> Dict[str, Any]:

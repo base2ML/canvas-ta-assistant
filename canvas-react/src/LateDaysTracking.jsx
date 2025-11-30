@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { RefreshCw, Calendar, User, Clock, ArrowLeft, FileText, ChevronUp, ChevronDown, MessageCircle } from 'lucide-react';
 
-const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAGrading, onPeerReviews, onLoadCourses }) => {
+const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerReviews, onLoadCourses }) => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -12,82 +12,28 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
   const [sortConfig, setSortConfig] = useState({ key: 'student_name', direction: 'asc' });
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  // Cache configuration
-  const CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
-
   // Use the first available course (since this tool is for single course use)
   const currentCourse = courses && courses.length > 0 ? courses[0] : null;
 
-  // Generate cache key based on course and API credentials
-  const generateCacheKey = useCallback((courseId) => {
-    return `late_days_${courseId}_${apiUrl}_${apiToken.substring(0, 8)}`;
-  }, [apiUrl, apiToken]);
-
-  // Load data from cache
-  const loadFromCache = useCallback((courseId) => {
-    try {
-      const key = generateCacheKey(courseId);
-      const cached = localStorage.getItem(key);
-      const timestampKey = `${key}_timestamp`;
-      const timestamp = localStorage.getItem(timestampKey);
-      
-      if (cached && timestamp) {
-        const age = Date.now() - parseInt(timestamp);
-        if (age < CACHE_DURATION) {
-          const data = JSON.parse(cached);
-          setLateDaysData(data.lateDaysData || []);
-          setAssignments(data.assignments || []);
-          setCourseInfo(data.courseInfo);
-          setLastUpdated(new Date(parseInt(timestamp)));
-          return true;
-        }
-      }
-    } catch {
-      // Cache load failed, will fetch fresh data
-    }
-    return false;
-  }, [generateCacheKey, CACHE_DURATION]);
-
-  // Save data to cache
-  const saveToCache = useCallback((courseId, data) => {
-    try {
-      const key = generateCacheKey(courseId);
-      const timestamp = Date.now();
-      localStorage.setItem(key, JSON.stringify(data));
-      localStorage.setItem(`${key}_timestamp`, timestamp.toString());
-      setLastUpdated(new Date(timestamp));
-    } catch {
-      // Cache save failed, data will still be available in memory
-    }
-  }, [generateCacheKey]);
-
-  // Clear cache for current course
-  const clearCache = useCallback(() => {
-    if (currentCourse) {
-      const key = generateCacheKey(currentCourse.id);
-      localStorage.removeItem(key);
-      localStorage.removeItem(`${key}_timestamp`);
-      setLastUpdated(null);
-    }
-  }, [currentCourse, generateCacheKey]);
-
   const fetchLateDaysData = useCallback(async (courseId) => {
     try {
-      // Use the new late-days endpoint that fetches all students' data
-      const response = await fetch(`${backendUrl}/api/late-days`, {
-        method: 'POST',
+      // Get JWT token from localStorage
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('Not authenticated. Please log in.');
+      }
+
+      // Use the new dashboard endpoint with JWT authentication
+      const response = await fetch(`${backendUrl}/api/dashboard/late-days/${courseId}`, {
+        method: 'GET',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          base_url: apiUrl,
-          api_token: apiToken,
-          course_id: courseId
-        })
+        }
       });
 
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.detail || 'Failed to fetch late days data');
       }
@@ -96,41 +42,28 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
     } catch (err) {
       throw new Error(`Error fetching late days data: ${err.message}`);
     }
-  }, [backendUrl, apiUrl, apiToken]);
+  }, [backendUrl]);
 
-  const loadCourseData = useCallback(async (forceRefresh = false) => {
+  const loadCourseData = useCallback(async () => {
     if (!currentCourse) return;
 
-    const courseId = currentCourse.id;
-    // Cache key is set for display purposes
-    generateCacheKey(courseId);
-    
-    // Try to load from cache first (unless force refresh)
-    if (!forceRefresh && loadFromCache(courseId)) {
-      setLoading(false);
-      return;
-    }
-    
     const startTime = Date.now();
     setLoading(true);
     setError('');
     setLoadTime(null);
     setLateDaysData([]);
-    
+
     try {
       const data = await fetchLateDaysData(currentCourse.id);
       setLateDaysData(data.students || []);
       setAssignments(data.assignments || []);
       setCourseInfo(data.course_info);
-      
-      // Save to cache
-      const cacheData = {
-        lateDaysData: data.students || [],
-        assignments: data.assignments || [],
-        courseInfo: data.course_info
-      };
-      saveToCache(courseId, cacheData);
-      
+
+      // Set last updated from API response timestamp
+      if (data.last_updated) {
+        setLastUpdated(new Date(data.last_updated));
+      }
+
       const endTime = Date.now();
       const duration = (endTime - startTime) / 1000;
       setLoadTime(duration);
@@ -139,7 +72,7 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
     } finally {
       setLoading(false);
     }
-  }, [currentCourse, fetchLateDaysData, generateCacheKey, loadFromCache, saveToCache]);
+  }, [currentCourse, fetchLateDaysData]);
 
   // Load data automatically when component mounts and currentCourse is available
   useEffect(() => {
@@ -170,7 +103,7 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
   // Sorting function with three states: asc -> desc -> default (student name asc)
   const handleSort = (key) => {
     let newConfig;
-    
+
     if (sortConfig.key === key) {
       if (sortConfig.direction === 'asc') {
         // First click was asc, now go to desc
@@ -186,7 +119,7 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
       // Clicking a different column, start with asc
       newConfig = { key, direction: 'asc' };
     }
-    
+
     setSortConfig(newConfig);
   };
 
@@ -234,13 +167,13 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
     if (sortConfig.key !== column) {
       // If we're on default sort and this is the student_name column, show it as active
       if (sortConfig.key === 'student_name' && column === 'student_name') {
-        return sortConfig.direction === 'asc' 
+        return sortConfig.direction === 'asc'
           ? <ChevronUp className="h-4 w-4 text-blue-600" />
           : <ChevronDown className="h-4 w-4 text-blue-600" />;
       }
       return <ChevronUp className="h-4 w-4 text-gray-300" />;
     }
-    return sortConfig.direction === 'asc' 
+    return sortConfig.direction === 'asc'
       ? <ChevronUp className="h-4 w-4 text-blue-600" />
       : <ChevronDown className="h-4 w-4 text-blue-600" />;
   };
@@ -328,8 +261,7 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
               <button
                 onClick={() => {
                   if (currentCourse) {
-                    clearCache();
-                    loadCourseData(true);
+                    loadCourseData();
                   }
                 }}
                 disabled={loading || !currentCourse}
@@ -435,7 +367,7 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
                 <div>
                   <span className="text-gray-500">Avg Late Days:</span>
                   <span className="ml-2 font-semibold">
-                    {sortedData.length > 0 
+                    {sortedData.length > 0
                       ? (sortedData.reduce((sum, s) => sum + s.total_late_days, 0) / sortedData.length).toFixed(1)
                       : '0'
                     }
@@ -454,7 +386,7 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
                 <div>
                   <span className="text-gray-500">On-Time Rate:</span>
                   <span className="ml-2 font-semibold">
-                    {sortedData.length > 0 
+                    {sortedData.length > 0
                       ? Math.round((sortedData.filter(s => s.total_late_days === 0).length / sortedData.length) * 100)
                       : 0
                     }%
@@ -467,7 +399,7 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
               <table className="min-w-full bg-white">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th 
+                    <th
                       onClick={() => handleSort('student_name')}
                       className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50 border-r border-gray-200 min-w-[200px] cursor-pointer hover:bg-gray-100 select-none"
                     >
@@ -477,7 +409,7 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
                       </div>
                     </th>
                     {assignments.map(assignment => (
-                      <th 
+                      <th
                         key={assignment.id}
                         onClick={() => handleSort(`assignment_${assignment.id}`)}
                         className="px-4 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px] max-w-[120px] cursor-pointer hover:bg-gray-100 select-none"
@@ -486,23 +418,23 @@ const LateDaysTracking = ({ apiUrl, apiToken, backendUrl, courses, onBack, onTAG
                           <div className="flex items-center justify-center space-x-1">
                             <div className="text-xs font-semibold text-gray-700 leading-tight text-center max-w-full">
                               {assignment.name && assignment.name.length > 16
-                                ? assignment.name.substring(0, 16) + '...' 
+                                ? assignment.name.substring(0, 16) + '...'
                                 : assignment.name}
                             </div>
                             <SortIndicator column={`assignment_${assignment.id}`} />
                           </div>
                           {assignment.due_at && (
                             <div className="text-xs text-gray-500">
-                              Due: {new Date(assignment.due_at).toLocaleDateString('en-US', { 
-                                month: 'short', 
-                                day: 'numeric' 
+                              Due: {new Date(assignment.due_at).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric'
                               })}
                             </div>
                           )}
                         </div>
                       </th>
                     ))}
-                    <th 
+                    <th
                       onClick={() => handleSort('total_late_days')}
                       className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-100 border-l-2 border-gray-300 min-w-[120px] cursor-pointer hover:bg-gray-200 select-none"
                     >
