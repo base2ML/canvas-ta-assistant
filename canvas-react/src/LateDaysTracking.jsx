@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { RefreshCw, Calendar, User, Clock, ArrowLeft, FileText, ChevronUp, ChevronDown, MessageCircle } from 'lucide-react';
 
-const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerReviews, onLoadCourses }) => {
+const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerReviews, onLoadCourses, apiToken }) => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -17,8 +17,8 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
 
   const fetchLateDaysData = useCallback(async (courseId) => {
     try {
-      // Get JWT token from localStorage
-      const token = localStorage.getItem('token');
+      // Get JWT token from prop or localStorage
+      const token = apiToken || localStorage.getItem('access_token');
       if (!token) {
         throw new Error('Not authenticated. Please log in.');
       }
@@ -42,7 +42,7 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
     } catch (err) {
       throw new Error(`Error fetching late days data: ${err.message}`);
     }
-  }, [backendUrl]);
+  }, [backendUrl, apiToken]);
 
   const loadCourseData = useCallback(async () => {
     if (!currentCourse) return;
