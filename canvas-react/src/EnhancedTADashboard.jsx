@@ -3,8 +3,8 @@ import { RefreshCw, Users, Filter, TrendingUp, CheckCircle, XCircle, Clock } fro
 import SubmissionStatusCards from './components/SubmissionStatusCards';
 import AssignmentStatusBreakdown from './components/AssignmentStatusBreakdown';
 
-const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
-  const [courses, setCourses] = useState([]);
+const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadCourses }) => {
+  // Use courses from props, but keep local state for selection
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [submissions, setSubmissions] = useState([]);
@@ -32,36 +32,7 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
     return taAssignments;
   }, []);
 
-  useEffect(() => {
-    loadCourses();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const loadCourses = async () => {
-    setLoading(true);
-    try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`${backendUrl}/api/canvas/courses`, { headers });
-
-      if (!response.ok) {
-        throw new Error(`Failed to load courses: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      setCourses(data.courses || []);
-
-      if (data.courses && data.courses.length > 0) {
-        setSelectedCourse(data.courses[0]);
-        await loadCourseData(data.courses[0].id);
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadCourseData = async (courseId) => {
+  const loadCourseData = React.useCallback(async (courseId) => {
     if (!courseId) return;
 
     setLoading(true);
@@ -122,7 +93,23 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [backendUrl, getAuthHeaders, selectedCourse]);
+
+  // Initialize selected course when courses are loaded
+  useEffect(() => {
+    if (courses && courses.length > 0 && !selectedCourse) {
+      const firstCourse = courses[0];
+      setSelectedCourse(firstCourse);
+      loadCourseData(firstCourse.id);
+    }
+  }, [courses, selectedCourse, loadCourseData]);
+
+  // Trigger parent to load courses if empty
+  useEffect(() => {
+    if ((!courses || courses.length === 0) && onLoadCourses) {
+      onLoadCourses();
+    }
+  }, [courses, onLoadCourses]);
 
   const loadSubmissionMetrics = React.useCallback(async (courseId, assignmentId = null) => {
     if (!courseId) return;
@@ -227,8 +214,8 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders }) => {
       setTimeout(() => {
         if (selectedCourse) {
           loadCourseData(selectedCourse.id);
-        } else {
-          loadCourses();
+        } else if (onLoadCourses) {
+          onLoadCourses();
         }
       }, 5000);
 

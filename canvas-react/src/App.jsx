@@ -11,6 +11,9 @@ const App = () => {
   const [backendUrl] = useState(
     import.meta.env.VITE_API_ENDPOINT || 'http://localhost:8000'
   );
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(false);
+  // const [error, setError] = useState(''); // Unused
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem('access_token');
@@ -25,6 +28,37 @@ const App = () => {
     return localStorage.getItem('access_token') || '';
   };
 
+  const loadCourses = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const headers = getAuthHeaders();
+      // Skip fetch if no token (e.g. not logged in)
+      if (!headers['Authorization']) {
+        setLoading(false);
+        return;
+      }
+
+      const response = await fetch(`${backendUrl}/api/canvas/courses`, { headers });
+
+      if (!response.ok) {
+        throw new Error(`Failed to load courses: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setCourses(data.courses || []);
+    } catch (err) {
+      console.error('Error loading courses:', err);
+      // setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [backendUrl]);
+
+  // Load courses on mount or when auth changes (simplified for now)
+  React.useEffect(() => {
+    loadCourses();
+  }, [loadCourses]);
+
   return (
     <BrowserRouter>
       <SimpleAuthWrapper>
@@ -36,6 +70,9 @@ const App = () => {
               <EnhancedTADashboard
                 backendUrl={backendUrl}
                 getAuthHeaders={getAuthHeaders}
+                courses={courses}
+                onLoadCourses={loadCourses}
+                loadingCourses={loading}
               />
             }
           />
@@ -53,10 +90,10 @@ const App = () => {
             element={
               <LateDaysTracking
                 backendUrl={backendUrl}
-                apiUrl={backendUrl} // Using backendUrl as base for now, though it might expect Canvas URL
+                apiUrl={backendUrl}
                 apiToken={getApiToken()}
-                courses={[]} // These components might need to load their own courses or receive them
-                onLoadCourses={() => { }} // Placeholder
+                courses={courses}
+                onLoadCourses={loadCourses}
               />
             }
           />
@@ -67,7 +104,7 @@ const App = () => {
                 backendUrl={backendUrl}
                 apiUrl={backendUrl}
                 apiToken={getApiToken()}
-                courses={[]} // These components might need to load their own courses or receive them
+                courses={courses}
               />
             }
           />

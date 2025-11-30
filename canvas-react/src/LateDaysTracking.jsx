@@ -80,7 +80,6 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
       loadCourseData();
     } else if ((!courses || courses.length === 0) && onLoadCourses) {
       // If no courses are available, try to load them from the parent
-      setLoading(true);
       onLoadCourses();
     }
   }, [currentCourse, loadCourseData, courses, onLoadCourses]);
@@ -249,28 +248,7 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
               )}
             </div>
             <div className="flex space-x-2">
-              <button
-                onClick={() => currentCourse && loadCourseData(false)}
-                disabled={loading || !currentCourse}
-                className="flex items-center px-3 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50 transition-colors"
-                title="Load from cache if available"
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                {lastUpdated ? 'Cache' : 'Load'}
-              </button>
-              <button
-                onClick={() => {
-                  if (currentCourse) {
-                    loadCourseData();
-                  }
-                }}
-                disabled={loading || !currentCourse}
-                className="flex items-center px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50 transition-colors"
-                title="Force refresh from Canvas API"
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                Refresh
-              </button>
+              {/* Buttons removed as data loads automatically */}
             </div>
           </div>
         </div>
