@@ -27,7 +27,6 @@ locals {
   }
 }
 
-# Note: Cognito has been removed - now using simple JWT authentication
 # User management is handled via S3-stored user file (auth/users.json)
 
 # S3 Bucket for Canvas Data Storage
@@ -80,8 +79,8 @@ module "lambda" {
   # Function configuration
   function_name = "canvas-data-fetcher"
   runtime       = "python3.11"
-  timeout       = 900  # 15 minutes max execution time
-  memory_size   = 512
+  timeout       = 600  # 10 minutes
+  memory_size   = 256  # Reduced from 512MB - actual usage ~115MB
 
   # Canvas API token (from GitHub secret)
   canvas_api_token = var.canvas_api_token

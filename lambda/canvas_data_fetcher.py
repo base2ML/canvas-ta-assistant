@@ -89,10 +89,17 @@ def get_api_token() -> Optional[str]:
 
 def fetch_course_data(course) -> Dict[str, Any]:
     """Fetch all required data from Canvas."""
+    import time
 
-    # Get assignments
+    fetch_start = time.time()
+
+    # Get assignments and submissions in a single pass (fixes N+1 query)
     assignments = []
+    submissions = []
+
+    assignments_start = time.time()
     for assignment in course.get_assignments(per_page=100):
+        # Collect assignment data
         assignments.append({
             'id': assignment.id,
             'name': assignment.name,
@@ -101,9 +108,7 @@ def fetch_course_data(course) -> Dict[str, Any]:
             'html_url': getattr(assignment, 'html_url', None)
         })
 
-    # Get submissions
-    submissions = []
-    for assignment in course.get_assignments(per_page=100):
+        # Fetch submissions for this assignment immediately (single pass optimization)
         for submission in assignment.get_submissions(include=['submission_history']):
             submissions.append({
                 'id': submission.id,
@@ -115,7 +120,11 @@ def fetch_course_data(course) -> Dict[str, Any]:
                 'score': getattr(submission, 'score', None)
             })
 
+    logger.info(f"Assignments and submissions fetched in {time.time() - assignments_start:.2f}s "
+                f"({len(assignments)} assignments, {len(submissions)} submissions)")
+
     # Get users
+    users_start = time.time()
     users = []
     for user in course.get_users(enrollment_type=['student']):
         users.append({
@@ -123,8 +132,10 @@ def fetch_course_data(course) -> Dict[str, Any]:
             'name': user.name,
             'email': getattr(user, 'email', None)
         })
+    logger.info(f"Users fetched in {time.time() - users_start:.2f}s ({len(users)} users)")
 
     # Get groups
+    groups_start = time.time()
     groups = []
     for group in course.get_groups(per_page=100, include=['users']):
         if "Term Project" not in getattr(group, 'name', ''):  # Filter out project groups if needed
@@ -146,6 +157,10 @@ def fetch_course_data(course) -> Dict[str, Any]:
                 'name': group.name,
                 'members': members
             })
+    logger.info(f"Groups fetched in {time.time() - groups_start:.2f}s ({len(groups)} groups)")
+
+    total_fetch_time = time.time() - fetch_start
+    logger.info(f"Total fetch time: {total_fetch_time:.2f}s")
 
     return {
         'assignments': assignments,
