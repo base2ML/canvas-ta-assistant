@@ -8,7 +8,11 @@ vi.mock('./components/SubmissionStatusCards', () => ({
 }));
 
 vi.mock('./components/AssignmentStatusBreakdown', () => ({
-    default: ({ assignmentMetrics }) => <div data-testid="assignment-breakdown">Breakdown: {assignmentMetrics.length}</div>
+    default: (props) => (
+        <div data-testid="assignment-breakdown">
+            Breakdown: {props.assignmentStats?.length || 0} assignments
+        </div>
+    )
 }));
 
 describe('EnhancedTADashboard', () => {
@@ -92,6 +96,12 @@ describe('EnhancedTADashboard', () => {
         globalThis.fetch.mockResolvedValueOnce({
             ok: true,
             json: async () => mockMetrics
+        });
+
+        // 3b. Load Assignment Statistics (added by integration changes)
+        globalThis.fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => [] // Empty array for assignment stats
         });
 
         // 4. Load S3 Data (happens after initial 4 fetches resolve)

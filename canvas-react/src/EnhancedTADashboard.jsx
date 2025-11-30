@@ -18,6 +18,10 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
   // Filters
   const [selectedAssignment, setSelectedAssignment] = useState('all');
 
+  // Expandable assignments state (for nested TA breakdown)
+  const [expandedAssignments, setExpandedAssignments] = useState(new Set());
+  const [assignmentStats, setAssignmentStats] = useState([]);
+
   // Build TA assignments from Canvas groups
   const buildTAAssignments = React.useCallback((groupList) => {
     const taAssignments = {};
@@ -141,6 +145,47 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
       loadSubmissionMetrics(selectedCourse.id, selectedAssignment);
     }
   }, [selectedCourse, selectedAssignment, loadSubmissionMetrics]);
+
+  // Fetch assignment statistics with TA breakdown
+  const fetchAssignmentStatistics = React.useCallback(async (courseId) => {
+    if (!courseId) return;
+
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${backendUrl}/api/statistics/assignments/${courseId}`, {
+        method: 'POST',
+        headers
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch assignment statistics: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setAssignmentStats(data || []);
+    } catch (err) {
+      console.error('Error fetching assignment statistics:', err);
+      // Don't set error state - this is optional data
+    }
+  }, [backendUrl, getAuthHeaders]);
+
+  // Load assignment statistics when course changes
+  useEffect(() => {
+    if (selectedCourse) {
+      fetchAssignmentStatistics(selectedCourse.id);
+    }
+  }, [selectedCourse, fetchAssignmentStatistics]);
+
+  // Toggle assignment expanded state
+  const toggleAssignmentExpanded = (assignmentId) => {
+    const newExpanded = new Set(expandedAssignments);
+    if (newExpanded.has(assignmentId)) {
+      newExpanded.delete(assignmentId);
+    } else {
+      newExpanded.add(assignmentId);
+    }
+    setExpandedAssignments(newExpanded);
+  };
 
   // Compute TA statistics with assignment filtering
   const taStats = useMemo(() => {
@@ -351,8 +396,12 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
             )}
 
             {/* Assignment Status Breakdown */}
-            {submissionMetrics && submissionMetrics.by_assignment && (
-              <AssignmentStatusBreakdown assignmentMetrics={submissionMetrics.by_assignment} />
+            {assignmentStats.length > 0 && (
+              <AssignmentStatusBreakdown
+                assignmentStats={assignmentStats}
+                expandedAssignments={expandedAssignments}
+                onToggleExpanded={toggleAssignmentExpanded}
+              />
             )}
 
             {/* Overall Statistics */}
