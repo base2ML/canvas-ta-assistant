@@ -98,12 +98,6 @@ describe('EnhancedTADashboard', () => {
             json: async () => mockMetrics
         });
 
-        // 3b. Load Assignment Statistics (added by integration changes)
-        globalThis.fetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => [] // Empty array for assignment stats
-        });
-
         // 4. Load S3 Data (happens after initial 4 fetches resolve)
         const mockCombinedData = {
             assignments: mockAssignments.assignments,

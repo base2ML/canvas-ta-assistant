@@ -146,35 +146,89 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
     }
   }, [selectedCourse, selectedAssignment, loadSubmissionMetrics]);
 
-  // Fetch assignment statistics with TA breakdown
-  const fetchAssignmentStatistics = React.useCallback(async (courseId) => {
-    if (!courseId) return;
-
-    try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`${backendUrl}/api/statistics/assignments/${courseId}`, {
-        method: 'POST',
-        headers
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch assignment statistics: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      setAssignmentStats(data || []);
-    } catch (err) {
-      console.error('Error fetching assignment statistics:', err);
-      // Don't set error state - this is optional data
-    }
-  }, [backendUrl, getAuthHeaders]);
-
-  // Load assignment statistics when course changes
+  // Compute assignment statistics with TA breakdown from loaded data
   useEffect(() => {
-    if (selectedCourse) {
-      fetchAssignmentStatistics(selectedCourse.id);
+    if (!assignments.length || !submissions.length || !groups.length) {
+      setAssignmentStats([]);
+      return;
     }
-  }, [selectedCourse, fetchAssignmentStatistics]);
+
+    // Build TA assignments from Canvas groups
+    const taAssignments = buildTAAssignments(groups);
+
+    // Compute statistics for each assignment
+    const stats = assignments.map(assignment => {
+      const assignmentId = assignment.id;
+
+      // Get all submissions for this assignment
+      const assignmentSubmissions = submissions.filter(
+        s => s.assignment_id === assignmentId
+      );
+
+      // Calculate overall grading progress
+      const gradedSubmissions = assignmentSubmissions.filter(
+        s => s.workflow_state === 'graded'
+      ).length;
+      const totalSubmissions = assignmentSubmissions.length;
+      const ungradedSubmissions = totalSubmissions - gradedSubmissions;
+      const percentageGraded = totalSubmissions > 0
+        ? Math.round((gradedSubmissions / totalSubmissions) * 100)
+        : 0;
+
+      // Calculate TA breakdown for this assignment
+      const taGradingBreakdown = Object.entries(taAssignments).map(([taName, studentIds]) => {
+        // Get submissions for this TA's students on this assignment
+        const taSubmissions = assignmentSubmissions.filter(s =>
+          studentIds.has(String(s.user_id))
+        );
+
+        const totalAssigned = taSubmissions.length;
+        const graded = taSubmissions.filter(s => s.workflow_state === 'graded').length;
+        const percentageComplete = totalAssigned > 0
+          ? Math.round((graded / totalAssigned) * 100)
+          : 0;
+
+        // Count submission statuses
+        const submittedOnTime = taSubmissions.filter(s => {
+          if (!s.submitted_at || !assignment.due_at) return false;
+          return new Date(s.submitted_at) <= new Date(assignment.due_at);
+        }).length;
+
+        const submittedLate = taSubmissions.filter(s => {
+          if (!s.submitted_at || !assignment.due_at) return false;
+          return new Date(s.submitted_at) > new Date(assignment.due_at);
+        }).length;
+
+        const notSubmitted = taSubmissions.filter(s =>
+          !s.submitted_at || s.workflow_state === 'unsubmitted'
+        ).length;
+
+        return {
+          ta_name: taName,
+          total_assigned: totalAssigned,
+          graded: graded,
+          percentage_complete: percentageComplete,
+          submitted_on_time: submittedOnTime,
+          submitted_late: submittedLate,
+          not_submitted: notSubmitted
+        };
+      }).filter(ta => ta.total_assigned > 0); // Only include TAs with assignments
+
+      return {
+        assignment_id: assignmentId,
+        assignment_name: assignment.name,
+        due_at: assignment.due_at,
+        html_url: assignment.html_url,
+        total_submissions: totalSubmissions,
+        graded_submissions: gradedSubmissions,
+        ungraded_submissions: ungradedSubmissions,
+        percentage_graded: percentageGraded,
+        ta_grading_breakdown: taGradingBreakdown
+      };
+    });
+
+    setAssignmentStats(stats);
+  }, [assignments, submissions, groups, buildTAAssignments]);
 
   // Toggle assignment expanded state
   const toggleAssignmentExpanded = (assignmentId) => {
