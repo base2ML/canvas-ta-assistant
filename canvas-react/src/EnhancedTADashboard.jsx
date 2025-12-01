@@ -349,7 +349,6 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
 
         {!selectedCourse && courses.length === 0 && !loading && (
           <div className="text-center py-12">
-            <Users className="mx-auto h-12 w-12 text-gray-400" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">No courses found</h3>
             <p className="mt-1 text-sm text-gray-500">
               No course data is available. Make sure the Lambda function is running and has populated the S3 bucket.
