@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, Users, Filter, TrendingUp, CheckCircle, XCircle, Clock } from 'lucide-react';
-import SubmissionStatusCards from './components/SubmissionStatusCards';
+import React, { useState, useEffect } from 'react';
+import { RefreshCw, TrendingUp } from 'lucide-react';
 import AssignmentStatusBreakdown from './components/AssignmentStatusBreakdown';
 
 const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadCourses }) => {
@@ -8,15 +7,10 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [submissions, setSubmissions] = useState([]);
-  const [users, setUsers] = useState([]);
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [submissionMetrics, setSubmissionMetrics] = useState(null);
-
-  // Filters
-  const [selectedAssignment, setSelectedAssignment] = useState('all');
 
   // Expandable assignments state (for nested TA breakdown)
   const [expandedAssignments, setExpandedAssignments] = useState(new Set());
@@ -61,26 +55,20 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
           const canvasData = await s3Response.json();
           setAssignments(canvasData.assignments || []);
           setSubmissions(canvasData.submissions || []);
-          setUsers(canvasData.users || []);
           setGroups(canvasData.groups || []);
         }
         // Handle direct data mode (local mock data)
         else if (urlData.assignments) {
           setAssignments(urlData.assignments || []);
           // For mock mode, we need to fetch additional data
-          const [submissionsRes, usersRes, groupsRes] = await Promise.all([
+          const [submissionsRes, groupsRes] = await Promise.all([
             fetch(`${backendUrl}/api/canvas/submissions/${selectedCourse.id}`, { headers }),
-            fetch(`${backendUrl}/api/canvas/users/${selectedCourse.id}`, { headers }),
             fetch(`${backendUrl}/api/canvas/groups/${selectedCourse.id}`, { headers })
           ]);
 
           if (submissionsRes.ok) {
             const subData = await submissionsRes.json();
             setSubmissions(subData.submissions || []);
-          }
-          if (usersRes.ok) {
-            const userData = await usersRes.json();
-            setUsers(userData.users || []);
           }
           if (groupsRes.ok) {
             const groupData = await groupsRes.json();
@@ -115,36 +103,6 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
     }
   }, [courses, onLoadCourses]);
 
-  const loadSubmissionMetrics = React.useCallback(async (courseId, assignmentId = null) => {
-    if (!courseId) return;
-
-    try {
-      const headers = await getAuthHeaders();
-      const params = new URLSearchParams();
-      if (assignmentId && assignmentId !== 'all') {
-        params.append('assignment_id', assignmentId);
-      }
-
-      const url = `${backendUrl}/api/dashboard/submission-status/${courseId}?${params}`;
-      const response = await fetch(url, { headers });
-
-      if (!response.ok) {
-        throw new Error(`Failed to load metrics: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      setSubmissionMetrics(data);
-    } catch (err) {
-      console.error('Error loading submission metrics:', err);
-      setError(err.message);
-    }
-  }, [backendUrl, getAuthHeaders]);
-
-  useEffect(() => {
-    if (selectedCourse) {
-      loadSubmissionMetrics(selectedCourse.id, selectedAssignment);
-    }
-  }, [selectedCourse, selectedAssignment, loadSubmissionMetrics]);
 
   // Compute assignment statistics with TA breakdown from loaded data
   useEffect(() => {
@@ -175,6 +133,21 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
         ? Math.round((gradedSubmissions / totalSubmissions) * 100)
         : 0;
 
+      // Calculate submission status for this assignment
+      const submittedOnTime = assignmentSubmissions.filter(s => {
+        if (!s.submitted_at || !assignment.due_at) return false;
+        return new Date(s.submitted_at) <= new Date(assignment.due_at);
+      }).length;
+
+      const submittedLate = assignmentSubmissions.filter(s => {
+        if (!s.submitted_at || !assignment.due_at) return false;
+        return new Date(s.submitted_at) > new Date(assignment.due_at);
+      }).length;
+
+      const notSubmitted = assignmentSubmissions.filter(s =>
+        !s.submitted_at || s.workflow_state === 'unsubmitted'
+      ).length;
+
       // Calculate TA breakdown for this assignment
       const taGradingBreakdown = Object.entries(taAssignments).map(([taName, studentIds]) => {
         // Get submissions for this TA's students on this assignment
@@ -188,18 +161,18 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
           ? Math.round((graded / totalAssigned) * 100)
           : 0;
 
-        // Count submission statuses
-        const submittedOnTime = taSubmissions.filter(s => {
+        // Count submission statuses for this TA
+        const taSubmittedOnTime = taSubmissions.filter(s => {
           if (!s.submitted_at || !assignment.due_at) return false;
           return new Date(s.submitted_at) <= new Date(assignment.due_at);
         }).length;
 
-        const submittedLate = taSubmissions.filter(s => {
+        const taSubmittedLate = taSubmissions.filter(s => {
           if (!s.submitted_at || !assignment.due_at) return false;
           return new Date(s.submitted_at) > new Date(assignment.due_at);
         }).length;
 
-        const notSubmitted = taSubmissions.filter(s =>
+        const taNotSubmitted = taSubmissions.filter(s =>
           !s.submitted_at || s.workflow_state === 'unsubmitted'
         ).length;
 
@@ -208,9 +181,9 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
           total_assigned: totalAssigned,
           graded: graded,
           percentage_complete: percentageComplete,
-          submitted_on_time: submittedOnTime,
-          submitted_late: submittedLate,
-          not_submitted: notSubmitted
+          submitted_on_time: taSubmittedOnTime,
+          submitted_late: taSubmittedLate,
+          not_submitted: taNotSubmitted
         };
       }).filter(ta => ta.total_assigned > 0); // Only include TAs with assignments
 
@@ -223,6 +196,9 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
         graded_submissions: gradedSubmissions,
         ungraded_submissions: ungradedSubmissions,
         percentage_graded: percentageGraded,
+        submitted_on_time: submittedOnTime,
+        submitted_late: submittedLate,
+        not_submitted: notSubmitted,
         ta_grading_breakdown: taGradingBreakdown
       };
     });
@@ -241,48 +217,10 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
     setExpandedAssignments(newExpanded);
   };
 
-  // Compute TA statistics with assignment filtering
-  const taStats = useMemo(() => {
-    if (!submissions.length || !users.length || !groups.length) return [];
-
-    // Build TA assignments from actual Canvas groups
-    const taAssignments = buildTAAssignments(groups);
-
-    // Filter submissions by assignment if selected
-    const filteredSubmissions = selectedAssignment === 'all'
-      ? submissions
-      : submissions.filter(s => String(s.assignment_id) === selectedAssignment);
-
-    // Calculate stats for each TA
-    const stats = [];
-    Object.entries(taAssignments).forEach(([taName, studentIds]) => {
-      const taSubmissions = filteredSubmissions.filter(s =>
-        studentIds.has(String(s.user_id))
-      );
-
-      const graded = taSubmissions.filter(s => s.workflow_state === 'graded').length;
-      const ungraded = taSubmissions.filter(s => s.workflow_state !== 'graded' && s.workflow_state === 'submitted').length;
-      const total = graded + ungraded;
-      const completionRate = total > 0 ? (graded / total) * 100 : 0;
-
-      stats.push({
-        taName,
-        graded,
-        ungraded,
-        total,
-        completionRate: completionRate.toFixed(1),
-        studentCount: studentIds.size
-      });
-    });
-
-    return stats.sort((a, b) => a.taName.localeCompare(b.taName));
-  }, [submissions, users, groups, selectedAssignment, buildTAAssignments]);
-
   const handleCourseSelect = async (course) => {
     setSelectedCourse(course);
     setAssignments([]);
     setSubmissions([]);
-    setUsers([]);
     setGroups([]);
     await loadCourseData(course.id);
   };
@@ -324,24 +262,6 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
       setLoading(false);
     }
   };
-
-  // Overall statistics
-  const overallStats = useMemo(() => {
-    const filteredSubmissions = selectedAssignment === 'all'
-      ? submissions
-      : submissions.filter(s => String(s.assignment_id) === selectedAssignment);
-
-    const graded = filteredSubmissions.filter(s => s.workflow_state === 'graded').length;
-    const ungraded = filteredSubmissions.filter(s => s.workflow_state !== 'graded' && s.workflow_state === 'submitted').length;
-    const total = graded + ungraded;
-
-    return {
-      total,
-      graded,
-      ungraded,
-      completionRate: total > 0 ? ((graded / total) * 100).toFixed(1) : 0
-    };
-  }, [submissions, selectedAssignment]);
 
   // Format last updated time in EST
   const formatLastUpdated = (date) => {
@@ -416,39 +336,6 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
 
         {selectedCourse && (
           <>
-            {/* Filters */}
-            <div className="bg-white shadow-sm rounded-lg p-6 mb-6">
-              <div className="flex items-center space-x-2 mb-4">
-                <Filter className="h-5 w-5 text-blue-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Filters</h2>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Assignment
-                  </label>
-                  <select
-                    value={selectedAssignment}
-                    onChange={(e) => setSelectedAssignment(e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="all">All Assignments</option>
-                    {assignments.map(assignment => (
-                      <option key={assignment.id} value={String(assignment.id)}>
-                        {assignment.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Submission Status Cards */}
-            {submissionMetrics && (
-              <SubmissionStatusCards metrics={submissionMetrics.overall_metrics} />
-            )}
-
             {/* Assignment Status Breakdown */}
             {assignmentStats.length > 0 && (
               <AssignmentStatusBreakdown
@@ -457,128 +344,6 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
                 onToggleExpanded={toggleAssignmentExpanded}
               />
             )}
-
-            {/* Overall Statistics */}
-            <div className="bg-white shadow-sm rounded-lg p-6 mb-6">
-              <div className="flex items-center space-x-2 mb-4">
-                <TrendingUp className="h-5 w-5 text-green-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Overall Statistics</h2>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <div className="text-3xl font-bold text-blue-600">{overallStats.total}</div>
-                  <div className="text-sm text-gray-600 mt-1">Total Submissions</div>
-                </div>
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <div className="text-3xl font-bold text-green-600">{overallStats.graded}</div>
-                  <div className="text-sm text-gray-600 mt-1">Graded</div>
-                </div>
-                <div className="text-center p-4 bg-orange-50 rounded-lg">
-                  <div className="text-3xl font-bold text-orange-600">{overallStats.ungraded}</div>
-                  <div className="text-sm text-gray-600 mt-1">Ungraded</div>
-                </div>
-                <div className="text-center p-4 bg-purple-50 rounded-lg">
-                  <div className="text-3xl font-bold text-purple-600">{overallStats.completionRate}%</div>
-                  <div className="text-sm text-gray-600 mt-1">Completion Rate</div>
-                </div>
-              </div>
-            </div>
-
-            {/* TA Breakdown Table */}
-            <div className="bg-white shadow-sm rounded-lg p-6">
-              <div className="flex items-center space-x-2 mb-4">
-                <Users className="h-5 w-5 text-indigo-600" />
-                <h2 className="text-xl font-semibold text-gray-900">TA Workload Breakdown</h2>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        TA Name
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Students
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Total
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Graded
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Ungraded
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Completion %
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {taStats.map((ta, index) => (
-                      <tr key={index} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {ta.taName}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {ta.studentCount}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">
-                          {ta.total}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-medium">
-                          {ta.graded}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-orange-600 font-medium">
-                          {ta.ungraded}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <div className="flex items-center">
-                            <div className="w-16 bg-gray-200 rounded-full h-2 mr-2">
-                              <div
-                                className="bg-green-600 h-2 rounded-full"
-                                style={{ width: `${ta.completionRate}%` }}
-                              />
-                            </div>
-                            <span className="text-gray-900 font-medium">{ta.completionRate}%</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          {parseFloat(ta.completionRate) >= 90 ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              <CheckCircle className="h-3 w-3 mr-1" />
-                              On Track
-                            </span>
-                          ) : parseFloat(ta.completionRate) >= 50 ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                              In Progress
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                              <XCircle className="h-3 w-3 mr-1" />
-                              Needs Attention
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-
-                    {taStats.length === 0 && (
-                      <tr>
-                        <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
-                          No TA data available. Loading...
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
           </>
         )}
 

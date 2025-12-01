@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle, Clock, XCircle, ChevronDown, ChevronRight, Calendar, AlertTriangle, Eye } from 'lucide-react';
+import { CheckCircle, Clock, XCircle, ChevronDown, ChevronRight, Calendar, AlertTriangle, Eye, AlertCircleIcon } from 'lucide-react';
 
 const AssignmentStatusBreakdown = ({ assignmentStats, expandedAssignments, onToggleExpanded }) => {
   if (!assignmentStats || assignmentStats.length === 0) return null;
@@ -92,7 +92,50 @@ const AssignmentStatusBreakdown = ({ assignmentStats, expandedAssignments, onTog
                             </div>
                           )}
                         </div>
-                        <div className="text-xs text-gray-400 mt-1">
+
+                        {/* Submission Status Cards */}
+                        <div className="grid grid-cols-3 gap-2 mt-3">
+                          {/* On Time Card */}
+                          <div className="bg-green-50 border border-green-200 rounded-md p-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-1">
+                                <CheckCircle className="h-3 w-3 text-green-600" />
+                                <span className="text-xs font-medium text-green-900">On Time</span>
+                              </div>
+                              <span className="text-lg font-bold text-green-600">
+                                {assignment.submitted_on_time || 0}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Late Card */}
+                          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-1">
+                                <Clock className="h-3 w-3 text-yellow-600" />
+                                <span className="text-xs font-medium text-yellow-900">Late</span>
+                              </div>
+                              <span className="text-lg font-bold text-yellow-600">
+                                {assignment.submitted_late || 0}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Missing Card */}
+                          <div className="bg-red-50 border border-red-200 rounded-md p-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-1">
+                                <AlertCircleIcon className="h-3 w-3 text-red-600" />
+                                <span className="text-xs font-medium text-red-900">Missing</span>
+                              </div>
+                              <span className="text-lg font-bold text-red-600">
+                                {assignment.not_submitted || 0}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-xs text-gray-400 mt-2">
                           {hasBreakdown
                             ? `Click to view TA grading breakdown (${taBreakdown?.length || 0} TAs assigned)`
                             : `Click to view details (no TA assignments found in Canvas)`}
