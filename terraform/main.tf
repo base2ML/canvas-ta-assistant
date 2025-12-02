@@ -79,7 +79,7 @@ module "lambda" {
   # Function configuration
   function_name = "canvas-data-fetcher"
   runtime       = "python3.11"
-  timeout       = 600  # 10 minutes
+  timeout       = 900  # 15 minutes (increased from 600 to prevent timeouts)
   memory_size   = 256  # Reduced from 512MB - actual usage ~115MB
 
   # Canvas API token (from GitHub secret)
