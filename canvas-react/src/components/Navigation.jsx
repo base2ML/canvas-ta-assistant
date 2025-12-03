@@ -42,7 +42,7 @@ const Navigation = () => {
                                 Dashboard
                             </Link>
 
-                            <Link
+                            {/* <Link
                                 to="/grading"
                                 className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${location.pathname === '/grading'
                                         ? 'border-blue-500 text-gray-900'
@@ -51,7 +51,7 @@ const Navigation = () => {
                             >
                                 <Users className="w-4 h-4 mr-2" />
                                 TA Grading
-                            </Link>
+                            </Link> */}
 
                             <Link
                                 to="/late-days"
@@ -64,7 +64,7 @@ const Navigation = () => {
                                 Late Days
                             </Link>
 
-                            <Link
+                            {/* <Link
                                 to="/peer-reviews"
                                 className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${location.pathname === '/peer-reviews'
                                         ? 'border-blue-500 text-gray-900'
@@ -73,7 +73,7 @@ const Navigation = () => {
                             >
                                 <MessageCircle className="w-4 h-4 mr-2" />
                                 Peer Reviews
-                            </Link>
+                            </Link> */}
 
                             {userRole === 'admin' && (
                                 <Link
