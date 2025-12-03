@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Shield, RefreshCw, Trash2, Key, Copy, X, AlertCircle, CheckCircle } from 'lucide-react';
+import { Shield, RefreshCw, Trash2, Key, Copy, X, AlertCircle, CheckCircle, UserPlus } from 'lucide-react';
 
 const AdminDashboard = ({ backendUrl, getAuthHeaders }) => {
   const [users, setUsers] = useState([]);
@@ -10,9 +10,16 @@ const AdminDashboard = ({ backendUrl, getAuthHeaders }) => {
   // Modal states
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [newPassword, setNewPassword] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Add user form state
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserRole, setNewUserRole] = useState('ta');
+  const [generatedPassword, setGeneratedPassword] = useState('');
 
   // Action loading states
   const [actionLoading, setActionLoading] = useState(false);
@@ -143,6 +150,68 @@ const AdminDashboard = ({ backendUrl, getAuthHeaders }) => {
     }
   };
 
+  const handleAddUserClick = () => {
+    setShowAddUserModal(true);
+    setNewUserEmail('');
+    setNewUserName('');
+    setNewUserRole('ta');
+    setGeneratedPassword('');
+    setCopied(false);
+    setActionError('');
+  };
+
+  const handleAddUserConfirm = async () => {
+    setActionLoading(true);
+    setActionError('');
+
+    try {
+      const headers = getAuthHeaders();
+      const response = await fetch(`${backendUrl}/api/admin/users/create`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          email: newUserEmail,
+          name: newUserName,
+          role: newUserRole
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Failed to create user');
+      }
+
+      setGeneratedPassword(data.generated_password);
+
+      // Reload users list
+      await loadUsers();
+    } catch (err) {
+      console.error('Error creating user:', err);
+      setActionError(err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const closeAddUserModal = () => {
+    if (!actionLoading) {
+      setShowAddUserModal(false);
+      setNewUserEmail('');
+      setNewUserName('');
+      setNewUserRole('ta');
+      setGeneratedPassword('');
+      setCopied(false);
+      setActionError('');
+    }
+  };
+
+  const handleCopyGeneratedPassword = () => {
+    navigator.clipboard.writeText(generatedPassword);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const formatDate = (dateString) => {
     try {
       return new Date(dateString).toLocaleDateString('en-US', {
@@ -195,14 +264,23 @@ const AdminDashboard = ({ backendUrl, getAuthHeaders }) => {
             <Shield className="h-8 w-8 text-purple-600" />
             <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
           </div>
-          <button
-            onClick={loadUsers}
-            disabled={loading}
-            className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleAddUserClick}
+              className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+            >
+              <UserPlus className="h-4 w-4 mr-2" />
+              Add User
+            </button>
+            <button
+              onClick={loadUsers}
+              disabled={loading}
+              className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          </div>
         </div>
         {lastUpdated && (
           <p className="text-sm text-gray-500 mt-2">
@@ -450,6 +528,150 @@ const AdminDashboard = ({ backendUrl, getAuthHeaders }) => {
                 <button
                   onClick={closeResetModal}
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                >
+                  Done
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add User Modal */}
+      {showAddUserModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Add New User</h3>
+              <button
+                onClick={closeAddUserModal}
+                disabled={actionLoading}
+                className="text-gray-400 hover:text-gray-600 disabled:cursor-not-allowed"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="px-6 py-4">
+              {actionError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md flex items-start">
+                  <AlertCircle className="h-5 w-5 text-red-600 mr-2 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-700">{actionError}</p>
+                </div>
+              )}
+
+              {!generatedPassword ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Email Address *
+                    </label>
+                    <input
+                      type="email"
+                      value={newUserEmail}
+                      onChange={(e) => setNewUserEmail(e.target.value)}
+                      placeholder="user@gatech.edu"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      disabled={actionLoading}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Full Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={newUserName}
+                      onChange={(e) => setNewUserName(e.target.value)}
+                      placeholder="John Doe"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      disabled={actionLoading}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Role *
+                    </label>
+                    <select
+                      value={newUserRole}
+                      onChange={(e) => setNewUserRole(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      disabled={actionLoading}
+                    >
+                      <option value="ta">TA</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+
+                  <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                    <p className="text-sm text-blue-800">
+                      A secure password will be automatically generated for this user.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="bg-green-50 border border-green-200 rounded-md p-4 mb-4">
+                    <div className="flex items-start">
+                      <CheckCircle className="h-5 w-5 text-green-600 mr-2 flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-green-800">
+                        User created successfully! Copy this password and share it securely with the user.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <p className="text-sm font-medium text-gray-700 mb-2">Generated Password:</p>
+                    <div className="bg-gray-900 text-white rounded-md p-4 font-mono text-sm flex items-center justify-between">
+                      <span className="break-all">{generatedPassword}</span>
+                      <button
+                        onClick={handleCopyGeneratedPassword}
+                        className="ml-3 p-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors flex-shrink-0"
+                        title="Copy to clipboard"
+                      >
+                        {copied ? (
+                          <CheckCircle className="h-4 w-4 text-green-400" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-50 border border-amber-200 rounded-md p-3">
+                    <p className="text-xs text-amber-800">
+                      <strong>Warning:</strong> This password will only be shown once. Make sure to save it before closing this window.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3 rounded-b-lg">
+              {!generatedPassword ? (
+                <>
+                  <button
+                    onClick={closeAddUserModal}
+                    disabled={actionLoading}
+                    className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleAddUserConfirm}
+                    disabled={actionLoading || !newUserEmail || !newUserName}
+                    className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors inline-flex items-center"
+                  >
+                    {actionLoading && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
+                    {actionLoading ? 'Creating...' : 'Create User'}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={closeAddUserModal}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
                 >
                   Done
                 </button>

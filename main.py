@@ -179,6 +179,18 @@ class ResetPasswordResponse(BaseModel):
     email: str
     new_password: Optional[str] = None
 
+class CreateUserRequest(BaseModel):
+    email: EmailStr
+    name: str
+    role: str = "ta"
+    password: Optional[str] = None
+
+class CreateUserResponse(BaseModel):
+    success: bool
+    message: str
+    email: str
+    generated_password: Optional[str] = None
+
 # Authentication dependency
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> UserInfo:
     """
@@ -1324,6 +1336,68 @@ async def admin_reset_password(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to reset password: {str(e)}"
+        )
+
+@app.post("/api/admin/users/create", response_model=CreateUserResponse)
+@limiter.limit("10/minute")
+async def admin_create_user(
+    request: Request,
+    create_request: CreateUserRequest,
+    admin: UserInfo = Depends(get_current_admin_user)
+) -> CreateUserResponse:
+    """Create a new user (admin only)"""
+    try:
+        # Check if user already exists
+        existing_user = user_manager.get_user_by_email(create_request.email)
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"User with email {create_request.email} already exists"
+            )
+
+        # Validate role
+        if create_request.role not in ["ta", "admin"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Role must be either 'ta' or 'admin'"
+            )
+
+        # Generate password if not provided
+        password = create_request.password
+        generated_password = None
+        if not password:
+            from auth import generate_secure_password
+            password = generate_secure_password(16)
+            generated_password = password
+
+        # Create user
+        success = user_manager.add_user(
+            email=create_request.email,
+            password=password,
+            name=create_request.name,
+            role=create_request.role
+        )
+
+        if success:
+            logger.info(f"Admin {admin.email} created user: {create_request.email} with role: {create_request.role}")
+            return CreateUserResponse(
+                success=True,
+                message="User created successfully" + (" with generated password" if generated_password else ""),
+                email=create_request.email,
+                generated_password=generated_password
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create user"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating user: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create user: {str(e)}"
         )
 
 @app.get("/api/config")
