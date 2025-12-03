@@ -1,9 +1,22 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, Clock, MessageCircle } from 'lucide-react';
+import { LayoutDashboard, Users, Clock, MessageCircle, Shield } from 'lucide-react';
 
 const Navigation = () => {
     const location = useLocation();
+    const [userRole, setUserRole] = React.useState(null);
+
+    React.useEffect(() => {
+        const userJson = localStorage.getItem('user');
+        if (userJson) {
+            try {
+                const user = JSON.parse(userJson);
+                setUserRole(user.role);
+            } catch (e) {
+                console.error('Failed to parse user data:', e);
+            }
+        }
+    }, []);
 
     // const isActive = (path) => {
     //     return location.pathname === path ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900';
@@ -61,6 +74,19 @@ const Navigation = () => {
                                 <MessageCircle className="w-4 h-4 mr-2" />
                                 Peer Reviews
                             </Link>
+
+                            {userRole === 'admin' && (
+                                <Link
+                                    to="/admin"
+                                    className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${location.pathname === '/admin'
+                                            ? 'border-purple-500 text-gray-900'
+                                            : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                                        }`}
+                                >
+                                    <Shield className="w-4 h-4 mr-2" />
+                                    Admin
+                                </Link>
+                            )}
                         </div>
                     </div>
                 </div>

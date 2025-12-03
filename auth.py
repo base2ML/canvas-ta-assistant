@@ -10,8 +10,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 import bcrypt
 import jwt
+import secrets
+import string
 from pydantic import BaseModel, EmailStr
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Depends
 from loguru import logger
 
 # Environment configuration
@@ -33,6 +35,17 @@ try:
     logger.info("S3 client initialized for authentication")
 except Exception as e:
     logger.warning(f"S3 client initialization failed: {e}")
+
+
+def generate_secure_password(length: int = 16) -> str:
+    """Generate a cryptographically secure random password"""
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+    while True:
+        password = ''.join(secrets.choice(alphabet) for _ in range(length))
+        if (any(c.islower() for c in password)
+            and any(c.isupper() for c in password)
+            and any(c.isdigit() for c in password)):
+            return password
 
 
 class User(BaseModel):
@@ -211,6 +224,33 @@ class UserManager:
             for u in users_data.get('users', [])
         ]
 
+    def reset_password(self, email: str) -> Optional[str]:
+        """Reset user password to a new random password. Returns new password."""
+        users_data = self._load_users()
+
+        for user in users_data['users']:
+            if user.get('email', '').lower() == email.lower():
+                # Generate new password
+                new_password = generate_secure_password(16)
+
+                # Hash new password
+                password_hash = bcrypt.hashpw(
+                    new_password.encode('utf-8'),
+                    bcrypt.gensalt()
+                ).decode('utf-8')
+
+                user['password_hash'] = password_hash
+
+                if self._save_users(users_data):
+                    logger.info(f"Password reset successfully for: {email}")
+                    return new_password
+                else:
+                    logger.error(f"Failed to save password reset for: {email}")
+                    return None
+
+        logger.warning(f"User not found for password reset: {email}")
+        return None
+
 
 class AuthService:
     """Authentication service for JWT token management"""
@@ -289,3 +329,7 @@ class AuthService:
 # Global instances
 user_manager = UserManager(S3_BUCKET_NAME)
 auth_service = AuthService(user_manager)
+
+
+# Note: get_current_admin_user is defined in main.py to avoid circular imports
+# It depends on get_current_user which needs UserInfo model from main.py
