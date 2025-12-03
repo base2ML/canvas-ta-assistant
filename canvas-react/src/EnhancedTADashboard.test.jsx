@@ -8,7 +8,11 @@ vi.mock('./components/SubmissionStatusCards', () => ({
 }));
 
 vi.mock('./components/AssignmentStatusBreakdown', () => ({
-    default: ({ assignmentMetrics }) => <div data-testid="assignment-breakdown">Breakdown: {assignmentMetrics.length}</div>
+    default: (props) => (
+        <div data-testid="assignment-breakdown">
+            Breakdown: {props.assignmentStats?.length || 0} assignments
+        </div>
+    )
 }));
 
 describe('EnhancedTADashboard', () => {
@@ -67,36 +71,34 @@ describe('EnhancedTADashboard', () => {
         globalThis.fetch = vi.fn();
     });
 
-    it('renders dashboard and loads courses', async () => {
-        globalThis.fetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => mockCourses
-        });
-
-        render(<EnhancedTADashboard backendUrl={mockBackendUrl} getAuthHeaders={mockGetAuthHeaders} />);
+    it('renders dashboard and shows provided courses', async () => {
+        render(
+            <EnhancedTADashboard
+                backendUrl={mockBackendUrl}
+                getAuthHeaders={mockGetAuthHeaders}
+                courses={mockCourses.courses}
+            />
+        );
 
         expect(screen.getByText(/TA Grading Dashboard/i)).toBeInTheDocument();
-
-        await waitFor(() => {
-            expect(screen.getByText('Course 1')).toBeInTheDocument();
-        });
+        expect(screen.getByText('Course 1')).toBeInTheDocument();
     });
 
     it('loads course data and handles mixed group member formats', async () => {
-        // 1. Load Courses
-        globalThis.fetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => mockCourses
-        });
-
-        // 2. Load Course Data (4 API calls)
+        // 1. Load Course Data (4 API calls) - triggered by useEffect when courses prop is present
         globalThis.fetch
             .mockResolvedValueOnce({ ok: true, json: async () => ({ data_url: 'url-assignments' }) })
             .mockResolvedValueOnce({ ok: true, json: async () => ({ data_url: 'url-submissions' }) })
             .mockResolvedValueOnce({ ok: true, json: async () => ({ data_url: 'url-users' }) })
             .mockResolvedValueOnce({ ok: true, json: async () => ({ data_url: 'url-groups' }) });
 
-        // 3. Load S3 Data (1 call with ALL data)
+        // 3. Load Metrics (happens before S3 data fetch because of useEffect timing)
+        globalThis.fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => mockMetrics
+        });
+
+        // 4. Load S3 Data (happens after initial 4 fetches resolve)
         const mockCombinedData = {
             assignments: mockAssignments.assignments,
             submissions: mockSubmissions.submissions,
@@ -109,13 +111,13 @@ describe('EnhancedTADashboard', () => {
             json: async () => mockCombinedData
         });
 
-        // 4. Load Metrics
-        globalThis.fetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => mockMetrics
-        });
-
-        render(<EnhancedTADashboard backendUrl={mockBackendUrl} getAuthHeaders={mockGetAuthHeaders} />);
+        render(
+            <EnhancedTADashboard
+                backendUrl={mockBackendUrl}
+                getAuthHeaders={mockGetAuthHeaders}
+                courses={mockCourses.courses}
+            />
+        );
 
         // Wait for data to load and TA table to appear
         await waitFor(() => {
@@ -129,13 +131,20 @@ describe('EnhancedTADashboard', () => {
         expect(screen.getByText('TA Group B')).toBeInTheDocument();
     });
 
-    it('handles API errors gracefully', async () => {
-        globalThis.fetch.mockRejectedValueOnce(new Error('API Error'));
+    it('handles data loading errors gracefully', async () => {
+        // Mock failure when loading course data
+        globalThis.fetch.mockRejectedValueOnce(new Error('Data Load Error'));
 
-        render(<EnhancedTADashboard backendUrl={mockBackendUrl} getAuthHeaders={mockGetAuthHeaders} />);
+        render(
+            <EnhancedTADashboard
+                backendUrl={mockBackendUrl}
+                getAuthHeaders={mockGetAuthHeaders}
+                courses={mockCourses.courses}
+            />
+        );
 
         await waitFor(() => {
-            expect(screen.getByText(/API Error/i)).toBeInTheDocument();
+            expect(screen.getByText(/Data Load Error/i)).toBeInTheDocument();
         });
     });
 });

@@ -18,7 +18,7 @@ from loguru import logger
 S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME', '')
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY')
 if not JWT_SECRET_KEY:
-    if os.getenv('ENVIRONMENT') == 'dev':
+    if os.getenv('ENVIRONMENT', 'dev') == 'dev':
         logger.warning("Using development JWT secret")
         JWT_SECRET_KEY = 'dev-only-secret-key'  # pragma: allowlist secret
     else:
@@ -75,9 +75,16 @@ class UserManager:
         self.s3_client = s3_client
 
     def _load_users(self) -> Dict[str, Any]:
-        """Load users from S3"""
+        """Load users from S3 or local file"""
         if not self.s3_client or not self.s3_bucket:
-            logger.warning("S3 not configured, using empty user list")
+            logger.info("S3 not configured, checking local users.json")
+            if os.path.exists("users.json"):
+                try:
+                    with open("users.json", "r") as f:
+                        return json.load(f)
+                except Exception as e:
+                    logger.error(f"Error loading local users.json: {e}")
+                    return {"users": []}
             return {"users": []}
 
         try:
@@ -99,10 +106,16 @@ class UserManager:
             return {"users": []}
 
     def _save_users(self, users_data: Dict[str, Any]) -> bool:
-        """Save users to S3"""
+        """Save users to S3 or local file"""
         if not self.s3_client or not self.s3_bucket:
-            logger.error("S3 not configured, cannot save users")
-            return False
+            logger.info("S3 not configured, saving to local users.json")
+            try:
+                with open("users.json", "w") as f:
+                    json.dump(users_data, f, indent=2)
+                return True
+            except Exception as e:
+                logger.error(f"Error saving local users.json: {e}")
+                return False
 
         try:
             self.s3_client.put_object(

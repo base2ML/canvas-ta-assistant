@@ -1,8 +1,14 @@
 # Load context from Agents.MD
-@AGENTS.md
+@docs/AGENTS.md
 
 # Authentication Context
-@AUTHENTICATION.md
+@docs/AUTHENTICATION.md
 
 # Architecture Context
-@ARCHITECTURE.md
+@docs/ARCHITECTURE.md
+
+# Data Structures
+@docs/CANVAS_DATA_STRUCTURES.md
+
+# Security
+@docs/SECURITY.md

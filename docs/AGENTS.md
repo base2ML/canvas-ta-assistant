@@ -275,6 +275,28 @@ VITE_API_ENDPOINT=https://your-api-endpoint.amazonaws.com
 - Use HTTPS endpoints for production deployments
 - JWT tokens are stored in browser localStorage and included in API request headers
 
+### Deployed Environments
+
+The application is deployed to two environments with automated CI/CD from GitHub:
+
+**Development Environment:**
+- **URL**: https://ta-dashboard-isye6740-dev.base2ml.com/
+- **Branch**: `dev-*` branches
+- **Purpose**: Testing and development features before production
+- **Auto-deploy**: Triggered on push to any `dev-*` branch
+
+**Production Environment:**
+- **URL**: https://ta-dashboard-isye6740-prod.base2ml.com/
+- **Branch**: `main`
+- **Purpose**: Stable production deployment for end users
+- **Auto-deploy**: Triggered on push to `main` branch
+
+**Deployment Pipeline:**
+- GitHub Actions workflows handle automated deployment
+- Frontend built with Vite and deployed to CloudFront
+- Backend Lambda functions updated automatically
+- See `.github/workflows/deploy.yml` for pipeline details
+
 ## Security Best Practices
 
 **CRITICAL**: This application handles sensitive student data (names, grades, submissions) and Canvas API credentials. Always follow security best practices.

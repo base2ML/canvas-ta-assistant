@@ -43,6 +43,26 @@ resource "aws_iam_role_policy" "s3_access" {
   })
 }
 
+resource "aws_iam_role_policy" "lambda_invoke" {
+  name = "${var.project_name}-lambda-invoke-${var.environment}"
+  role = aws_iam_role.lambda_exec.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "lambda:InvokeFunction"
+        ]
+        Resource = [
+          "arn:aws:lambda:*:*:function:${var.project_name}-canvas-data-fetcher-${var.environment}"
+        ]
+      }
+    ]
+  })
+}
+
 resource "aws_lambda_function" "api" {
   function_name = "${var.project_name}-api-${var.environment}"
   role          = aws_iam_role.lambda_exec.arn
