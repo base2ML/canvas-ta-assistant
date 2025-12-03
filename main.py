@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from loguru import logger
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -156,6 +156,41 @@ class TAStatusMetrics(BaseModel):
     late_percentage: float
     missing_percentage: float
 
+# Admin models
+class UserListResponse(BaseModel):
+    users: List[Dict[str, Any]]
+    total: int
+    timestamp: str
+
+class DeleteUserRequest(BaseModel):
+    email: EmailStr
+
+class DeleteUserResponse(BaseModel):
+    success: bool
+    message: str
+    deleted_email: str
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordResponse(BaseModel):
+    success: bool
+    message: str
+    email: str
+    new_password: Optional[str] = None
+
+class CreateUserRequest(BaseModel):
+    email: EmailStr
+    name: str
+    role: str = "ta"
+    password: Optional[str] = None
+
+class CreateUserResponse(BaseModel):
+    success: bool
+    message: str
+    email: str
+    generated_password: Optional[str] = None
+
 # Authentication dependency
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> UserInfo:
     """
@@ -176,6 +211,18 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         name=token_payload.get('name', ''),
         role=token_payload.get('role', 'ta')
     )
+
+async def get_current_admin_user(current_user: UserInfo = Depends(get_current_user)) -> UserInfo:
+    """
+    Verify current user has admin role.
+    Raises 403 Forbidden if user is not admin.
+    """
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    return current_user
 
 # S3 data access functions
 class S3DataManager:
@@ -1168,6 +1215,190 @@ async def get_user_profile(user: UserInfo = Depends(get_current_user)) -> UserIn
     Get current user profile
     """
     return user
+
+# Admin endpoints
+@app.get("/api/admin/users", response_model=UserListResponse)
+@limiter.limit("20/minute")
+async def admin_list_users(
+    request: Request,
+    admin: UserInfo = Depends(get_current_admin_user)
+) -> UserListResponse:
+    """Get list of all users (admin only)"""
+    try:
+        users = user_manager.list_users()
+        return UserListResponse(
+            users=users,
+            total=len(users),
+            timestamp=datetime.now(timezone.utc).isoformat()
+        )
+    except Exception as e:
+        logger.error(f"Error listing users: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list users: {str(e)}"
+        )
+
+@app.delete("/api/admin/users", response_model=DeleteUserResponse)
+@limiter.limit("10/minute")
+async def admin_delete_user(
+    request: Request,
+    delete_request: DeleteUserRequest,
+    admin: UserInfo = Depends(get_current_admin_user)
+) -> DeleteUserResponse:
+    """Delete a user (admin only)"""
+    try:
+        # Prevent self-deletion
+        if delete_request.email.lower() == admin.email.lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot delete your own account"
+            )
+
+        # Check if user exists
+        user_to_delete = user_manager.get_user_by_email(delete_request.email)
+        if not user_to_delete:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User not found: {delete_request.email}"
+            )
+
+        # Prevent deleting last admin
+        if user_to_delete.role == "admin":
+            all_users = user_manager.list_users()
+            admin_count = sum(1 for u in all_users if u.get('role') == 'admin')
+            if admin_count <= 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot delete the last admin user"
+                )
+
+        # Delete user
+        success = user_manager.remove_user(delete_request.email)
+
+        if success:
+            logger.info(f"Admin {admin.email} deleted user: {delete_request.email}")
+            return DeleteUserResponse(
+                success=True,
+                message=f"User deleted successfully",
+                deleted_email=delete_request.email
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to delete user"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting user: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete user: {str(e)}"
+        )
+
+@app.post("/api/admin/users/reset-password", response_model=ResetPasswordResponse)
+@limiter.limit("10/minute")
+async def admin_reset_password(
+    request: Request,
+    reset_request: ResetPasswordRequest,
+    admin: UserInfo = Depends(get_current_admin_user)
+) -> ResetPasswordResponse:
+    """Reset user password to random secure password (admin only)"""
+    try:
+        # Verify user exists
+        user = user_manager.get_user_by_email(reset_request.email)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User not found: {reset_request.email}"
+            )
+
+        # Reset password
+        new_password = user_manager.reset_password(reset_request.email)
+
+        if new_password:
+            logger.info(f"Admin {admin.email} reset password for: {reset_request.email}")
+            return ResetPasswordResponse(
+                success=True,
+                message="Password reset successfully. Please save this password and share it securely with the user.",
+                email=reset_request.email,
+                new_password=new_password
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to reset password"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error resetting password: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to reset password: {str(e)}"
+        )
+
+@app.post("/api/admin/users/create", response_model=CreateUserResponse)
+@limiter.limit("10/minute")
+async def admin_create_user(
+    request: Request,
+    create_request: CreateUserRequest,
+    admin: UserInfo = Depends(get_current_admin_user)
+) -> CreateUserResponse:
+    """Create a new user (admin only)"""
+    try:
+        # Check if user already exists
+        existing_user = user_manager.get_user_by_email(create_request.email)
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"User with email {create_request.email} already exists"
+            )
+
+        # Validate role
+        if create_request.role not in ["ta", "admin"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Role must be either 'ta' or 'admin'"
+            )
+
+        # Generate password if not provided
+        password = create_request.password
+        generated_password = None
+        if not password:
+            from auth import generate_secure_password
+            password = generate_secure_password(16)
+            generated_password = password
+
+        # Create user
+        success = user_manager.add_user(
+            email=create_request.email,
+            password=password,
+            name=create_request.name,
+            role=create_request.role
+        )
+
+        if success:
+            logger.info(f"Admin {admin.email} created user: {create_request.email} with role: {create_request.role}")
+            return CreateUserResponse(
+                success=True,
+                message="User created successfully" + (" with generated password" if generated_password else ""),
+                email=create_request.email,
+                generated_password=generated_password
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create user"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating user: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create user: {str(e)}"
+        )
 
 @app.get("/api/config")
 async def get_app_config() -> Dict[str, Any]:

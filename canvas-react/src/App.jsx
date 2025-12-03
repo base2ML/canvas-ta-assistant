@@ -5,6 +5,7 @@ import EnhancedTADashboard from './EnhancedTADashboard';
 import TAGradingDashboard from './TAGradingDashboard';
 import LateDaysTracking from './LateDaysTracking';
 import PeerReviewTracking from './PeerReviewTracking';
+import AdminDashboard from './AdminDashboard';
 import Navigation from './components/Navigation';
 
 const App = () => {
@@ -105,6 +106,15 @@ const App = () => {
                 apiUrl={backendUrl}
                 apiToken={getApiToken()}
                 courses={courses}
+              />
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <AdminDashboard
+                backendUrl={backendUrl}
+                getAuthHeaders={getAuthHeaders}
               />
             }
           />
