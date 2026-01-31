@@ -222,33 +222,21 @@ dmypy.json
 .github/AWS_DEPLOYMENT_SETUP.md
 
 # =============================================================================
-# AWS Lambda & Terraform Build Artifacts
+# Local Data Storage
 # =============================================================================
-# Lambda deployment packages (auto-generated)
-lambda-package/
-lambda-packages/
-lambda-linux-package/
-lambda-pkg/
-lambda-deployment.zip
-lambda-enhanced.zip
-lambda-fixed.zip
-lambda-list-fix.zip
-lambda-updated.zip
-canvas-sync.zip
+# SQLite database and local data
+data/
+!data/.gitkeep
 
-# Terraform build artifacts
-terraform-serverless/
-terraform/.terraform/
-terraform/.terraform.lock.hcl
-*.tfstate
-*.tfstate.backup
+# =============================================================================
+# Docker
+# =============================================================================
+# Docker-compose override files
+docker-compose.override.yml
 
-# Temporary CloudFront config
-cf-config-*.json
-
-
-
-lambda-build/boto3/data/cloudformation/*
+# =============================================================================
+# Miscellaneous
+# =============================================================================
 claudedocs/
 users.json
 mock_canvas_data.json

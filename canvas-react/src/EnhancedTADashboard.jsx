@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { RefreshCw, TrendingUp } from 'lucide-react';
 import AssignmentStatusBreakdown from './components/AssignmentStatusBreakdown';
 
-const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadCourses }) => {
+const EnhancedTADashboard = ({ backendUrl, courses = [], onLoadCourses }) => {
   // Use courses from props, but keep local state for selection
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [assignments, setAssignments] = useState([]);
@@ -35,46 +35,26 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
 
     setLoading(true);
     try {
-      const headers = await getAuthHeaders();
-
-      // Get S3 pre-signed URLs from API
-      const [assignmentsRes] = await Promise.all([
-        fetch(`${backendUrl}/api/canvas/assignments/${courseId}`, { headers }),
-        fetch(`${backendUrl}/api/canvas/submissions/${courseId}`, { headers }),
-        fetch(`${backendUrl}/api/canvas/users/${courseId}`, { headers }),
-        fetch(`${backendUrl}/api/canvas/groups/${courseId}`, { headers })
+      // Fetch all data from local API
+      const [assignmentsRes, submissionsRes, groupsRes] = await Promise.all([
+        fetch(`${backendUrl}/api/canvas/assignments/${courseId}`),
+        fetch(`${backendUrl}/api/canvas/submissions/${courseId}`),
+        fetch(`${backendUrl}/api/canvas/groups/${courseId}`)
       ]);
 
-      // Fetch full Canvas data from S3 using pre-signed URL
       if (assignmentsRes.ok) {
-        const urlData = await assignmentsRes.json();
+        const assignmentsData = await assignmentsRes.json();
+        setAssignments(assignmentsData.assignments || []);
+      }
 
-        // Handle S3 pre-signed URL mode (production)
-        if (urlData.data_url) {
-          const s3Response = await fetch(urlData.data_url);
-          const canvasData = await s3Response.json();
-          setAssignments(canvasData.assignments || []);
-          setSubmissions(canvasData.submissions || []);
-          setGroups(canvasData.groups || []);
-        }
-        // Handle direct data mode (local mock data)
-        else if (urlData.assignments) {
-          setAssignments(urlData.assignments || []);
-          // For mock mode, we need to fetch additional data
-          const [submissionsRes, groupsRes] = await Promise.all([
-            fetch(`${backendUrl}/api/canvas/submissions/${selectedCourse.id}`, { headers }),
-            fetch(`${backendUrl}/api/canvas/groups/${selectedCourse.id}`, { headers })
-          ]);
+      if (submissionsRes.ok) {
+        const submissionsData = await submissionsRes.json();
+        setSubmissions(submissionsData.submissions || []);
+      }
 
-          if (submissionsRes.ok) {
-            const subData = await submissionsRes.json();
-            setSubmissions(subData.submissions || []);
-          }
-          if (groupsRes.ok) {
-            const groupData = await groupsRes.json();
-            setGroups(groupData.groups || []);
-          }
-        }
+      if (groupsRes.ok) {
+        const groupsData = await groupsRes.json();
+        setGroups(groupsData.groups || []);
       }
 
       // Update last updated timestamp after successful data load
@@ -85,7 +65,7 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
     } finally {
       setLoading(false);
     }
-  }, [backendUrl, getAuthHeaders, selectedCourse]);
+  }, [backendUrl]);
 
   // Initialize selected course when courses are loaded
   useEffect(() => {
@@ -231,34 +211,32 @@ const EnhancedTADashboard = ({ backendUrl, getAuthHeaders, courses = [], onLoadC
 
     try {
       // First, trigger Canvas data sync
-      const headers = await getAuthHeaders();
       const syncResponse = await fetch(`${backendUrl}/api/canvas/sync`, {
         method: 'POST',
-        headers
       });
 
       if (!syncResponse.ok) {
-        throw new Error(`Sync failed: ${syncResponse.statusText}`);
+        const errorData = await syncResponse.json();
+        throw new Error(errorData.detail || `Sync failed: ${syncResponse.statusText}`);
       }
 
       const syncResult = await syncResponse.json();
-      console.log('Sync triggered:', syncResult);
+      console.log('Sync completed:', syncResult);
 
       // Show success message briefly
-      setError('✓ Data sync triggered! Refreshing in 5 seconds...');
+      setError(`✓ Synced ${syncResult.stats?.assignments || 0} assignments, ${syncResult.stats?.users || 0} users`);
 
-      // Wait a few seconds for data to be processed, then reload
-      setTimeout(() => {
-        if (selectedCourse) {
-          loadCourseData(selectedCourse.id);
-        } else if (onLoadCourses) {
-          onLoadCourses();
-        }
-      }, 5000);
+      // Reload data immediately since sync is synchronous now
+      if (selectedCourse) {
+        await loadCourseData(selectedCourse.id);
+      } else if (onLoadCourses) {
+        onLoadCourses();
+      }
 
     } catch (err) {
       console.error('Refresh error:', err);
       setError(`Failed to refresh: ${err.message}`);
+    } finally {
       setLoading(false);
     }
   };

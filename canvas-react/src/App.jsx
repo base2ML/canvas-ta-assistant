@@ -1,12 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import SimpleAuthWrapper from './components/SimpleAuthWrapper';
 import EnhancedTADashboard from './EnhancedTADashboard';
-import TAGradingDashboard from './TAGradingDashboard';
 import LateDaysTracking from './LateDaysTracking';
-import PeerReviewTracking from './PeerReviewTracking';
-import AdminDashboard from './AdminDashboard';
+import Settings from './Settings';
 import Navigation from './components/Navigation';
+import { RefreshCw } from 'lucide-react';
 
 const App = () => {
   const [backendUrl] = useState(
@@ -14,32 +12,13 @@ const App = () => {
   );
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(false);
-  // const [error, setError] = useState(''); // Unused
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState(null);
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('access_token');
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': token ? `Bearer ${token}` : ''
-    };
-  };
-
-  // Helper to get raw token for components that need it
-  const getApiToken = () => {
-    return localStorage.getItem('access_token') || '';
-  };
-
-  const loadCourses = React.useCallback(async () => {
+  const loadCourses = useCallback(async () => {
     setLoading(true);
     try {
-      const headers = getAuthHeaders();
-      // Skip fetch if no token (e.g. not logged in)
-      if (!headers['Authorization']) {
-        setLoading(false);
-        return;
-      }
-
-      const response = await fetch(`${backendUrl}/api/canvas/courses`, { headers });
+      const response = await fetch(`${backendUrl}/api/canvas/courses`);
 
       if (!response.ok) {
         throw new Error(`Failed to load courses: ${response.statusText}`);
@@ -49,40 +28,97 @@ const App = () => {
       setCourses(data.courses || []);
     } catch (err) {
       console.error('Error loading courses:', err);
-      // setError(err.message);
     } finally {
       setLoading(false);
     }
   }, [backendUrl]);
 
-  // Load courses on mount or when auth changes (simplified for now)
-  React.useEffect(() => {
+  const handleRefreshData = async () => {
+    setSyncing(true);
+    setSyncMessage(null);
+    try {
+      const response = await fetch(`${backendUrl}/api/canvas/sync`, {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSyncMessage({
+          type: 'success',
+          text: `Synced ${data.stats?.assignments || 0} assignments, ${data.stats?.users || 0} users`,
+        });
+        // Reload courses after sync
+        loadCourses();
+      } else {
+        const error = await response.json();
+        setSyncMessage({
+          type: 'error',
+          text: error.detail || 'Sync failed',
+        });
+      }
+    } catch (err) {
+      console.error('Sync failed:', err);
+      setSyncMessage({
+        type: 'error',
+        text: 'Failed to connect to server',
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Load courses on mount
+  useEffect(() => {
     loadCourses();
   }, [loadCourses]);
 
+  // Clear sync message after 5 seconds
+  useEffect(() => {
+    if (syncMessage) {
+      const timer = setTimeout(() => setSyncMessage(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [syncMessage]);
+
   return (
     <BrowserRouter>
-      <SimpleAuthWrapper>
-        <Navigation />
+      {/* Header with Refresh Button */}
+      <header className="bg-white shadow-sm border-b sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+          <h1 className="text-xl font-bold text-gray-900">Canvas TA Dashboard</h1>
+          <div className="flex items-center gap-4">
+            {syncMessage && (
+              <span
+                className={`text-sm ${syncMessage.type === 'success' ? 'text-green-600' : 'text-red-600'
+                  }`}
+              >
+                {syncMessage.text}
+              </span>
+            )}
+            <button
+              onClick={handleRefreshData}
+              disabled={syncing}
+              className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Syncing...' : 'Refresh Data'}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <Navigation />
+
+      <main className="min-h-screen bg-gray-50">
         <Routes>
           <Route
             path="/"
             element={
               <EnhancedTADashboard
                 backendUrl={backendUrl}
-                getAuthHeaders={getAuthHeaders}
                 courses={courses}
                 onLoadCourses={loadCourses}
                 loadingCourses={loading}
-              />
-            }
-          />
-          <Route
-            path="/grading"
-            element={
-              <TAGradingDashboard
-                backendUrl={backendUrl}
-                getAuthHeaders={getAuthHeaders}
               />
             }
           />
@@ -92,34 +128,17 @@ const App = () => {
               <LateDaysTracking
                 backendUrl={backendUrl}
                 apiUrl={backendUrl}
-                apiToken={getApiToken()}
                 courses={courses}
                 onLoadCourses={loadCourses}
               />
             }
           />
           <Route
-            path="/peer-reviews"
-            element={
-              <PeerReviewTracking
-                backendUrl={backendUrl}
-                apiUrl={backendUrl}
-                apiToken={getApiToken()}
-                courses={courses}
-              />
-            }
-          />
-          <Route
-            path="/admin"
-            element={
-              <AdminDashboard
-                backendUrl={backendUrl}
-                getAuthHeaders={getAuthHeaders}
-              />
-            }
+            path="/settings"
+            element={<Settings backendUrl={backendUrl} />}
           />
         </Routes>
-      </SimpleAuthWrapper>
+      </main>
     </BrowserRouter>
   );
 };

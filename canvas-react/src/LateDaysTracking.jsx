@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { RefreshCw, Calendar, User, Clock, ArrowLeft, FileText, ChevronUp, ChevronDown, MessageCircle } from 'lucide-react';
+import { RefreshCw, Calendar, Clock, FileText, ChevronUp, ChevronDown } from 'lucide-react';
 
-const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerReviews, onLoadCourses, apiToken }) => {
+const LateDaysTracking = ({ backendUrl, courses, onLoadCourses }) => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -17,20 +17,7 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
 
   const fetchLateDaysData = useCallback(async (courseId) => {
     try {
-      // Get JWT token from prop or localStorage
-      const token = apiToken || localStorage.getItem('access_token');
-      if (!token) {
-        throw new Error('Not authenticated. Please log in.');
-      }
-
-      // Use the new dashboard endpoint with JWT authentication
-      const response = await fetch(`${backendUrl}/api/dashboard/late-days/${courseId}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        }
-      });
+      const response = await fetch(`${backendUrl}/api/dashboard/late-days/${courseId}`);
 
       const data = await response.json();
 
@@ -42,7 +29,7 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
     } catch (err) {
       throw new Error(`Error fetching late days data: ${err.message}`);
     }
-  }, [backendUrl, apiToken]);
+  }, [backendUrl]);
 
   const loadCourseData = useCallback(async () => {
     if (!currentCourse) return;
@@ -201,34 +188,7 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
         <div className="border-b border-gray-200 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <div className="flex items-center space-x-4">
-                <button
-                  onClick={onBack}
-                  className="text-purple-500 hover:text-purple-600 flex items-center"
-                >
-                  <ArrowLeft className="h-4 w-4 mr-1" />
-                  Back to Assignment View
-                </button>
-                {onTAGrading && (
-                  <button
-                    onClick={onTAGrading}
-                    className="text-purple-500 hover:text-purple-600 flex items-center"
-                  >
-                    <User className="h-4 w-4 mr-1" />
-                    TA Grading
-                  </button>
-                )}
-                {onPeerReviews && (
-                  <button
-                    onClick={onPeerReviews}
-                    className="text-green-500 hover:text-green-600 flex items-center"
-                  >
-                    <MessageCircle className="h-4 w-4 mr-1" />
-                    Peer Reviews
-                  </button>
-                )}
-              </div>
-              <h1 className="text-2xl font-bold text-gray-900 mt-2">Late Days Tracking</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Late Days Tracking</h1>
               <p className="text-gray-600 mt-1">Monitor student late day usage across assignments</p>
               {courseInfo && (
                 <div className="flex items-center mt-2 text-sm text-gray-500">
