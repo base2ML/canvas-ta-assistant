@@ -2,7 +2,7 @@
 
 ## Overview
 
-The CDA TA Dashboard handles sensitive educational data including student information, grades, and Canvas LMS credentials. This document outlines security best practices for development, deployment, and responsible disclosure.
+The CDA TA Dashboard handles sensitive educational data including student information, grades, and Canvas LMS credentials. This document outlines security best practices for development and local deployment.
 
 ## Credential Management
 
@@ -17,213 +17,144 @@ Canvas API tokens provide access to sensitive student data and should be treated
 1. Log into your Canvas instance (e.g., `https://your-school.instructure.com`)
 2. Navigate to **Account → Settings → Approved Integrations**
 3. Click **+ New Access Token**
-4. Set a descriptive purpose (e.g., "TA Dashboard Development")
-5. Set an expiration date (recommended: 90 days for development, 30 days for production)
+4. Set a descriptive purpose (e.g., "TA Dashboard")
+5. Set an expiration date (recommended: 90 days)
 6. Copy the token immediately (it will only be shown once)
 
 #### Token Storage
 
-**Development:**
 - Store tokens in `.env` files (already gitignored)
 - Never share `.env` files via email, chat, or cloud storage
-- Use `.env.example` as a template for team members
-
-**Production:**
-- Use environment variables via your hosting platform
-- Enable token rotation (regenerate every 30-90 days)
-- Use scoped tokens when Canvas supports it
+- Use `.env.example` as a template
 - Never log API tokens in application logs
 
 #### Token Regeneration
 
-Before making this repository public or if tokens are compromised:
+If tokens are compromised:
 
-1. **Immediately regenerate** all Canvas API tokens
-2. Update environment variables in production
-3. Update local `.env` files for development
-4. Verify old tokens are revoked in Canvas settings
+1. **Immediately regenerate** your Canvas API token in Canvas settings
+2. Update your local `.env` file with the new token
+3. Restart Docker containers: `docker-compose down && docker-compose up -d`
 
 ### Environment Variables
 
-Required environment variables are documented in `.env.example` files:
+Required environment variables in `.env`:
 
-**Backend** (Terraform/Lambda environment variables):
 ```bash
-CANVAS_API_TOKEN=your-canvas-api-token-here
+# Canvas API Configuration
 CANVAS_API_URL=https://your-school.instructure.com
-CANVAS_COURSE_ID=your-course-id
-JWT_SECRET_KEY=your-production-secret
+CANVAS_API_TOKEN=your-canvas-api-token-here
+CANVAS_COURSE_ID=your-course-id  # Optional
 ```
 
-**Frontend** (`canvas-react/.env.example`):
-```bash
-VITE_CANVAS_API_URL=https://your-school.instructure.com
-VITE_CANVAS_API_KEY=your-canvas-api-token-here
-VITE_CANVAS_COURSE_ID=12345
-VITE_BACKEND_URL=http://localhost:8000
-```
+## Local Deployment Security
 
-## Production Deployment Security
+### Single-User Design
 
-### Critical Configuration Changes
+This application is designed for local, single-user deployment:
 
-Before deploying to production:
+- No authentication system (user has direct access)
+- Data stored locally in SQLite database
+- Canvas API token stored in local `.env` file
+- Not designed for multi-user or shared access
 
-1. **Disable Debug Mode**
-   ```bash
-   # In Terraform variables or Lambda environment
-   ENVIRONMENT=prod
-   ```
+### Data Storage
 
-2. **Configure CORS Properly**
-   ```bash
-   # Set specific allowed origins (not "*")
-   CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
-   ```
-
-3. **Use HTTPS Only**
-   - Enforce HTTPS for all API endpoints
-   - Use SSL/TLS certificates (Let's Encrypt recommended)
-   - Set `Secure` flag on cookies
-
-4. **Enable Rate Limiting**
-   - Implement rate limiting on API endpoints
-   - Protect against brute force attacks
-   - Consider Canvas API rate limits (1000 requests/hour typical)
+- **SQLite Database**: `./data/canvas.db`
+  - Contains student names, emails, grades, submissions
+  - Protected by file system permissions
+  - Not encrypted at rest
+- **Environment File**: `.env`
+  - Contains Canvas API token
+  - Must never be committed to version control
 
 ### Security Checklist
 
-- [ ] All API tokens regenerated and stored securely
-- [ ] Debug mode disabled (`DEBUG=false`)
-- [ ] CORS configured with specific domains (not `*`)
-- [ ] HTTPS enabled and enforced
-- [ ] Environment variables set via hosting platform (not hardcoded)
-- [ ] Secrets never logged or exposed in error messages
-- [ ] Pre-commit hooks installed (`pre-commit install`)
-- [ ] Security scanning enabled in CI/CD pipeline
-- [ ] Database credentials rotated (if applicable)
-- [ ] Firewall rules configured to restrict access
+- [ ] `.env` file is in `.gitignore` (default)
+- [ ] `data/` directory is in `.gitignore` (default)
+- [ ] Canvas API token has appropriate expiration date
+- [ ] No sensitive data in screenshots or logs
 
 ## Data Privacy
 
 ### Student Data Handling
 
 This application accesses student data from Canvas LMS:
+
 - Student names and IDs
 - Assignment submissions and grades
 - Course enrollment information
 
 **Compliance Requirements:**
+
 - **FERPA**: Comply with Family Educational Rights and Privacy Act
-- **GDPR**: If serving EU students, comply with data protection regulations
 - **Institutional Policies**: Follow your institution's data handling policies
 
 **Best Practices:**
-- Minimize data retention (don't cache student data unnecessarily)
-- Use short cache TTLs for sensitive data (see `config.py`)
-- Never share screenshots or logs containing student names/IDs
-- Anonymize data for debugging or development examples
 
-## Development Security
+- Only access courses you are authorized to view
+- Do not share screenshots containing student data
+- Delete local database when no longer needed
+- Handle student data according to your institution's guidelines
 
-### Pre-commit Hooks
+## What NOT to Commit
 
-Install pre-commit hooks to prevent accidental secret commits:
+❌ **Never commit these files:**
 
-```bash
-# Install pre-commit (if not already installed)
-pip install pre-commit
-
-# Install hooks in your local repository
-pre-commit install
-
-# Manually run on all files (optional)
-pre-commit run --all-files
-```
-
-The `.pre-commit-config.yaml` includes:
-- **detect-secrets**: Scans for API keys, tokens, passwords
-- **check-added-large-files**: Prevents committing large files
-- **trailing-whitespace**: Code quality checks
-- **end-of-file-fixer**: Code quality checks
-
-### Secret Scanning
-
-GitHub Actions automatically scans for secrets on every push and pull request. See `.github/workflows/security.yml` for configuration.
-
-If secrets are detected:
-1. **Do not force push** to hide them (history is public)
-2. **Immediately regenerate** the compromised credentials
-3. **Contact repository admins** to purge from history if necessary
-4. Use `git filter-repo` or BFG Repo Cleaner to remove from history
-
-## Vulnerability Reporting
-
-### Responsible Disclosure
-
-If you discover a security vulnerability in this project:
-
-1. **Do NOT** open a public GitHub issue
-2. **Email** the maintainers directly at [your-security-email@example.com]
-3. Include:
-   - Description of the vulnerability
-   - Steps to reproduce
-   - Potential impact
-   - Suggested fix (if available)
-
-### Response Timeline
-
-- **24 hours**: Initial response acknowledging receipt
-- **7 days**: Assessment and planned fix timeline
-- **30 days**: Patch released (or timeline communicated)
-
-### Security Updates
-
-Monitor this repository for security updates:
-- Watch for security advisories
-- Update dependencies regularly
-- Review `CHANGELOG.md` for security fixes
-
-## Common Security Issues
-
-### What NOT to do
-
-❌ **Never commit**:
-- `.env` files with real credentials
-- Canvas API tokens in code or configuration
-- Student names, IDs, or grades in examples
-- Private keys or certificates
-- Database credentials
-
-❌ **Never share**:
-- API tokens via email, Slack, or chat
-- Production `.env` files
-- Screenshots with student data
+- `.env` files with Canvas API tokens
+- `data/` directory with SQLite database
+- Screenshots with student names, IDs, or grades
 - Logs containing sensitive information
 
-✅ **Always**:
-- Use `.env.example` as templates
-- Rotate credentials regularly
-- Enable 2FA on Canvas and GitHub accounts
-- Keep dependencies updated
-- Review code before committing
-- Use pre-commit hooks
+✅ **Safe to commit:**
 
-## Additional Resources
+- `.env.example` with placeholder values
+- Documentation without real student data
+- Code without hardcoded credentials
 
-- [Canvas API Security Best Practices](https://canvas.instructure.com/doc/api/)
-- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
-- [FERPA Guidelines](https://www2.ed.gov/policy/gen/guid/fpco/ferpa/index.html)
-- [Git Secrets Management](https://docs.github.com/en/code-security/secret-scanning)
+## File Security
+
+### Gitignore Configuration
+
+The following are already configured in `.gitignore`:
+
+```
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Local data storage
+data/
+!data/.gitkeep
+
+# Logs
+logs/
+*.log
+```
+
+### Verifying Before Commit
+
+Always check `git status` before committing:
+
+```bash
+# Check for accidentally staged sensitive files
+git status
+
+# If .env or data/ appears, unstage them
+git reset HEAD .env
+git reset HEAD data/
+```
+
+## Security Resources
+
+- **Canvas API Docs**: https://canvas.instructure.com/doc/api/
+- **FERPA Guidelines**: https://www2.ed.gov/policy/gen/guid/fpco/ferpa/index.html
 
 ## Contact
 
-For security concerns or questions:
-- **Email**: [your-security-email@example.com]
-- **GitHub Issues**: For non-security bugs only
-- **Documentation**: See `README.md` and `AGENTS.md`
+For security concerns or questions about data handling, contact your institution's IT security team.
 
 ---
 
-**Last Updated**: 2025-10-10
-**Repository**: https://github.com/base2ML/cda-ta-dashboard
+**Last Updated**: 2025-01-31

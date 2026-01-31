@@ -329,7 +329,7 @@ const EnhancedTADashboard = ({ backendUrl, courses = [], onLoadCourses }) => {
           <div className="text-center py-12">
             <h3 className="mt-2 text-sm font-medium text-gray-900">No courses found</h3>
             <p className="mt-1 text-sm text-gray-500">
-              No course data is available. Make sure the Lambda function is running and has populated the S3 bucket.
+              No course data is available. Configure a course in Settings and sync data from Canvas.
             </p>
           </div>
         )}

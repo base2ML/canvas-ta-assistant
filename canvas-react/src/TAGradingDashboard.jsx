@@ -99,19 +99,8 @@ const TAGradingDashboard = ({ backendUrl, onBack, getAuthHeaders }) => {
       const assignmentsData = await assignmentsRes.json();
       const submissionsData = await submissionsRes.json();
 
-      // Handle both S3 URL mode and direct data mode
-      let assignments = [];
-      let submissions = [];
-
-      if (assignmentsData.data_url) {
-        const s3Response = await fetch(assignmentsData.data_url);
-        const canvasData = await s3Response.json();
-        assignments = canvasData.assignments || [];
-        submissions = canvasData.submissions || [];
-      } else {
-        assignments = assignmentsData.assignments || [];
-        submissions = submissionsData.submissions || [];
-      }
+      const assignments = assignmentsData.assignments || [];
+      const submissions = submissionsData.submissions || [];
 
       // Calculate ungraded submissions and stats locally
       const ungradedSubs = submissions.filter(

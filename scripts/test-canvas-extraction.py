@@ -2,7 +2,7 @@
 """
 Canvas Data Extraction Test Script
 
-Tests Canvas API connectivity and data fetching without uploading to S3.
+Tests Canvas API connectivity and data fetching.
 Useful for local development and CI/CD validation.
 
 Usage:
