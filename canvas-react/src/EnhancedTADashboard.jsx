@@ -103,17 +103,7 @@ const EnhancedTADashboard = ({ backendUrl, courses = [], onLoadCourses }) => {
         s => s.assignment_id === assignmentId
       );
 
-      // Calculate overall grading progress
-      const gradedSubmissions = assignmentSubmissions.filter(
-        s => s.workflow_state === 'graded'
-      ).length;
-      const totalSubmissions = assignmentSubmissions.length;
-      const ungradedSubmissions = totalSubmissions - gradedSubmissions;
-      const percentageGraded = totalSubmissions > 0
-        ? Math.round((gradedSubmissions / totalSubmissions) * 100)
-        : 0;
-
-      // Calculate submission status for this assignment
+      // Calculate submission status FIRST (needed for progress calculation)
       const submittedOnTime = assignmentSubmissions.filter(s => {
         if (!s.submitted_at || !assignment.due_at) return false;
         return new Date(s.submitted_at) <= new Date(assignment.due_at);
@@ -128,6 +118,18 @@ const EnhancedTADashboard = ({ backendUrl, courses = [], onLoadCourses }) => {
         !s.submitted_at || s.workflow_state === 'unsubmitted'
       ).length;
 
+      // Calculate grading progress based on SUBMITTED assignments only
+      const totalSubmissions = assignmentSubmissions.length;
+      const actuallySubmitted = submittedOnTime + submittedLate;
+      // Only count as graded if actually submitted AND graded (excludes missing submissions graded as 0)
+      const gradedSubmissions = assignmentSubmissions.filter(
+        s => s.workflow_state === 'graded' && s.submitted_at
+      ).length;
+      const pendingSubmissions = actuallySubmitted - gradedSubmissions;
+      const percentageGraded = actuallySubmitted > 0
+        ? Math.round((gradedSubmissions / actuallySubmitted) * 100)
+        : 0;
+
       // Calculate TA breakdown for this assignment
       const taGradingBreakdown = Object.entries(taAssignments).map(([taName, studentIds]) => {
         // Get submissions for this TA's students on this assignment
@@ -136,10 +138,8 @@ const EnhancedTADashboard = ({ backendUrl, courses = [], onLoadCourses }) => {
         );
 
         const totalAssigned = taSubmissions.length;
-        const graded = taSubmissions.filter(s => s.workflow_state === 'graded').length;
-        const percentageComplete = totalAssigned > 0
-          ? Math.round((graded / totalAssigned) * 100)
-          : 0;
+        // Only count as graded if actually submitted AND graded (excludes missing submissions graded as 0)
+        const graded = taSubmissions.filter(s => s.workflow_state === 'graded' && s.submitted_at).length;
 
         // Count submission statuses for this TA
         const taSubmittedOnTime = taSubmissions.filter(s => {
@@ -156,10 +156,19 @@ const EnhancedTADashboard = ({ backendUrl, courses = [], onLoadCourses }) => {
           !s.submitted_at || s.workflow_state === 'unsubmitted'
         ).length;
 
+        // Calculate progress based on SUBMITTED assignments only
+        const taActuallySubmitted = taSubmittedOnTime + taSubmittedLate;
+        const taPending = taActuallySubmitted - graded;
+        const percentageComplete = taActuallySubmitted > 0
+          ? Math.round((graded / taActuallySubmitted) * 100)
+          : 0;
+
         return {
           ta_name: taName,
           total_assigned: totalAssigned,
+          actually_submitted: taActuallySubmitted,
           graded: graded,
+          pending: taPending,
           percentage_complete: percentageComplete,
           submitted_on_time: taSubmittedOnTime,
           submitted_late: taSubmittedLate,
@@ -173,8 +182,9 @@ const EnhancedTADashboard = ({ backendUrl, courses = [], onLoadCourses }) => {
         due_at: assignment.due_at,
         html_url: assignment.html_url,
         total_submissions: totalSubmissions,
+        actually_submitted: actuallySubmitted,
         graded_submissions: gradedSubmissions,
-        ungraded_submissions: ungradedSubmissions,
+        pending_submissions: pendingSubmissions,
         percentage_graded: percentageGraded,
         submitted_on_time: submittedOnTime,
         submitted_late: submittedLate,
