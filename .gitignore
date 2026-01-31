@@ -219,7 +219,6 @@ dmypy.json
 
 # FastAPI specific
 .fastapi/
-.github/AWS_DEPLOYMENT_SETUP.md
 
 # =============================================================================
 # Local Data Storage

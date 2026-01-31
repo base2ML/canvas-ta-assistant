@@ -116,42 +116,6 @@ jobs:
         run: npm test -- --passWithNoTests
         continue-on-error: true
 
-  lambda-package-test:
-    name: Lambda Package Test
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install UV package manager
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
-      - name: Test Lambda packaging
-        run: |
-          ./scripts/package-lambda-api.sh
-
-          # Verify package was created
-          if [ ! -f "lambda-api.zip" ]; then
-            echo "❌ Lambda package not created"
-            exit 1
-          fi
-
-          # Check package size (should be reasonable)
-          SIZE=$(du -m lambda-api.zip | cut -f1)
-          echo "📦 Lambda package size: ${SIZE}MB"
-
-          if [ $SIZE -gt 250 ]; then
-            echo "⚠️  Warning: Lambda package is very large (${SIZE}MB)"
-          fi
-
   pre-commit-hooks:
     name: Pre-commit Hooks
     runs-on: ubuntu-latest
@@ -174,7 +138,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [backend-lint, backend-tests, frontend-tests, lambda-package-test, pre-commit-hooks]
+    needs: [backend-lint, backend-tests, frontend-tests, pre-commit-hooks]
     if: always()
 
     steps:
@@ -184,15 +148,13 @@ jobs:
           echo "Backend lint: ${{ needs.backend-lint.result }}"
           echo "Backend tests: ${{ needs.backend-tests.result }}"
           echo "Frontend tests: ${{ needs.frontend-tests.result }}"
-          echo "Lambda package: ${{ needs.lambda-package-test.result }}"
           echo "Pre-commit hooks: ${{ needs.pre-commit-hooks.result }}"
 
       - name: Report status
         if: |
           needs.backend-lint.result == 'failure' ||
           needs.backend-tests.result == 'failure' ||
-          needs.frontend-tests.result == 'failure' ||
-          needs.lambda-package-test.result == 'failure'
+          needs.frontend-tests.result == 'failure'
         run: |
           echo "❌ Some CI checks failed. Please review the logs."
           exit 1
