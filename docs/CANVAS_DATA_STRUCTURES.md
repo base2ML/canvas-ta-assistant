@@ -307,30 +307,7 @@ Users can trigger manual data refresh via:
 
 ## API Endpoints
 
-### Settings
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/settings` | Get current settings |
-| PUT | `/api/settings` | Update settings |
-| GET | `/api/settings/courses` | List available Canvas courses |
-
-### Canvas Data
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/canvas/courses` | List configured courses |
-| GET | `/api/canvas/assignments/{course_id}` | Get assignments from SQLite |
-| GET | `/api/canvas/submissions/{course_id}` | Get submissions from SQLite |
-| GET | `/api/canvas/users/{course_id}` | Get users from SQLite |
-| GET | `/api/canvas/groups/{course_id}` | Get groups from SQLite |
-
-### Sync
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/canvas/sync` | Trigger Canvas data sync |
-| GET | `/api/canvas/sync/status` | Get last sync status |
+See [AGENTS.md](AGENTS.md#backend-structure) for API endpoint documentation.
 
 ---
 

@@ -155,37 +155,7 @@
 
 ## API Endpoints
 
-### Settings
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/settings` | Get current settings |
-| PUT | `/api/settings` | Update settings |
-| GET | `/api/settings/courses` | List available Canvas courses |
-
-### Canvas Data
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/canvas/courses` | List configured courses |
-| GET | `/api/canvas/assignments/{course_id}` | Get assignments |
-| GET | `/api/canvas/submissions/{course_id}` | Get submissions |
-| GET | `/api/canvas/users/{course_id}` | Get users |
-| GET | `/api/canvas/groups/{course_id}` | Get groups |
-
-### Sync
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/canvas/sync` | Trigger data sync |
-| GET | `/api/canvas/sync/status` | Get last sync status |
-
-### Health
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Simple health check |
-| GET | `/api/health` | Detailed health with DB status |
+See [AGENTS.md](AGENTS.md#backend-structure) for full endpoint documentation.
 
 ## Configuration
 

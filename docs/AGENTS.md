@@ -1,4 +1,4 @@
-# CLAUDE.md
+# Development Guide
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -15,7 +15,9 @@ This is a Canvas LMS TA Dashboard application with a FastAPI backend and React f
 - **Frontend Build Tool**: Vite (fast, modern build tool)
 - **CSS Framework**: Tailwind CSS v4 (latest version with modern features)
 - **React**: 19.1.1 with modern hooks and concurrent features
+- **Routing**: React Router DOM v7 for client-side routing
 - **Icons**: Lucide React for consistent iconography
+- **Testing**: Vitest with React Testing Library
 - **Linting**: ESLint 9.x with modern configuration
 - **Database**: SQLite for local data persistence
 
@@ -83,6 +85,9 @@ npm run preview
 
 # Run ESLint
 npm run lint
+
+# Run tests (Vitest)
+npm run test
 ```
 
 ## Project Structure
@@ -92,9 +97,11 @@ cda-ta-dashboard/
 ├── canvas-react/              # Frontend React application
 │   ├── src/
 │   │   ├── components/        # Reusable UI components
+│   │   ├── hooks/             # Custom React hooks
 │   │   ├── App.jsx            # Main application with routing
 │   │   ├── Settings.jsx       # Course configuration page
 │   │   ├── EnhancedTADashboard.jsx
+│   │   ├── TAGradingDashboard.jsx  # TA grading workload view
 │   │   ├── LateDaysTracking.jsx
 │   │   └── PeerReviewTracking.jsx
 │   ├── Dockerfile             # Frontend container
@@ -103,6 +110,10 @@ cda-ta-dashboard/
 ├── main.py                    # FastAPI backend application
 ├── database.py                # SQLite database schema and operations
 ├── canvas_sync.py             # Canvas API data fetcher
+├── scripts/                   # Test and utility scripts
+│   ├── test-backend-local.sh
+│   ├── test-frontend-local.sh
+│   └── test-integration.sh
 ├── Dockerfile                 # Backend container
 ├── docker-compose.yml         # Service orchestration
 ├── pyproject.toml             # Backend dependencies (uv)
@@ -127,6 +138,7 @@ cda-ta-dashboard/
     - `GET /api/settings/courses` - List available Canvas courses
   - **Canvas data endpoints**:
     - `GET /api/canvas/courses` - Get configured courses
+    - `GET /api/canvas/data/{course_id}` - Get all course data (assignments, submissions, users, groups)
     - `GET /api/canvas/assignments/{course_id}` - Get assignments
     - `GET /api/canvas/submissions/{course_id}` - Get submissions
     - `GET /api/canvas/users/{course_id}` - Get users
@@ -134,6 +146,10 @@ cda-ta-dashboard/
   - **Sync endpoints**:
     - `POST /api/canvas/sync` - Trigger Canvas data sync
     - `GET /api/canvas/sync/status` - Get last sync status
+  - **Dashboard endpoints**:
+    - `GET /api/dashboard/submission-status/{course_id}` - Submission status breakdown
+    - `GET /api/dashboard/ta-grading/{course_id}` - TA grading workload data
+    - `GET /api/dashboard/late-days/{course_id}` - Late days tracking data
 - **Data Source**: SQLite database with Canvas data synced on startup and manually
 
 ### Frontend Structure
@@ -146,6 +162,7 @@ cda-ta-dashboard/
   - `App.jsx` - Main application with routing and refresh button
   - `Settings.jsx` - Course configuration and sync management
   - `EnhancedTADashboard.jsx` - Main TA dashboard
+  - `TAGradingDashboard.jsx` - TA grading workload management
   - `LateDaysTracking.jsx` - Late days tracking
   - `PeerReviewTracking.jsx` - Peer review tracking
 - **UI Components** (in components/):
@@ -260,3 +277,26 @@ This application accesses protected student data under FERPA:
 - Ensure that any logging is done via Loguru following all best practices
 - Canvas API integration uses the `canvasapi` library
 - The full documentation for CanvasAPI: https://canvasapi.readthedocs.io/en/stable/
+
+## Code Style
+
+### Python (Backend)
+
+- Use Pydantic models for all API request/response schemas
+- Type hints required for function signatures
+- Use `loguru.logger` instead of print statements
+- SQLite operations in `database.py`, Canvas API calls in `canvas_sync.py`
+
+### React (Frontend)
+
+- Functional components with hooks only (no class components)
+- Use Lucide React for icons: `import { IconName } from 'lucide-react'`
+- Tailwind CSS v4 for styling - no inline styles or CSS modules
+- API calls via fetch to `/api/*` endpoints (proxied by Nginx)
+
+## Common Gotchas
+
+- Frontend dev server (port 5173) requires backend running on port 8000
+- Docker frontend uses Nginx proxy - API calls go to `backend:8000` internally
+- SQLite database is in `./data/` - mount as volume in Docker
+- Canvas API token expires - check `.env` if sync fails with 401
