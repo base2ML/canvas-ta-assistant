@@ -239,3 +239,4 @@ docker-compose.override.yml
 claudedocs/
 users.json
 mock_canvas_data.json
+.ruff_cache/
