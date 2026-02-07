@@ -5,11 +5,9 @@ import LateDaysTracking from './LateDaysTracking';
 import Settings from './Settings';
 import Navigation from './components/Navigation';
 import { RefreshCw } from 'lucide-react';
+import { apiFetch, BACKEND_URL } from './api';
 
 const App = () => {
-  const [backendUrl] = useState(
-    import.meta.env.VITE_API_ENDPOINT || 'http://localhost:8000'
-  );
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -18,49 +16,31 @@ const App = () => {
   const loadCourses = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${backendUrl}/api/canvas/courses`);
-
-      if (!response.ok) {
-        throw new Error(`Failed to load courses: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await apiFetch('/api/canvas/courses');
       setCourses(data.courses || []);
     } catch (err) {
       console.error('Error loading courses:', err);
     } finally {
       setLoading(false);
     }
-  }, [backendUrl]);
+  }, []);
 
   const handleRefreshData = async () => {
     setSyncing(true);
     setSyncMessage(null);
     try {
-      const response = await fetch(`${backendUrl}/api/canvas/sync`, {
-        method: 'POST',
+      const data = await apiFetch('/api/canvas/sync', { method: 'POST' });
+      setSyncMessage({
+        type: 'success',
+        text: `Synced ${data.stats?.assignments || 0} assignments, ${data.stats?.users || 0} users`,
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        setSyncMessage({
-          type: 'success',
-          text: `Synced ${data.stats?.assignments || 0} assignments, ${data.stats?.users || 0} users`,
-        });
-        // Reload courses after sync
-        loadCourses();
-      } else {
-        const error = await response.json();
-        setSyncMessage({
-          type: 'error',
-          text: error.detail || 'Sync failed',
-        });
-      }
+      // Reload courses after sync
+      loadCourses();
     } catch (err) {
       console.error('Sync failed:', err);
       setSyncMessage({
         type: 'error',
-        text: 'Failed to connect to server',
+        text: err.message || 'Failed to connect to server',
       });
     } finally {
       setSyncing(false);
@@ -115,7 +95,6 @@ const App = () => {
             path="/"
             element={
               <EnhancedTADashboard
-                backendUrl={backendUrl}
                 courses={courses}
                 onLoadCourses={loadCourses}
                 loadingCourses={loading}
@@ -126,8 +105,6 @@ const App = () => {
             path="/late-days"
             element={
               <LateDaysTracking
-                backendUrl={backendUrl}
-                apiUrl={backendUrl}
                 courses={courses}
                 onLoadCourses={loadCourses}
               />
@@ -135,7 +112,7 @@ const App = () => {
           />
           <Route
             path="/settings"
-            element={<Settings backendUrl={backendUrl} />}
+            element={<Settings />}
           />
         </Routes>
       </main>

@@ -5,7 +5,7 @@ Fetches data from Canvas API and stores it in SQLite database.
 
 import os
 import time
-from typing import Any, Optional
+from typing import Any
 
 from canvasapi import Canvas
 from canvasapi.exceptions import CanvasException
@@ -14,40 +14,60 @@ from loguru import logger
 import database as db
 
 
-def get_canvas_client(api_url: Optional[str] = None, api_token: Optional[str] = None) -> Canvas:
+def get_canvas_client(
+    api_url: str | None = None, api_token: str | None = None
+) -> Canvas:
     """Create a Canvas API client."""
     url = api_url or os.getenv("CANVAS_API_URL")
     token = api_token or os.getenv("CANVAS_API_TOKEN")
 
     if not url:
-        raise ValueError("Canvas API URL not configured. Set CANVAS_API_URL environment variable.")
+        raise ValueError(
+            "Canvas API URL not configured. Set CANVAS_API_URL environment variable."
+        )
     if not token:
-        raise ValueError("Canvas API token not configured. Set CANVAS_API_TOKEN environment variable.")
+        raise ValueError(
+            "Canvas API token not configured. Set CANVAS_API_TOKEN environment variable."  # noqa: E501
+        )
 
     return Canvas(url, token)
 
 
-def fetch_available_courses(api_url: Optional[str] = None, api_token: Optional[str] = None) -> list[dict[str, Any]]:
+def fetch_available_courses(
+    api_url: str | None = None, api_token: str | None = None
+) -> list[dict[str, Any]]:
     """Fetch list of available courses from Canvas API."""
     try:
         canvas = get_canvas_client(api_url, api_token)
         courses = []
+        seen_ids = set()
 
         for course in canvas.get_courses(enrollment_type="ta", state=["available"]):
-            courses.append({
-                "id": str(course.id),
-                "name": getattr(course, "name", f"Course {course.id}"),
-                "code": getattr(course, "course_code", ""),
-            })
+            course_id = str(course.id)
+            if course_id not in seen_ids:
+                seen_ids.add(course_id)
+                courses.append(
+                    {
+                        "id": course_id,
+                        "name": getattr(course, "name", f"Course {course.id}"),
+                        "code": getattr(course, "course_code", ""),
+                    }
+                )
 
         # Also try teacher enrollment
-        for course in canvas.get_courses(enrollment_type="teacher", state=["available"]):
-            if not any(c["id"] == str(course.id) for c in courses):
-                courses.append({
-                    "id": str(course.id),
-                    "name": getattr(course, "name", f"Course {course.id}"),
-                    "code": getattr(course, "course_code", ""),
-                })
+        for course in canvas.get_courses(
+            enrollment_type="teacher", state=["available"]
+        ):
+            course_id = str(course.id)
+            if course_id not in seen_ids:
+                seen_ids.add(course_id)
+                courses.append(
+                    {
+                        "id": course_id,
+                        "name": getattr(course, "name", f"Course {course.id}"),
+                        "code": getattr(course, "course_code", ""),
+                    }
+                )
 
         logger.info(f"Found {len(courses)} available courses")
         return courses
@@ -62,8 +82,8 @@ def fetch_available_courses(api_url: Optional[str] = None, api_token: Optional[s
 
 def sync_course_data(
     course_id: str,
-    api_url: Optional[str] = None,
-    api_token: Optional[str] = None,
+    api_url: str | None = None,
+    api_token: str | None = None,
 ) -> dict[str, Any]:
     """
     Sync Canvas data for a course to the local SQLite database.
@@ -76,9 +96,6 @@ def sync_course_data(
     Returns:
         Dictionary with sync results and statistics
     """
-    # Initialize database
-    db.init_db()
-
     # Create sync record
     sync_id = db.create_sync_record(course_id)
     logger.info(f"Starting sync for course {course_id} (sync_id: {sync_id})")
@@ -90,57 +107,43 @@ def sync_course_data(
         course_name = getattr(course, "name", f"Course {course_id}")
         logger.info(f"Fetching data for course: {course_name}")
 
-        # Clear existing data for this course
-        db.clear_course_data(course_id)
-
         fetch_start = time.time()
 
-        # Fetch assignments and submissions
+        # Fetch assignments (keep both objects and data)
         assignments = []
-        submissions = []
+        assignment_objects = []
         assignments_start = time.time()
 
         for assignment in course.get_assignments(per_page=100):
-            assignments.append({
-                "id": assignment.id,
-                "name": assignment.name,
-                "due_at": getattr(assignment, "due_at", None),
-                "points_possible": getattr(assignment, "points_possible", None),
-                "html_url": getattr(assignment, "html_url", None),
-            })
-
-            # Fetch submissions for this assignment
-            for submission in assignment.get_submissions(include=["submission_history"]):
-                submissions.append({
-                    "id": submission.id,
-                    "user_id": submission.user_id,
-                    "assignment_id": assignment.id,
-                    "submitted_at": getattr(submission, "submitted_at", None),
-                    "workflow_state": submission.workflow_state,
-                    "late": getattr(submission, "late", False),
-                    "score": getattr(submission, "score", None),
-                })
+            assignment_objects.append(assignment)
+            assignments.append(
+                {
+                    "id": assignment.id,
+                    "name": assignment.name,
+                    "due_at": getattr(assignment, "due_at", None),
+                    "points_possible": getattr(assignment, "points_possible", None),
+                    "html_url": getattr(assignment, "html_url", None),
+                }
+            )
 
         logger.info(
-            f"Assignments and submissions fetched in {time.time() - assignments_start:.2f}s "
-            f"({len(assignments)} assignments, {len(submissions)} submissions)"
+            f"Assignments fetched in {time.time() - assignments_start:.2f}s ({len(assignments)} assignments)"  # noqa: E501
         )
-
-        # Store assignments and submissions
-        db.upsert_assignments(course_id, assignments)
-        db.upsert_submissions(course_id, submissions)
 
         # Fetch users
         users_start = time.time()
         users = []
         for user in course.get_users(enrollment_type=["student"]):
-            users.append({
-                "id": user.id,
-                "name": user.name,
-                "email": getattr(user, "email", None),
-            })
-        logger.info(f"Users fetched in {time.time() - users_start:.2f}s ({len(users)} users)")
-        db.upsert_users(course_id, users)
+            users.append(
+                {
+                    "id": user.id,
+                    "name": user.name,
+                    "email": getattr(user, "email", None),
+                }
+            )
+        logger.info(
+            f"Users fetched in {time.time() - users_start:.2f}s ({len(users)} users)"
+        )
 
         # Fetch groups
         groups_start = time.time()
@@ -152,23 +155,75 @@ def sync_course_data(
 
             members = []
             for member in getattr(group, "users", []):
-                member_id = member.get("id") if isinstance(member, dict) else getattr(member, "id", None)
-                member_name = member.get("name") if isinstance(member, dict) else getattr(member, "name", None)
+                member_id = (
+                    member.get("id")
+                    if isinstance(member, dict)
+                    else getattr(member, "id", None)
+                )
+                member_name = (
+                    member.get("name")
+                    if isinstance(member, dict)
+                    else getattr(member, "name", None)
+                )
 
                 if member_id:
-                    members.append({
-                        "id": member_id,
-                        "user_id": member_id,
-                        "name": member_name,
-                    })
+                    members.append(
+                        {
+                            "id": member_id,
+                            "user_id": member_id,
+                            "name": member_name,
+                        }
+                    )
 
-            groups.append({
-                "id": group.id,
-                "name": group.name,
-                "members": members,
-            })
-        logger.info(f"Groups fetched in {time.time() - groups_start:.2f}s ({len(groups)} groups)")
-        db.upsert_groups(course_id, groups)
+            groups.append(
+                {
+                    "id": group.id,
+                    "name": group.name,
+                    "members": members,
+                }
+            )
+        logger.info(
+            f"Groups fetched in {time.time() - groups_start:.2f}s ({len(groups)} groups)"  # noqa: E501
+        )
+
+        # Use transaction to write all data atomically
+        total_submissions = 0
+        with db.get_db_transaction() as conn:
+            # Clear existing data within transaction
+            db.clear_course_data(course_id, conn)
+
+            # Store assignments, users, and groups
+            db.upsert_assignments(course_id, assignments, conn)
+            db.upsert_users(course_id, users, conn)
+            db.upsert_groups(course_id, groups, conn)
+
+            # Fetch and store submissions per-assignment to reduce memory usage
+            submissions_start = time.time()
+            for assignment_obj in assignment_objects:
+                assignment_submissions = []
+                for submission in assignment_obj.get_submissions(
+                    include=["submission_history"]
+                ):
+                    assignment_submissions.append(
+                        {
+                            "id": submission.id,
+                            "user_id": submission.user_id,
+                            "assignment_id": assignment_obj.id,
+                            "submitted_at": getattr(submission, "submitted_at", None),
+                            "workflow_state": submission.workflow_state,
+                            "late": getattr(submission, "late", False),
+                            "score": getattr(submission, "score", None),
+                        }
+                    )
+
+                # Write submissions for this assignment
+                if assignment_submissions:
+                    db.upsert_submissions(course_id, assignment_submissions, conn)
+                    total_submissions += len(assignment_submissions)
+
+            logger.info(
+                f"Submissions fetched and stored in {time.time() - submissions_start:.2f}s ({total_submissions} submissions)"  # noqa: E501
+            )
 
         total_time = time.time() - fetch_start
         logger.info(f"Total sync time: {total_time:.2f}s")
@@ -179,7 +234,7 @@ def sync_course_data(
             status="success",
             message=f"Synced course: {course_name}",
             assignments_count=len(assignments),
-            submissions_count=len(submissions),
+            submissions_count=total_submissions,
             users_count=len(users),
             groups_count=len(groups),
         )
@@ -194,7 +249,7 @@ def sync_course_data(
             "sync_id": sync_id,
             "stats": {
                 "assignments": len(assignments),
-                "submissions": len(submissions),
+                "submissions": total_submissions,
                 "users": len(users),
                 "groups": len(groups),
             },
@@ -214,7 +269,7 @@ def sync_course_data(
         raise
 
 
-def sync_on_startup() -> Optional[dict[str, Any]]:
+def sync_on_startup() -> dict[str, Any] | None:
     """
     Sync Canvas data on application startup.
     Uses course ID from settings or environment variable.

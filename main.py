@@ -3,24 +3,30 @@ Canvas TA Dashboard FastAPI Application
 Local deployment with SQLite data storage
 """
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
+from dateutil import parser as dateutil_parser
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from loguru import logger
+from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
-import database as db
 import canvas_sync
+import database as db
+
 
 # Configure loguru
 logger.add("logs/app.log", rotation="500 MB", retention="10 days", level="INFO")
+
+# Constants
+APP_VERSION = "5.0.0"
 
 # Environment variables
 ENVIRONMENT = os.getenv("ENVIRONMENT", "local")
@@ -30,7 +36,7 @@ CANVAS_COURSE_ID = os.getenv("CANVAS_COURSE_ID", "")
 
 # Lifespan context manager for startup/shutdown
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     """Handle application startup and shutdown."""
     # Startup
     logger.info("Starting Canvas TA Dashboard...")
@@ -52,7 +58,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Canvas TA Dashboard API",
     description="Local Canvas TA Dashboard with SQLite data storage",
-    version="5.0.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -91,10 +97,10 @@ class HealthResponse(BaseModel):
 
 
 class SettingsResponse(BaseModel):
-    course_id: Optional[str]
-    course_name: Optional[str]
+    course_id: str | None
+    course_name: str | None
     canvas_api_url: str
-    last_sync: Optional[dict[str, Any]]
+    last_sync: dict[str, Any] | None
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -104,9 +110,9 @@ class SettingsUpdateRequest(BaseModel):
 class SyncResponse(BaseModel):
     status: str
     message: str
-    course_id: Optional[str]
-    stats: Optional[dict[str, int]]
-    duration_seconds: Optional[float]
+    course_id: str | None
+    stats: dict[str, int] | None
+    duration_seconds: float | None
 
 
 class SubmissionStatusMetrics(BaseModel):
@@ -123,7 +129,7 @@ class SubmissionStatusMetrics(BaseModel):
 @app.get("/health")
 async def simple_health_check():
     """Simple health check endpoint for Docker health checks."""
-    return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
+    return {"status": "healthy", "timestamp": datetime.now(UTC).isoformat()}
 
 
 @app.get("/api/health", response_model=HealthResponse)
@@ -140,10 +146,13 @@ async def health_check():
     # Check Canvas configuration
     canvas_configured = bool(CANVAS_API_URL and os.getenv("CANVAS_API_TOKEN"))
 
+    # Set overall status based on database health
+    overall_status = "healthy" if db_status == "healthy" else "degraded"
+
     return HealthResponse(
-        status="healthy",
-        timestamp=datetime.now(timezone.utc).isoformat(),
-        version="5.0.0",
+        status=overall_status,
+        timestamp=datetime.now(UTC).isoformat(),
+        version=APP_VERSION,
         environment=ENVIRONMENT,
         database=db_status,
         canvas_configured=canvas_configured,
@@ -183,24 +192,24 @@ async def update_settings(settings: SettingsUpdateRequest) -> dict[str, Any]:
 async def get_available_courses() -> dict[str, Any]:
     """Get list of available courses from Canvas API."""
     try:
-        courses = canvas_sync.fetch_available_courses()
+        courses = await asyncio.to_thread(canvas_sync.fetch_available_courses)
         return {"courses": courses, "total": len(courses)}
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
     except Exception as e:
-        logger.error(f"Error fetching courses: {e}")
+        logger.error(f"Error fetching courses: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch courses: {str(e)}",
-        )
+            detail="Failed to fetch courses from Canvas API",
+        ) from e
 
 
 # Sync endpoints
 @app.post("/api/canvas/sync", response_model=SyncResponse)
-async def trigger_sync(course_id: Optional[str] = None) -> SyncResponse:
+async def trigger_sync(course_id: str | None = None) -> SyncResponse:
     """Trigger Canvas data sync."""
     # Use provided course_id or get from settings
     sync_course_id = course_id or db.get_setting("course_id") or CANVAS_COURSE_ID
@@ -212,7 +221,7 @@ async def trigger_sync(course_id: Optional[str] = None) -> SyncResponse:
         )
 
     try:
-        result = canvas_sync.sync_course_data(sync_course_id)
+        result = await asyncio.to_thread(canvas_sync.sync_course_data, sync_course_id)
 
         # Update settings with new course ID if different
         if sync_course_id != db.get_setting("course_id"):
@@ -229,17 +238,17 @@ async def trigger_sync(course_id: Optional[str] = None) -> SyncResponse:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
     except Exception as e:
-        logger.error(f"Sync failed: {e}")
+        logger.error(f"Sync failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Sync failed: {str(e)}",
-        )
+            detail="Canvas data sync failed",
+        ) from e
 
 
 @app.get("/api/canvas/sync/status")
-async def get_sync_status(course_id: Optional[str] = None) -> dict[str, Any]:
+async def get_sync_status(course_id: str | None = None) -> dict[str, Any]:
     """Get last sync status."""
     sync_course_id = course_id or db.get_setting("course_id") or CANVAS_COURSE_ID
     last_sync = db.get_last_sync(sync_course_id) if sync_course_id else None
@@ -262,16 +271,18 @@ async def get_courses() -> dict[str, Any]:
     for course_id in courses:
         course_name = db.get_setting(f"course_name_{course_id}")
         last_sync = db.get_last_sync(course_id)
-        course_data.append({
-            "id": course_id,
-            "name": course_name or f"Course {course_id}",
-            "last_updated": last_sync.get("completed_at") if last_sync else None,
-        })
+        course_data.append(
+            {
+                "id": course_id,
+                "name": course_name or f"Course {course_id}",
+                "last_updated": last_sync.get("completed_at") if last_sync else None,
+            }
+        )
 
     return {
         "courses": course_data,
         "total": len(course_data),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
@@ -291,7 +302,7 @@ async def get_canvas_data(course_id: str) -> dict[str, Any]:
 
     return {
         "course_id": course_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "assignments": assignments,
         "submissions": submissions,
         "users": users,
@@ -309,7 +320,7 @@ async def get_assignments(course_id: str) -> dict[str, Any]:
 
 @app.get("/api/canvas/submissions/{course_id}")
 async def get_submissions(
-    course_id: str, assignment_id: Optional[int] = None
+    course_id: str, assignment_id: int | None = None
 ) -> dict[str, Any]:
     """Get submissions for a course."""
     submissions = db.get_submissions(course_id, assignment_id)
@@ -348,10 +359,8 @@ def classify_submission_status(submission: dict, assignment: dict) -> str:
 
     if submitted_at and due_at:
         try:
-            from dateutil import parser
-
-            submitted_datetime = parser.parse(submitted_at)
-            due_datetime = parser.parse(due_at)
+            submitted_datetime = dateutil_parser.parse(submitted_at)
+            due_datetime = dateutil_parser.parse(due_at)
             if submitted_datetime > due_datetime:
                 return "late"
         except Exception as e:
@@ -360,20 +369,8 @@ def classify_submission_status(submission: dict, assignment: dict) -> str:
     return "on_time"
 
 
-def calculate_submission_status_metrics(
-    assignments: list[dict],
-    submissions: list[dict],
-    users: list[dict],
-    groups: list[dict],
-    assignment_filter: Optional[str] = None,
-    ta_group_filter: Optional[str] = None,
-) -> dict[str, Any]:
-    """Calculate comprehensive submission status metrics."""
-    # Filter assignments if specified
-    if assignment_filter and assignment_filter != "all":
-        assignments = [a for a in assignments if str(a.get("id")) == assignment_filter]
-
-    # Pre-compute user to TA group mapping
+def _build_user_to_ta_group_map(groups: list[dict]) -> dict[int, str]:
+    """Build mapping of user IDs to TA group names."""
     user_to_ta_group = {}
     for group in groups:
         group_name = group.get("name")
@@ -381,6 +378,50 @@ def calculate_submission_status_metrics(
             user_id = member.get("user_id") or member.get("id")
             if user_id:
                 user_to_ta_group[user_id] = group_name
+    return user_to_ta_group
+
+
+def _build_submission_lookup(submissions: list[dict]) -> dict[tuple[int, int], dict]:
+    """Build lookup dictionary for submissions by (user_id, assignment_id)."""
+    submission_lookup = {}
+    for sub in submissions:
+        key = (sub.get("user_id"), sub.get("assignment_id"))
+        submission_lookup[key] = sub
+    return submission_lookup
+
+
+def _calculate_percentages(
+    on_time: int, late: int, missing: int, total: int
+) -> dict[str, float]:
+    """Calculate percentages for submission metrics."""
+    if total > 0:
+        return {
+            "on_time_percentage": on_time / total * 100,
+            "late_percentage": late / total * 100,
+            "missing_percentage": missing / total * 100,
+        }
+    return {
+        "on_time_percentage": 0,
+        "late_percentage": 0,
+        "missing_percentage": 0,
+    }
+
+
+def calculate_submission_status_metrics(
+    assignments: list[dict],
+    submissions: list[dict],
+    users: list[dict],
+    groups: list[dict],
+    assignment_filter: str | None = None,
+    ta_group_filter: str | None = None,
+) -> dict[str, Any]:
+    """Calculate comprehensive submission status metrics."""
+    # Filter assignments if specified
+    if assignment_filter and assignment_filter != "all":
+        assignments = [a for a in assignments if str(a.get("id")) == assignment_filter]
+
+    # Pre-compute user to TA group mapping
+    user_to_ta_group = _build_user_to_ta_group_map(groups)
 
     # Filter users by TA group if specified
     if ta_group_filter and ta_group_filter != "all":
@@ -389,10 +430,7 @@ def calculate_submission_status_metrics(
         ]
 
     # Create submission lookup
-    submission_lookup = {}
-    for sub in submissions:
-        key = (sub.get("user_id"), sub.get("assignment_id"))
-        submission_lookup[key] = sub
+    submission_lookup = _build_submission_lookup(submissions)
 
     # Initialize counters
     overall_on_time = 0
@@ -406,7 +444,11 @@ def calculate_submission_status_metrics(
     ta_metrics = {}
     for group in groups:
         group_name = group.get("name")
-        if ta_group_filter and ta_group_filter != "all" and group_name != ta_group_filter:
+        if (
+            ta_group_filter
+            and ta_group_filter != "all"
+            and group_name != ta_group_filter
+        ):
             continue
 
         ta_metrics[group_name] = {
@@ -464,6 +506,12 @@ def calculate_submission_status_metrics(
 
         # Calculate assignment percentages
         total_assignment_submissions = len(users)
+        percentages = _calculate_percentages(
+            assignment_on_time,
+            assignment_late,
+            assignment_missing,
+            total_assignment_submissions,
+        )
         assignment_metrics[str(assignment_id)] = {
             "assignment_id": str(assignment_id),
             "assignment_name": assignment_name,
@@ -472,19 +520,7 @@ def calculate_submission_status_metrics(
                 "on_time": assignment_on_time,
                 "late": assignment_late,
                 "missing": assignment_missing,
-                "on_time_percentage": (
-                    assignment_on_time / total_assignment_submissions * 100
-                )
-                if total_assignment_submissions > 0
-                else 0,
-                "late_percentage": (assignment_late / total_assignment_submissions * 100)
-                if total_assignment_submissions > 0
-                else 0,
-                "missing_percentage": (
-                    assignment_missing / total_assignment_submissions * 100
-                )
-                if total_assignment_submissions > 0
-                else 0,
+                **percentages,
                 "total_expected": total_assignment_submissions,
             },
         }
@@ -498,33 +534,24 @@ def calculate_submission_status_metrics(
 
     # Calculate overall percentages
     total_expected = len(assignments) * len(users)
+    overall_percentages = _calculate_percentages(
+        overall_on_time, overall_late, overall_missing, total_expected
+    )
 
     # Calculate TA percentages
     for metrics in ta_metrics.values():
         total = metrics["on_time"] + metrics["late"] + metrics["missing"]
-        if total > 0:
-            metrics["on_time_percentage"] = metrics["on_time"] / total * 100
-            metrics["late_percentage"] = metrics["late"] / total * 100
-            metrics["missing_percentage"] = metrics["missing"] / total * 100
-        else:
-            metrics["on_time_percentage"] = 0
-            metrics["late_percentage"] = 0
-            metrics["missing_percentage"] = 0
+        ta_percentages = _calculate_percentages(
+            metrics["on_time"], metrics["late"], metrics["missing"], total
+        )
+        metrics.update(ta_percentages)
 
     return {
         "overall_metrics": {
             "on_time": overall_on_time,
             "late": overall_late,
             "missing": overall_missing,
-            "on_time_percentage": (overall_on_time / total_expected * 100)
-            if total_expected > 0
-            else 0,
-            "late_percentage": (overall_late / total_expected * 100)
-            if total_expected > 0
-            else 0,
-            "missing_percentage": (overall_missing / total_expected * 100)
-            if total_expected > 0
-            else 0,
+            **overall_percentages,
             "total_expected": total_expected,
         },
         "by_assignment": list(assignment_metrics.values()),
@@ -535,8 +562,8 @@ def calculate_submission_status_metrics(
 @app.get("/api/dashboard/submission-status/{course_id}")
 async def get_submission_status_metrics(
     course_id: str,
-    assignment_id: Optional[str] = None,
-    ta_group: Optional[str] = None,
+    assignment_id: str | None = None,
+    ta_group: str | None = None,
 ) -> dict[str, Any]:
     """Get submission status metrics (on_time, late, missing)."""
     try:
@@ -565,11 +592,11 @@ async def get_submission_status_metrics(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error calculating submission status metrics: {e}")
+        logger.error(f"Error calculating submission status metrics: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error calculating metrics: {str(e)}",
-        )
+            detail="Error calculating metrics",
+        ) from e
 
 
 @app.get("/api/dashboard/ta-grading/{course_id}")
@@ -619,7 +646,7 @@ async def get_ta_grading_data(course_id: str) -> dict[str, Any]:
         "ungraded_submissions": ungraded_submissions,
         "ta_workload": ta_workload,
         "total_ungraded": len(ungraded_submissions),
-        "last_updated": datetime.now(timezone.utc).isoformat(),
+        "last_updated": datetime.now(UTC).isoformat(),
     }
 
 
@@ -680,20 +707,20 @@ async def get_late_days_data(course_id: str) -> dict[str, Any]:
                         "pending_review",
                     ]:
                         try:
-                            from dateutil import parser
-
-                            submitted_datetime = parser.parse(submitted_at)
-                            due_datetime = parser.parse(due_at)
+                            submitted_datetime = dateutil_parser.parse(submitted_at)
+                            due_datetime = dateutil_parser.parse(due_at)
 
                             if submitted_datetime > due_datetime:
                                 time_diff = submitted_datetime - due_datetime
                                 days_late = max(0, time_diff.days)
 
-                                student_data["assignments"][str(assignment_id)] = days_late
+                                student_data["assignments"][str(assignment_id)] = (
+                                    days_late
+                                )
                                 student_data["total_late_days"] += days_late
                         except Exception as e:
                             logger.debug(
-                                f"Error parsing dates for user {user_id}, assignment {assignment_id}: {e}"
+                                f"Error parsing dates for user {user_id}, assignment {assignment_id}: {e}"  # noqa: E501
                             )
 
             students_data.append(student_data)
@@ -709,22 +736,26 @@ async def get_late_days_data(course_id: str) -> dict[str, Any]:
             if a.get("due_at")
         ]
 
-        course_name = db.get_setting(f"course_name_{course_id}") or f"Course {course_id}"
+        course_name = (
+            db.get_setting(f"course_name_{course_id}") or f"Course {course_id}"
+        )
         course_info = {"name": course_name, "course_code": course_id}
 
         return {
             "students": students_data,
             "assignments": assignments_data,
             "course_info": course_info,
-            "last_updated": datetime.now(timezone.utc).isoformat(),
+            "last_updated": datetime.now(UTC).isoformat(),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error calculating late days data: {str(e)}")
+        logger.error(f"Error calculating late days data: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to calculate late days data: {str(e)}",
-        )
+            detail="Failed to calculate late days data",
+        ) from e
 
 
 if __name__ == "__main__":

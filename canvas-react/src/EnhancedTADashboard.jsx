@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { RefreshCw, TrendingUp } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { RefreshCw } from 'lucide-react';
 import AssignmentStatusBreakdown from './components/AssignmentStatusBreakdown';
+import { apiFetch } from './api';
 
-const EnhancedTADashboard = ({ backendUrl, courses = [], onLoadCourses }) => {
+const EnhancedTADashboard = ({ courses = [], onLoadCourses }) => {
   // Use courses from props, but keep local state for selection
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [assignments, setAssignments] = useState([]);
@@ -14,7 +15,6 @@ const EnhancedTADashboard = ({ backendUrl, courses = [], onLoadCourses }) => {
 
   // Expandable assignments state (for nested TA breakdown)
   const [expandedAssignments, setExpandedAssignments] = useState(new Set());
-  const [assignmentStats, setAssignmentStats] = useState([]);
 
   // Build TA assignments from Canvas groups
   const buildTAAssignments = React.useCallback((groupList) => {
@@ -34,30 +34,18 @@ const EnhancedTADashboard = ({ backendUrl, courses = [], onLoadCourses }) => {
     if (!courseId) return;
 
     setLoading(true);
+    setError('');
     try {
       // Fetch all data from local API
-      const [assignmentsRes, submissionsRes, groupsRes] = await Promise.all([
-        fetch(`${backendUrl}/api/canvas/assignments/${courseId}`),
-        fetch(`${backendUrl}/api/canvas/submissions/${courseId}`),
-        fetch(`${backendUrl}/api/canvas/groups/${courseId}`)
+      const [assignmentsData, submissionsData, groupsData] = await Promise.all([
+        apiFetch(`/api/canvas/assignments/${courseId}`),
+        apiFetch(`/api/canvas/submissions/${courseId}`),
+        apiFetch(`/api/canvas/groups/${courseId}`)
       ]);
 
-      if (assignmentsRes.ok) {
-        const assignmentsData = await assignmentsRes.json();
-        setAssignments(assignmentsData.assignments || []);
-      }
-
-      if (submissionsRes.ok) {
-        const submissionsData = await submissionsRes.json();
-        setSubmissions(submissionsData.submissions || []);
-      }
-
-      if (groupsRes.ok) {
-        const groupsData = await groupsRes.json();
-        setGroups(groupsData.groups || []);
-      }
-
-      // Update last updated timestamp after successful data load
+      setAssignments(assignmentsData.assignments || []);
+      setSubmissions(submissionsData.submissions || []);
+      setGroups(groupsData.groups || []);
       setLastUpdated(new Date());
     } catch (err) {
       console.error('Error loading course data:', err);
@@ -65,7 +53,7 @@ const EnhancedTADashboard = ({ backendUrl, courses = [], onLoadCourses }) => {
     } finally {
       setLoading(false);
     }
-  }, [backendUrl]);
+  }, []);
 
   // Initialize selected course when courses are loaded
   useEffect(() => {
@@ -85,17 +73,16 @@ const EnhancedTADashboard = ({ backendUrl, courses = [], onLoadCourses }) => {
 
 
   // Compute assignment statistics with TA breakdown from loaded data
-  useEffect(() => {
+  const assignmentStats = useMemo(() => {
     if (!assignments.length || !submissions.length || !groups.length) {
-      setAssignmentStats([]);
-      return;
+      return [];
     }
 
     // Build TA assignments from Canvas groups
     const taAssignments = buildTAAssignments(groups);
 
     // Compute statistics for each assignment
-    const stats = assignments.map(assignment => {
+    return assignments.map(assignment => {
       const assignmentId = assignment.id;
 
       // Get all submissions for this assignment
@@ -192,8 +179,6 @@ const EnhancedTADashboard = ({ backendUrl, courses = [], onLoadCourses }) => {
         ta_grading_breakdown: taGradingBreakdown
       };
     });
-
-    setAssignmentStats(stats);
   }, [assignments, submissions, groups, buildTAAssignments]);
 
   // Toggle assignment expanded state
@@ -221,20 +206,8 @@ const EnhancedTADashboard = ({ backendUrl, courses = [], onLoadCourses }) => {
 
     try {
       // First, trigger Canvas data sync
-      const syncResponse = await fetch(`${backendUrl}/api/canvas/sync`, {
-        method: 'POST',
-      });
-
-      if (!syncResponse.ok) {
-        const errorData = await syncResponse.json();
-        throw new Error(errorData.detail || `Sync failed: ${syncResponse.statusText}`);
-      }
-
-      const syncResult = await syncResponse.json();
+      const syncResult = await apiFetch('/api/canvas/sync', { method: 'POST' });
       console.log('Sync completed:', syncResult);
-
-      // Show success message briefly
-      setError(`✓ Synced ${syncResult.stats?.assignments || 0} assignments, ${syncResult.stats?.users || 0} users`);
 
       // Reload data immediately since sync is synchronous now
       if (selectedCourse) {

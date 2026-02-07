@@ -202,8 +202,7 @@ test-results.xml
 .playwright-mcp/
 
 # Modern Development Tools
-# UV Package Manager
-uv.lock
+# UV Package Manager (lockfile should be committed for reproducible builds)
 
 # Jupyter Notebooks
 .ipynb_checkpoints/

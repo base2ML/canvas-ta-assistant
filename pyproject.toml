@@ -22,46 +22,20 @@ dependencies = [
     "slowapi>=0.1.9",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.0",
-    "httpx>=0.25.0",
-    "ruff>=0.8.0",
-    "mypy>=1.5.0",
-    "pre-commit>=3.4.0",
-]
-test = [
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-cov>=4.1.0",
-    "httpx>=0.25.0",
-    "coverage>=7.3.0",
-]
-docs = [
-    "mkdocs>=1.5.0",
-    "mkdocs-material>=9.2.0",
-    "mkdocstrings[python]>=0.23.0",
-]
-
 [project.urls]
-Homepage = "https://github.com/yourusername/canvas-assignment-tracker"
-Documentation = "https://yourusername.github.io/canvas-assignment-tracker"
-Repository = "https://github.com/yourusername/canvas-assignment-tracker.git"
-Issues = "https://github.com/yourusername/canvas-assignment-tracker/issues"
-
-[project.scripts]
-canvas-tracker = "main:main"
+Homepage = "https://github.com/mapajr/cda-ta-dashboard"
+Repository = "https://github.com/mapajr/cda-ta-dashboard.git"
+Issues = "https://github.com/mapajr/cda-ta-dashboard/issues"
 
 [tool.uv]
 dev-dependencies = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
     "httpx>=0.25.0",
     "ruff>=0.8.0",
     "mypy>=1.5.0",
     "pre-commit>=3.4.0",
-    "pytest-cov>=4.1.0",
     "coverage>=7.3.0",
 ]
 
@@ -159,11 +133,13 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["src"]
+source = ["."]
 omit = [
     "*/tests/*",
     "*/venv/*",
     "*/.venv/*",
+    "*/site-packages/*",
+    "*/__pycache__/*",
 ]
 
 [tool.coverage.report]
