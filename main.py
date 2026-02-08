@@ -4,6 +4,7 @@ Local deployment with SQLite data storage
 """
 
 import asyncio
+import math
 import os
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -27,6 +28,7 @@ logger.add("logs/app.log", rotation="500 MB", retention="10 days", level="INFO")
 
 # Constants
 APP_VERSION = "5.0.0"
+LATE_SUBMISSION_GRACE_PERIOD_MINUTES = 15
 
 # Environment variables
 ENVIRONMENT = os.getenv("ENVIRONMENT", "local")
@@ -703,20 +705,9 @@ async def get_late_days_data(course_id: str) -> dict[str, Any]:
         users = db.get_users(course_id)
         groups = db.get_groups(course_id)
 
-        # Create user to TA group mapping
-        user_to_ta_group = {}
-        for group in groups:
-            group_name = group.get("name", "")
-            for member in group.get("members", []):
-                user_id = member.get("user_id") or member.get("id")
-                if user_id:
-                    user_to_ta_group[user_id] = group_name
-
-        # Create submission lookup
-        submission_lookup = {}
-        for sub in submissions:
-            key = (sub.get("user_id"), sub.get("assignment_id"))
-            submission_lookup[key] = sub
+        # Create user to TA group mapping and submission lookup
+        user_to_ta_group = _build_user_to_ta_group_map(groups)
+        submission_lookup = _build_submission_lookup(submissions)
 
         # Calculate late days per student
         students_data = []
@@ -756,12 +747,18 @@ async def get_late_days_data(course_id: str) -> dict[str, Any]:
 
                             if submitted_datetime > due_datetime:
                                 time_diff = submitted_datetime - due_datetime
-                                days_late = max(0, time_diff.days)
-
-                                student_data["assignments"][str(assignment_id)] = (
-                                    days_late
+                                grace_seconds = (
+                                    LATE_SUBMISSION_GRACE_PERIOD_MINUTES * 60
                                 )
-                                student_data["total_late_days"] += days_late
+                                total_seconds = (
+                                    time_diff.total_seconds() - grace_seconds
+                                )
+                                if total_seconds > 0:
+                                    days_late = math.ceil(total_seconds / 86400)
+                                    student_data["assignments"][str(assignment_id)] = (
+                                        days_late
+                                    )
+                                    student_data["total_late_days"] += days_late
                         except Exception as e:
                             logger.debug(
                                 f"Error parsing dates for user {user_id}, assignment {assignment_id}: {e}"  # noqa: E501

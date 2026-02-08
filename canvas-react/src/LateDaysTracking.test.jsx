@@ -12,7 +12,6 @@ describe('LateDaysTracking', () => {
         render(
             <BrowserRouter>
                 <LateDaysTracking
-                    backendUrl="http://localhost:8000"
                     courses={mockCourses}
                     onLoadCourses={vi.fn()}
                 />
@@ -28,7 +27,6 @@ describe('LateDaysTracking', () => {
         render(
             <BrowserRouter>
                 <LateDaysTracking
-                    backendUrl="http://localhost:8000"
                     courses={[]}
                     onLoadCourses={vi.fn()}
                 />

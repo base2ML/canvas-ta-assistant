@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { RefreshCw, Calendar, Clock, FileText, ChevronUp, ChevronDown } from 'lucide-react';
+import { RefreshCw, Calendar, FileText, ChevronUp, ChevronDown, User } from 'lucide-react';
+import { apiFetch } from './api.js';
 
-const LateDaysTracking = ({ backendUrl, courses, onLoadCourses }) => {
+const LateDaysTracking = ({ courses, onLoadCourses }) => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -17,19 +18,12 @@ const LateDaysTracking = ({ backendUrl, courses, onLoadCourses }) => {
 
   const fetchLateDaysData = useCallback(async (courseId) => {
     try {
-      const response = await fetch(`${backendUrl}/api/dashboard/late-days/${courseId}`);
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to fetch late days data');
-      }
-
+      const data = await apiFetch(`/api/dashboard/late-days/${courseId}`);
       return data;
     } catch (err) {
       throw new Error(`Error fetching late days data: ${err.message}`);
     }
-  }, [backendUrl]);
+  }, []);
 
   const loadCourseData = useCallback(async () => {
     if (!currentCourse) return;
