@@ -174,6 +174,9 @@ def init_db() -> None:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_peer_reviews_assignment ON peer_reviews(assignment_id)"  # noqa: E501
         )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_peer_reviews_course_assignment ON peer_reviews(course_id, assignment_id)"  # noqa: E501
+        )
 
         # Peer review comments table
         cursor.execute("""
@@ -189,6 +192,12 @@ def init_db() -> None:
         """)
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_peer_review_comments_submission ON peer_review_comments(submission_id)"  # noqa: E501
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_peer_review_comments_author ON peer_review_comments(author_id)"  # noqa: E501
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_peer_review_comments_course_submission ON peer_review_comments(course_id, submission_id)"  # noqa: E501
         )
 
         conn.commit()
@@ -433,6 +442,9 @@ def upsert_groups(
         # Clear existing members and prepare new members data
         group_ids = [group["id"] for group in groups]
         if group_ids:
+            # Safe: placeholders contains only "?" characters, user data is
+            # parameterized. Example: If group_ids = [1, 2, 3],
+            # placeholders = "?,?,?" and params = [1, 2, 3]
             placeholders = ",".join("?" * len(group_ids))
             cursor.execute(
                 f"DELETE FROM group_members WHERE group_id IN ({placeholders})",
@@ -820,13 +832,129 @@ def get_peer_reviews(
         return [dict(row) for row in cursor.fetchall()]
 
 
-def get_peer_review_comments(course_id: str) -> list[dict[str, Any]]:
-    """Get peer review comments for a course."""
+def get_peer_review_comments(
+    course_id: str, assignment_id: int | None = None
+) -> list[dict[str, Any]]:
+    """Get peer review comments for a course, optionally filtered by assignment."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+
+        if assignment_id:
+            cursor.execute(
+                """
+                SELECT prc.*
+                FROM peer_review_comments prc
+                INNER JOIN submissions s ON prc.submission_id = s.id
+                WHERE prc.course_id = ? AND s.assignment_id = ?
+            """,
+                (course_id, assignment_id),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT * FROM peer_review_comments WHERE course_id = ?
+            """,
+                (course_id,),
+            )
+
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def get_earliest_peer_review_comments(
+    course_id: str, assignment_id: int
+) -> dict[tuple[int, int], str]:
+    """Get earliest comment timestamp for each (submission_id, author_id) pair.
+
+    This optimized query performs aggregation at the database level to find
+    the earliest comment timestamp for each unique (submission_id, author_id)
+    pair, which is more efficient than iterating through all comments in Python.
+
+    Args:
+        course_id: Course ID to filter comments
+        assignment_id: Assignment ID to filter comments
+
+    Returns:
+        Dictionary mapping (submission_id, author_id) tuples to earliest
+        comment timestamp strings
+    """
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT * FROM peer_review_comments WHERE course_id = ?
+            SELECT
+                prc.submission_id,
+                prc.author_id,
+                MIN(prc.created_at) as earliest_comment
+            FROM peer_review_comments prc
+            INNER JOIN submissions s ON prc.submission_id = s.id
+            WHERE prc.course_id = ? AND s.assignment_id = ?
+            GROUP BY prc.submission_id, prc.author_id
+            """,
+            (course_id, assignment_id),
+        )
+        return {
+            (row["submission_id"], row["author_id"]): row["earliest_comment"]
+            for row in cursor.fetchall()
+        }
+
+
+def get_peer_reviews_with_names(
+    course_id: str, assignment_id: int | None = None
+) -> list[dict[str, Any]]:
+    """Get peer reviews with reviewer and assessed user names joined."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+
+        if assignment_id:
+            cursor.execute(
+                """
+                SELECT
+                    pr.*,
+                    reviewer.name as reviewer_name,
+                    assessed.name as assessed_name,
+                    a.name as assignment_name
+                FROM peer_reviews pr
+                INNER JOIN users reviewer ON pr.assessor_id = reviewer.id
+                INNER JOIN users assessed ON pr.user_id = assessed.id
+                INNER JOIN assignments a ON pr.assignment_id = a.id
+                WHERE pr.course_id = ? AND pr.assignment_id = ?
+                ORDER BY reviewer.name, assessed.name
+            """,
+                (course_id, assignment_id),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT
+                    pr.*,
+                    reviewer.name as reviewer_name,
+                    assessed.name as assessed_name,
+                    a.name as assignment_name
+                FROM peer_reviews pr
+                INNER JOIN users reviewer ON pr.assessor_id = reviewer.id
+                INNER JOIN users assessed ON pr.user_id = assessed.id
+                INNER JOIN assignments a ON pr.assignment_id = a.id
+                WHERE pr.course_id = ?
+                ORDER BY a.name, reviewer.name, assessed.name
+            """,
+                (course_id,),
+            )
+
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def get_assignments_with_peer_reviews(course_id: str) -> list[dict[str, Any]]:
+    """Get assignments that have peer review data."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT DISTINCT a.id, a.course_id, a.name, a.due_at,
+                   a.points_possible, a.html_url, a.synced_at
+            FROM assignments a
+            INNER JOIN peer_reviews pr ON a.id = pr.assignment_id
+            WHERE a.course_id = ?
+            ORDER BY a.due_at DESC NULLS LAST
         """,
             (course_id,),
         )

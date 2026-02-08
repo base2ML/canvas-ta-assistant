@@ -1,78 +1,49 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, RefreshCw, Users, Calendar, AlertCircle, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { RefreshCw, Users, Calendar, AlertCircle, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { apiFetch } from './api';
 
-const PeerReviewTracking = ({ 
-  apiUrl, 
-  apiToken, 
-  backendUrl, 
-  courses, 
-  onBack
-}) => {
+const PeerReviewTracking = ({ courses }) => {
   const [selectedCourse, setSelectedCourse] = useState('');
   const [assignments, setAssignments] = useState([]);
   const [selectedAssignment, setSelectedAssignment] = useState('');
   const [deadline, setDeadline] = useState('');
   const [penaltyPerReview, setPenaltyPerReview] = useState(4);
+  const [totalScore, setTotalScore] = useState(12);
   const [peerReviewData, setPeerReviewData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [loadingAssignments, setLoadingAssignments] = useState(false);
 
+  // Auto-select first course on mount
+  useEffect(() => {
+    if (courses && courses.length > 0 && !selectedCourse) {
+      setSelectedCourse(courses[0].id);
+    }
+  }, [courses, selectedCourse]);
+
   const fetchCourseAssignments = useCallback(async () => {
+    if (!selectedCourse) return;
+
     setLoadingAssignments(true);
     setError('');
     setAssignments([]);
-    
+
     try {
-      const response = await fetch(`${backendUrl}/api/assignments`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          base_url: apiUrl,
-          api_token: apiToken,
-          course_ids: [selectedCourse]
-        })
-      });
-
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to fetch assignments');
-      }
-
-
-      // Filter for assignments that might have peer reviews (Proposal, Final Project, etc.)
-      // If no filtered assignments found, show all assignments for debugging
-      const peerReviewAssignments = data.assignments.filter(assignment => 
-        assignment.name.toLowerCase().includes('proposal') || 
-        assignment.name.toLowerCase().includes('final project') ||
-        assignment.name.toLowerCase().includes('peer review') ||
-        assignment.name.toLowerCase().includes('peer-review') ||
-        assignment.name.toLowerCase().includes('project') ||
-        assignment.name.toLowerCase().includes('report') ||
-        assignment.name.toLowerCase().includes('assignment')
-      );
-
-      // If still no matches, show all assignments (for debugging)
-      const finalAssignments = peerReviewAssignments.length > 0 ? peerReviewAssignments : data.assignments;
-
-      setAssignments(finalAssignments);
-
+      const data = await apiFetch(`/api/canvas/peer-review-assignments/${selectedCourse}`);
+      setAssignments(data.assignments || []);
     } catch (err) {
       setError(`Error loading assignments: ${err.message}`);
     } finally {
       setLoadingAssignments(false);
     }
-  }, [apiUrl, apiToken, backendUrl, selectedCourse]);
+  }, [selectedCourse]);
 
   // Load course assignments when course is selected
   useEffect(() => {
-    if (selectedCourse && apiUrl && apiToken && backendUrl) {
+    if (selectedCourse) {
       fetchCourseAssignments();
     }
-  }, [selectedCourse, apiUrl, apiToken, backendUrl, fetchCourseAssignments]);
+  }, [selectedCourse, fetchCourseAssignments]);
 
   const fetchPeerReviewData = async () => {
     if (!selectedCourse || !selectedAssignment || !deadline) {
@@ -85,30 +56,14 @@ const PeerReviewTracking = ({
     setPeerReviewData(null);
 
     try {
+      // Convert deadline to ISO format
+      const deadlineISO = new Date(deadline).toISOString();
 
-      const response = await fetch(`${backendUrl}/api/peer-reviews`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          base_url: apiUrl,
-          api_token: apiToken,
-          course_id: selectedCourse,
-          assignment_id: parseInt(selectedAssignment),
-          deadline: new Date(deadline).toISOString(), // Ensure proper ISO 8601 format
-          penalty_per_review: penaltyPerReview
-        })
-      });
-
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to fetch peer review data');
-      }
+      const data = await apiFetch(
+        `/api/dashboard/peer-reviews/${selectedCourse}?assignment_id=${selectedAssignment}&deadline=${encodeURIComponent(deadlineISO)}&penalty_per_review=${penaltyPerReview}&total_score=${totalScore}`
+      );
 
       setPeerReviewData(data);
-
     } catch (err) {
       setError(`Error: ${err.message}`);
     } finally {
@@ -163,17 +118,9 @@ const PeerReviewTracking = ({
         {/* Header */}
         <div className="border-b border-gray-200 p-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <button
-                onClick={onBack}
-                className="mr-4 p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </button>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Peer Review Lateness Tracker</h1>
-                <p className="text-gray-600 mt-1">Track peer review submissions and calculate penalties for late or missing reviews</p>
-              </div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Peer Review Lateness Tracker</h1>
+              <p className="text-gray-600 mt-1">Track peer review submissions and calculate penalties for late or missing reviews</p>
             </div>
             <div className="flex space-x-2">
               <button
@@ -191,69 +138,128 @@ const PeerReviewTracking = ({
         {/* Configuration Form */}
         <div className="p-6 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Configure Peer Review Tracking</h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label
+                htmlFor="course-select"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
                 Course
               </label>
               <select
+                id="course-select"
                 value={selectedCourse}
                 onChange={(e) => setSelectedCourse(e.target.value)}
+                aria-label="Select course"
+                aria-required="true"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
                 <option value="">Select Course</option>
                 {courses.map(course => (
                   <option key={course.id} value={course.id}>
-                    {course.name} ({course.course_code})
+                    {course.name}
                   </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label
+                htmlFor="assignment-select"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
                 Assignment
               </label>
-              <select
-                value={selectedAssignment}
-                onChange={(e) => setSelectedAssignment(e.target.value)}
-                disabled={loadingAssignments || !selectedCourse}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
-              >
-                <option value="">
-                  {loadingAssignments ? 'Loading...' : 'Select Assignment'}
-                </option>
-                {assignments.map(assignment => (
-                  <option key={assignment.id} value={assignment.id}>
-                    {assignment.name}
+              <div className="relative">
+                <select
+                  id="assignment-select"
+                  value={selectedAssignment}
+                  onChange={(e) => setSelectedAssignment(e.target.value)}
+                  disabled={loadingAssignments || !selectedCourse}
+                  aria-label="Select assignment"
+                  aria-required="true"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
+                >
+                  <option value="">
+                    {loadingAssignments ? 'Loading assignments...' : 'Select Assignment'}
                   </option>
-                ))}
-              </select>
+                  {assignments.map(assignment => (
+                    <option key={assignment.id} value={assignment.id}>
+                      {assignment.name}
+                    </option>
+                  ))}
+                </select>
+                {loadingAssignments && (
+                  <div className="absolute right-3 top-3">
+                    <RefreshCw className="h-4 w-4 animate-spin text-gray-400" />
+                  </div>
+                )}
+              </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label
+                htmlFor="peer-review-deadline"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
                 Peer Review Deadline
               </label>
               <input
+                id="peer-review-deadline"
                 type="datetime-local"
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
+                aria-label="Select peer review deadline"
+                aria-required="true"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label
+                htmlFor="penalty-input"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
                 Penalty per Review
               </label>
               <input
+                id="penalty-input"
                 type="number"
                 min="1"
                 max="50"
                 value={penaltyPerReview}
-                onChange={(e) => setPenaltyPerReview(parseInt(e.target.value))}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value, 10);
+                  if (!isNaN(value) && value >= 1 && value <= 50) {
+                    setPenaltyPerReview(value);
+                  }
+                }}
+                aria-label="Penalty points per late or missing review"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="total-score-input"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Total Score
+              </label>
+              <input
+                id="total-score-input"
+                type="number"
+                min="1"
+                max="100"
+                value={totalScore}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value, 10);
+                  if (!isNaN(value) && value >= 1 && value <= 100) {
+                    setTotalScore(value);
+                  }
+                }}
+                aria-label="Maximum total penalty points"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
@@ -297,7 +303,7 @@ const PeerReviewTracking = ({
                   <Users className="h-8 w-8 text-blue-600 mr-3" />
                   <div>
                     <p className="text-sm text-blue-600 font-medium">Total Reviews</p>
-                    <p className="text-2xl font-bold text-blue-900">{peerReviewData.total_reviews}</p>
+                    <p className="text-2xl font-bold text-blue-900">{peerReviewData.summary.total_reviews}</p>
                   </div>
                 </div>
               </div>
@@ -308,7 +314,19 @@ const PeerReviewTracking = ({
                   <div>
                     <p className="text-sm text-green-600 font-medium">On Time</p>
                     <p className="text-2xl font-bold text-green-900">
-                      {peerReviewData.total_reviews - peerReviewData.late_or_missing_reviews}
+                      {peerReviewData.summary.on_time} ({peerReviewData.summary.on_time_percentage}%)
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 p-4 rounded-lg">
+                <div className="flex items-center">
+                  <Clock className="h-8 w-8 text-yellow-600 mr-3" />
+                  <div>
+                    <p className="text-sm text-yellow-600 font-medium">Late</p>
+                    <p className="text-2xl font-bold text-yellow-900">
+                      {peerReviewData.summary.late} ({peerReviewData.summary.late_percentage}%)
                     </p>
                   </div>
                 </div>
@@ -316,21 +334,11 @@ const PeerReviewTracking = ({
 
               <div className="bg-red-50 p-4 rounded-lg">
                 <div className="flex items-center">
-                  <AlertCircle className="h-8 w-8 text-red-600 mr-3" />
+                  <XCircle className="h-8 w-8 text-red-600 mr-3" />
                   <div>
-                    <p className="text-sm text-red-600 font-medium">Late/Missing</p>
-                    <p className="text-2xl font-bold text-red-900">{peerReviewData.late_or_missing_reviews}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-yellow-50 p-4 rounded-lg">
-                <div className="flex items-center">
-                  <Calendar className="h-8 w-8 text-yellow-600 mr-3" />
-                  <div>
-                    <p className="text-sm text-yellow-600 font-medium">Total Penalties</p>
-                    <p className="text-2xl font-bold text-yellow-900">
-                      {peerReviewData.peer_review_summary.reduce((sum, summary) => sum + summary.total_penalty_points, 0)} pts
+                    <p className="text-sm text-red-600 font-medium">Missing</p>
+                    <p className="text-2xl font-bold text-red-900">
+                      {peerReviewData.summary.missing} ({peerReviewData.summary.missing_percentage}%)
                     </p>
                   </div>
                 </div>
@@ -338,7 +346,7 @@ const PeerReviewTracking = ({
             </div>
 
             {/* Penalty Summary by Student */}
-            {peerReviewData.peer_review_summary.length > 0 && (
+            {peerReviewData.penalized_reviewers.length > 0 && (
               <div className="mb-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Students with Penalties</h3>
                 <div className="bg-gray-50 rounded-lg overflow-hidden">
@@ -349,6 +357,12 @@ const PeerReviewTracking = ({
                           Student
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Late Reviews
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Missing Reviews
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Total Penalty
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -357,21 +371,31 @@ const PeerReviewTracking = ({
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {peerReviewData.peer_review_summary.map((summary, index) => (
+                      {peerReviewData.penalized_reviewers.map((reviewer, index) => (
                         <tr key={index} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">
-                              {summary.reviewer_name || `Student ID: ${summary.reviewer_id}`}
+                              {reviewer.reviewer_name}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                              {reviewer.late_count}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
                             <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                              -{summary.total_penalty_points} points
+                              {reviewer.missing_count}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                              -{reviewer.penalty_points} points
                             </span>
                           </td>
                           <td className="px-6 py-4">
                             <div className="text-sm text-gray-900 whitespace-pre-line">
-                              {summary.canvas_comment}
+                              {reviewer.canvas_comment}
                             </div>
                           </td>
                         </tr>
@@ -402,21 +426,21 @@ const PeerReviewTracking = ({
                         Comment Time
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Penalty
+                        Hours Difference
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {peerReviewData.peer_review_events.map((event, index) => (
+                    {peerReviewData.events.map((event, index) => (
                       <tr key={index} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-gray-900">
-                            {event.reviewer_name || `Student ID: ${event.reviewer_id}`}
+                            {event.reviewer_name}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
-                            {event.assessed_name || `Student ID: ${event.assessed_user_id}`}
+                            {event.assessed_name}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -427,19 +451,21 @@ const PeerReviewTracking = ({
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
-                            {formatDateTime(event.comment_time)}
+                            {formatDateTime(event.comment_timestamp)}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {event.penalty_points > 0 ? (
-                            <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                              -{event.penalty_points} points
-                            </span>
-                          ) : (
-                            <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                              No penalty
-                            </span>
-                          )}
+                          <div className="text-sm text-gray-900">
+                            {event.hours_difference !== null ? (
+                              event.hours_difference > 0 ? (
+                                <span className="text-red-600">+{event.hours_difference.toFixed(1)} hrs</span>
+                              ) : (
+                                <span className="text-green-600">{event.hours_difference.toFixed(1)} hrs</span>
+                              )
+                            ) : (
+                              '-'
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -458,18 +484,14 @@ const PeerReviewTracking = ({
             <p className="text-gray-500 mb-6">
               Select a course, assignment, and deadline to analyze peer review completion and calculate penalties for late or missing reviews.
             </p>
-            {assignments.length === 0 && selectedCourse && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-4">
+            {assignments.length === 0 && selectedCourse && !loadingAssignments && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-4 max-w-2xl mx-auto">
                 <div className="flex items-center">
                   <AlertCircle className="h-5 w-5 text-yellow-600 mr-2" />
                   <p className="text-sm text-yellow-800">
-                    <strong>No peer review assignments found.</strong> The system looks for assignments with names containing: 
-                    "proposal", "final project", "peer review", "project", "report", or "assignment".
+                    <strong>No peer review assignments found.</strong> Assignments appear here when they have peer review data synced from Canvas.
                   </p>
                 </div>
-                <p className="text-sm text-yellow-700 mt-2">
-                  Check the browser console (F12) for debugging information about loaded assignments.
-                </p>
               </div>
             )}
           </div>

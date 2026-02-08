@@ -125,6 +125,50 @@ class SubmissionStatusMetrics(BaseModel):
     total_expected: int
 
 
+class PeerReviewEvent(BaseModel):
+    peer_review_id: int
+    assignment_id: int
+    assignment_name: str
+    reviewer_id: int
+    reviewer_name: str
+    assessed_id: int
+    assessed_name: str
+    submission_id: int | None
+    comment_timestamp: str | None
+    status: str  # "on_time", "late", "missing"
+    hours_difference: float | None
+
+
+class PeerReviewSummary(BaseModel):
+    total_reviews: int
+    on_time: int
+    late: int
+    missing: int
+    on_time_percentage: float
+    late_percentage: float
+    missing_percentage: float
+
+
+class PenalizedReviewer(BaseModel):
+    reviewer_id: int
+    reviewer_name: str
+    late_count: int
+    missing_count: int
+    penalty_points: int
+    canvas_comment: str
+
+
+class PeerReviewAnalysis(BaseModel):
+    assignment_id: int
+    assignment_name: str
+    deadline: str
+    penalty_per_review: int
+    total_score: int
+    summary: PeerReviewSummary
+    events: list[PeerReviewEvent]
+    penalized_reviewers: list[PenalizedReviewer]
+
+
 # Health check endpoints
 @app.get("/health")
 async def simple_health_check():
@@ -755,6 +799,246 @@ async def get_late_days_data(course_id: str) -> dict[str, Any]:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to calculate late days data",
+        ) from e
+
+
+@app.get("/api/canvas/peer-review-assignments/{course_id}")
+async def get_peer_review_assignments(course_id: str) -> dict[str, Any]:
+    """Get assignments that have peer review data."""
+    try:
+        assignments = db.get_assignments_with_peer_reviews(course_id)
+        return {
+            "assignments": assignments,
+            "count": len(assignments),
+            "last_updated": datetime.now(UTC).isoformat(),
+        }
+    except Exception as e:
+        logger.error(f"Error fetching peer review assignments: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch peer review assignments",
+        ) from e
+
+
+@app.get("/api/canvas/peer-reviews/{course_id}")
+async def get_peer_reviews_data(
+    course_id: str, assignment_id: int | None = None
+) -> dict[str, Any]:
+    """Get peer reviews with user names joined."""
+    try:
+        peer_reviews = db.get_peer_reviews_with_names(course_id, assignment_id)
+        return {
+            "peer_reviews": peer_reviews,
+            "count": len(peer_reviews),
+            "last_updated": datetime.now(UTC).isoformat(),
+        }
+    except Exception as e:
+        logger.error(f"Error fetching peer reviews: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch peer reviews",
+        ) from e
+
+
+@app.get("/api/dashboard/peer-reviews/{course_id}", response_model=PeerReviewAnalysis)
+async def analyze_peer_reviews(
+    course_id: str,
+    assignment_id: int,
+    deadline: str,
+    penalty_per_review: int = 4,
+    total_score: int = 12,
+) -> PeerReviewAnalysis:
+    """
+    Analyze peer review timeliness and calculate penalties.
+
+    Args:
+        course_id: Course ID
+        assignment_id: Assignment ID to analyze
+        deadline: ISO datetime string for peer review deadline
+        penalty_per_review: Points deducted per late/missing review (default: 4)
+        total_score: Maximum total penalty points (default: 12)
+
+    Returns:
+        PeerReviewAnalysis with events and penalty summary
+    """
+    try:
+        # Parse deadline
+        try:
+            deadline_dt = dateutil_parser.parse(deadline)
+
+            # If naive datetime, assume UTC
+            if deadline_dt.tzinfo is None:
+                deadline_dt = deadline_dt.replace(tzinfo=UTC)
+                logger.debug(f"Deadline was naive, assuming UTC: {deadline_dt}")
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid deadline format: {e}",
+            ) from e
+
+        # Fetch data
+        peer_reviews = db.get_peer_reviews_with_names(course_id, assignment_id)
+        assignments = db.get_assignments(course_id)
+
+        if not peer_reviews:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No peer reviews found for assignment {assignment_id}",
+            )
+
+        # Get assignment name
+        assignment_name = next(
+            (a["name"] for a in assignments if a["id"] == assignment_id),
+            f"Assignment {assignment_id}",
+        )
+
+        # Get earliest comment timestamps (optimized database query)
+        comment_lookup = db.get_earliest_peer_review_comments(course_id, assignment_id)
+
+        # Process each peer review
+        events = []
+        reviewer_penalties = {}  # reviewer_id -> {name, late_count, missing_count}
+
+        for pr in peer_reviews:
+            reviewer_id = pr["assessor_id"]
+            reviewer_name = pr["reviewer_name"]
+            assessed_id = pr["user_id"]
+            assessed_name = pr["assessed_name"]
+
+            # Find reviewer's comment on assessed user's submission
+            # asset_id in peer_review is typically the submission_id
+            submission_id = pr.get("asset_id")
+            comment_key = (submission_id, reviewer_id) if submission_id else None
+
+            comment_timestamp = None
+            status_val = "missing"
+            hours_diff = None
+
+            if comment_key and comment_key in comment_lookup:
+                comment_timestamp = comment_lookup[comment_key]
+                try:
+                    comment_dt = dateutil_parser.parse(comment_timestamp)
+                    time_diff = comment_dt - deadline_dt
+                    hours_diff = time_diff.total_seconds() / 3600
+
+                    status_val = "on_time" if comment_dt <= deadline_dt else "late"
+                except Exception as e:
+                    logger.warning(f"Error parsing comment timestamp: {e}")
+
+            # Track penalties
+            if reviewer_id not in reviewer_penalties:
+                reviewer_penalties[reviewer_id] = {
+                    "name": reviewer_name,
+                    "late_count": 0,
+                    "missing_count": 0,
+                }
+
+            if status_val == "late":
+                reviewer_penalties[reviewer_id]["late_count"] += 1
+            elif status_val == "missing":
+                reviewer_penalties[reviewer_id]["missing_count"] += 1
+
+            events.append(
+                PeerReviewEvent(
+                    peer_review_id=pr["id"],
+                    assignment_id=assignment_id,
+                    assignment_name=assignment_name,
+                    reviewer_id=reviewer_id,
+                    reviewer_name=reviewer_name,
+                    assessed_id=assessed_id,
+                    assessed_name=assessed_name,
+                    submission_id=submission_id,
+                    comment_timestamp=comment_timestamp,
+                    status=status_val,
+                    hours_difference=round(hours_diff, 2) if hours_diff else None,
+                )
+            )
+
+        # Calculate summary
+        on_time_count = sum(1 for e in events if e.status == "on_time")
+        late_count = sum(1 for e in events if e.status == "late")
+        missing_count = sum(1 for e in events if e.status == "missing")
+        total = len(events)
+
+        summary = PeerReviewSummary(
+            total_reviews=total,
+            on_time=on_time_count,
+            late=late_count,
+            missing=missing_count,
+            on_time_percentage=round((on_time_count / total * 100), 2) if total else 0,
+            late_percentage=round((late_count / total * 100), 2) if total else 0,
+            missing_percentage=round((missing_count / total * 100), 2) if total else 0,
+        )
+
+        # Calculate penalized reviewers
+        penalized_reviewers = []
+        for reviewer_id, penalty_data in reviewer_penalties.items():
+            late_review_count = penalty_data["late_count"]
+            missing_review_count = penalty_data["missing_count"]
+            total_infractions = late_review_count + missing_review_count
+            penalty_points = min(total_infractions * penalty_per_review, total_score)
+            final_grade = total_score - penalty_points
+
+            if penalty_points > 0:
+                canvas_comment = (
+                    f"Peer Review Grade: {final_grade}/{total_score}\n\n"
+                    f"Late reviews: {late_review_count}\n"
+                    f"Missing reviews: {missing_review_count}\n"
+                    f"Penalty: {penalty_points} points ({penalty_per_review} points per late/missing review, capped at {total_score} points)"  # noqa: E501
+                )
+
+                penalized_reviewers.append(
+                    PenalizedReviewer(
+                        reviewer_id=reviewer_id,
+                        reviewer_name=penalty_data["name"],
+                        late_count=late_review_count,
+                        missing_count=missing_review_count,
+                        penalty_points=penalty_points,
+                        canvas_comment=canvas_comment,
+                    )
+                )
+
+        # Sort penalized reviewers by penalty descending
+        penalized_reviewers.sort(key=lambda x: x.penalty_points, reverse=True)
+
+        return PeerReviewAnalysis(
+            assignment_id=assignment_id,
+            assignment_name=assignment_name,
+            deadline=deadline,
+            penalty_per_review=penalty_per_review,
+            total_score=total_score,
+            summary=summary,
+            events=events,
+            penalized_reviewers=penalized_reviewers,
+        )
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        # Handle data validation errors
+        logger.warning(f"Invalid data for peer review analysis: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid data: {str(e)}",
+        ) from e
+    except KeyError as e:
+        # Handle missing required fields
+        logger.error(
+            f"Missing required field in peer review data: {str(e)}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Data integrity error: missing field {str(e)}",
+        ) from e
+    except Exception as e:
+        logger.error(
+            f"Unexpected error analyzing peer reviews: {str(e)}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to analyze peer reviews",
         ) from e
 
 

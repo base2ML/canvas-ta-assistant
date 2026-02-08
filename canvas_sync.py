@@ -123,6 +123,7 @@ def sync_course_data(
                     "due_at": getattr(assignment, "due_at", None),
                     "points_possible": getattr(assignment, "points_possible", None),
                     "html_url": getattr(assignment, "html_url", None),
+                    "has_peer_reviews": getattr(assignment, "peer_reviews", False),
                 }
             )
 
@@ -225,6 +226,80 @@ def sync_course_data(
                 f"Submissions fetched and stored in {time.time() - submissions_start:.2f}s ({total_submissions} submissions)"  # noqa: E501
             )
 
+            # Fetch and store peer reviews for assignments that have them
+            peer_reviews_start = time.time()
+            total_peer_reviews = 0
+            total_peer_review_comments = 0
+
+            peer_review_assignments = [
+                (obj, data)
+                for obj, data in zip(assignment_objects, assignments, strict=True)
+                if data.get("has_peer_reviews", False)
+            ]
+
+            if peer_review_assignments:
+                logger.info(
+                    f"Found {len(peer_review_assignments)} assignments "
+                    "with peer reviews"
+                )
+
+                for assignment_obj, assignment_data in peer_review_assignments:
+                    try:
+                        # Fetch peer reviews
+                        peer_reviews = []
+                        for pr in assignment_obj.get_peer_reviews():
+                            peer_reviews.append(
+                                {
+                                    "id": pr.id,
+                                    "assignment_id": assignment_obj.id,
+                                    "user_id": pr.user_id,
+                                    "assessor_id": pr.assessor_id,
+                                    "asset_id": getattr(pr, "asset_id", None),
+                                    "asset_type": getattr(pr, "asset_type", None),
+                                    "workflow_state": getattr(
+                                        pr, "workflow_state", None
+                                    ),
+                                }
+                            )
+
+                        if peer_reviews:
+                            db.upsert_peer_reviews(course_id, peer_reviews, conn)
+                            total_peer_reviews += len(peer_reviews)
+
+                        # Fetch submission comments for peer reviews
+                        comments = []
+                        for submission in assignment_obj.get_submissions(
+                            include=["submission_comments"]
+                        ):
+                            submission_comments = getattr(
+                                submission, "submission_comments", []
+                            )
+                            for comment in submission_comments:
+                                comments.append(
+                                    {
+                                        "id": comment.get("id"),
+                                        "submission_id": submission.id,
+                                        "author_id": comment.get("author_id"),
+                                        "comment": comment.get("comment"),
+                                        "created_at": comment.get("created_at"),
+                                    }
+                                )
+
+                        if comments:
+                            db.upsert_peer_review_comments(course_id, comments, conn)
+                            total_peer_review_comments += len(comments)
+
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to fetch peer reviews for assignment {assignment_data['name']}: {e}"  # noqa: E501
+                        )
+                        continue
+
+                logger.info(
+                    f"Peer reviews fetched in {time.time() - peer_reviews_start:.2f}s "
+                    f"({total_peer_reviews} reviews, {total_peer_review_comments} comments)"  # noqa: E501
+                )
+
         total_time = time.time() - fetch_start
         logger.info(f"Total sync time: {total_time:.2f}s")
 
@@ -252,6 +327,8 @@ def sync_course_data(
                 "submissions": total_submissions,
                 "users": len(users),
                 "groups": len(groups),
+                "peer_reviews": total_peer_reviews,
+                "peer_review_comments": total_peer_review_comments,
             },
             "duration_seconds": round(total_time, 2),
         }

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import EnhancedTADashboard from './EnhancedTADashboard';
 import LateDaysTracking from './LateDaysTracking';
+import PeerReviewTracking from './PeerReviewTracking';
 import Settings from './Settings';
 import Navigation from './components/Navigation';
 import { RefreshCw } from 'lucide-react';
@@ -105,6 +106,15 @@ const App = () => {
             path="/late-days"
             element={
               <LateDaysTracking
+                courses={courses}
+                onLoadCourses={loadCourses}
+              />
+            }
+          />
+          <Route
+            path="/peer-reviews"
+            element={
+              <PeerReviewTracking
                 courses={courses}
                 onLoadCourses={loadCourses}
               />
