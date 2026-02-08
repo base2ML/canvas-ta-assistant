@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Save, CheckCircle, XCircle, Clock, Settings as SettingsIcon } from 'lucide-react';
+import { apiFetch } from './api';
 
-const Settings = ({ backendUrl }) => {
+const Settings = () => {
     const [settings, setSettings] = useState({
         course_id: '',
         course_name: '',
@@ -20,48 +21,36 @@ const Settings = ({ backendUrl }) => {
     // Fetch current settings
     const loadSettings = useCallback(async () => {
         try {
-            const response = await fetch(`${backendUrl}/api/settings`);
-            if (response.ok) {
-                const data = await response.json();
-                setSettings(data);
-                setManualCourseId(data.course_id || '');
-            }
+            const data = await apiFetch('/api/settings');
+            setSettings(data);
+            setManualCourseId(data.course_id || '');
         } catch (err) {
             console.error('Error loading settings:', err);
             setMessage({ type: 'error', text: 'Failed to load settings' });
         } finally {
             setLoading(false);
         }
-    }, [backendUrl]);
+    }, []);
 
     // Fetch sync status
     const loadSyncStatus = useCallback(async () => {
         try {
-            const response = await fetch(`${backendUrl}/api/canvas/sync/status`);
-            if (response.ok) {
-                const data = await response.json();
-                setSyncHistory(data.history || []);
-            }
+            const data = await apiFetch('/api/canvas/sync/status');
+            setSyncHistory(data.history || []);
         } catch (err) {
             console.error('Error loading sync status:', err);
         }
-    }, [backendUrl]);
+    }, []);
 
     // Fetch available courses from Canvas
     const loadAvailableCourses = async () => {
         setLoadingCourses(true);
         try {
-            const response = await fetch(`${backendUrl}/api/settings/courses`);
-            if (response.ok) {
-                const data = await response.json();
-                setAvailableCourses(data.courses || []);
-            } else {
-                const error = await response.json();
-                setMessage({ type: 'error', text: error.detail || 'Failed to fetch courses' });
-            }
+            const data = await apiFetch('/api/settings/courses');
+            setAvailableCourses(data.courses || []);
         } catch (err) {
             console.error('Error loading courses:', err);
-            setMessage({ type: 'error', text: 'Failed to connect to Canvas API' });
+            setMessage({ type: 'error', text: err.message || 'Failed to connect to Canvas API' });
         } finally {
             setLoadingCourses(false);
         }
@@ -76,22 +65,15 @@ const Settings = ({ backendUrl }) => {
 
         setSaving(true);
         try {
-            const response = await fetch(`${backendUrl}/api/settings`, {
+            await apiFetch('/api/settings', {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ course_id: manualCourseId.trim() }),
             });
-
-            if (response.ok) {
-                setMessage({ type: 'success', text: 'Settings saved successfully' });
-                loadSettings();
-            } else {
-                const error = await response.json();
-                setMessage({ type: 'error', text: error.detail || 'Failed to save settings' });
-            }
+            setMessage({ type: 'success', text: 'Settings saved successfully' });
+            loadSettings();
         } catch (err) {
             console.error('Error saving settings:', err);
-            setMessage({ type: 'error', text: 'Failed to save settings' });
+            setMessage({ type: 'error', text: err.message || 'Failed to save settings' });
         } finally {
             setSaving(false);
         }
@@ -102,27 +84,19 @@ const Settings = ({ backendUrl }) => {
         setSyncing(true);
         setMessage(null);
         try {
-            const response = await fetch(`${backendUrl}/api/canvas/sync`, {
+            const data = await apiFetch('/api/canvas/sync', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ course_id: manualCourseId.trim() || null }),
             });
-
-            if (response.ok) {
-                const data = await response.json();
-                setMessage({
-                    type: 'success',
-                    text: `Sync completed! ${data.stats?.assignments || 0} assignments, ${data.stats?.users || 0} users synced in ${data.duration_seconds}s`,
-                });
-                loadSettings();
-                loadSyncStatus();
-            } else {
-                const error = await response.json();
-                setMessage({ type: 'error', text: error.detail || 'Sync failed' });
-            }
+            setMessage({
+                type: 'success',
+                text: `Sync completed! ${data.stats?.assignments || 0} assignments, ${data.stats?.users || 0} users synced in ${data.duration_seconds}s`,
+            });
+            loadSettings();
+            loadSyncStatus();
         } catch (err) {
             console.error('Error triggering sync:', err);
-            setMessage({ type: 'error', text: 'Failed to trigger sync' });
+            setMessage({ type: 'error', text: err.message || 'Failed to trigger sync' });
         } finally {
             setSyncing(false);
         }
