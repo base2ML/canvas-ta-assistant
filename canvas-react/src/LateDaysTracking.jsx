@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { RefreshCw, Calendar, FileText, ChevronUp, ChevronDown, User } from 'lucide-react';
+import { RefreshCw, Calendar, FileText, ChevronUp, ChevronDown, User, Filter } from 'lucide-react';
 import { apiFetch } from './api.js';
 
 const LateDaysTracking = ({ courses, onLoadCourses }) => {
@@ -12,6 +12,8 @@ const LateDaysTracking = ({ courses, onLoadCourses }) => {
   const [selectedTAGroup, setSelectedTAGroup] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'student_name', direction: 'asc' });
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [selectedAssignments, setSelectedAssignments] = useState([]);
+  const [showAssignmentFilter, setShowAssignmentFilter] = useState(false);
 
   // Use the first available course (since this tool is for single course use)
   const currentCourse = courses && courses.length > 0 ? courses[0] : null;
@@ -37,7 +39,12 @@ const LateDaysTracking = ({ courses, onLoadCourses }) => {
     try {
       const data = await fetchLateDaysData(currentCourse.id);
       setLateDaysData(data.students || []);
-      setAssignments(data.assignments || []);
+      const assignmentList = data.assignments || [];
+      setAssignments(assignmentList);
+
+      // Initialize selectedAssignments with all assignment IDs
+      setSelectedAssignments(assignmentList.map(a => a.id));
+
       setCourseInfo(data.course_info);
 
       // Set last updated from API response timestamp
@@ -68,6 +75,44 @@ const LateDaysTracking = ({ courses, onLoadCourses }) => {
   const handleTAGroupChange = (taGroup) => {
     setSelectedTAGroup(taGroup);
   };
+
+  // Handle assignment selection
+  const handleAssignmentToggle = (assignmentId) => {
+    setSelectedAssignments(prev => {
+      if (prev.includes(assignmentId)) {
+        return prev.filter(id => id !== assignmentId);
+      } else {
+        return [...prev, assignmentId];
+      }
+    });
+  };
+
+  const handleSelectAllAssignments = () => {
+    setSelectedAssignments(assignments.map(a => a.id));
+  };
+
+  const handleDeselectAllAssignments = () => {
+    setSelectedAssignments([]);
+  };
+
+  // Sort assignments by due date (earliest to latest)
+  // Assignments without due dates appear at the end
+  const sortedAssignments = React.useMemo(() => {
+    return [...assignments].sort((a, b) => {
+      // Handle null/undefined due dates - put them at the end
+      if (!a.due_at && !b.due_at) return 0;
+      if (!a.due_at) return 1;
+      if (!b.due_at) return -1;
+
+      // Sort by due date
+      return new Date(a.due_at) - new Date(b.due_at);
+    });
+  }, [assignments]);
+
+  // Filter assignments based on selection
+  const displayedAssignments = sortedAssignments.filter(
+    assignment => selectedAssignments.includes(assignment.id)
+  );
 
   // Filter students by TA group if a filter is selected
   const filteredLateDaysData = selectedTAGroup
@@ -233,6 +278,77 @@ const LateDaysTracking = ({ courses, onLoadCourses }) => {
           </div>
         )}
 
+        {/* Assignment Filter */}
+        {currentCourse && assignments.length > 0 && (
+          <div className="p-6 border-b border-gray-200">
+            <button
+              onClick={() => setShowAssignmentFilter(!showAssignmentFilter)}
+              className="flex items-center space-x-2 text-sm font-medium text-gray-700 hover:text-blue-600 transition-colors"
+            >
+              <Filter className="h-4 w-4" />
+              <span>
+                Select Assignments ({selectedAssignments.length} of {assignments.length} shown)
+              </span>
+              <ChevronDown className={`h-4 w-4 transition-transform ${showAssignmentFilter ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showAssignmentFilter && (
+              <div className="mt-4">
+                <div className="flex items-center space-x-3 mb-4">
+                  <button
+                    onClick={handleSelectAllAssignments}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Select All
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    onClick={handleDeselectAllAssignments}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Deselect All
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto">
+                  {sortedAssignments.map(assignment => (
+                    <label
+                      key={assignment.id}
+                      className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedAssignments.includes(assignment.id)}
+                        onChange={() => handleAssignmentToggle(assignment.id)}
+                        className="mt-1 h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">
+                          {assignment.name}
+                        </div>
+                        {assignment.due_at && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            Due: {new Date(assignment.due_at).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </div>
+                        )}
+                        {!assignment.due_at && (
+                          <div className="text-xs text-gray-400 mt-1">
+                            No due date
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Error Display */}
         {error && (
           <div className="m-6 p-4 bg-red-100 border border-red-300 rounded-md text-red-700">
@@ -313,7 +429,7 @@ const LateDaysTracking = ({ courses, onLoadCourses }) => {
                 </div>
                 <div>
                   <span className="text-gray-500">Assignments:</span>
-                  <span className="ml-2 font-semibold">{assignments.length}</span>
+                  <span className="ml-2 font-semibold">{displayedAssignments.length}</span>
                 </div>
                 <div>
                   <span className="text-gray-500">On-Time Rate:</span>
@@ -340,7 +456,7 @@ const LateDaysTracking = ({ courses, onLoadCourses }) => {
                         <SortIndicator column="student_name" />
                       </div>
                     </th>
-                    {assignments.map(assignment => (
+                    {displayedAssignments.map(assignment => (
                       <th
                         key={assignment.id}
                         onClick={() => handleSort(`assignment_${assignment.id}`)}
@@ -392,7 +508,7 @@ const LateDaysTracking = ({ courses, onLoadCourses }) => {
                           </div>
                         </div>
                       </td>
-                      {assignments.map(assignment => {
+                      {displayedAssignments.map(assignment => {
                         const lateDays = student.assignments[assignment.id] || 0;
                         return (
                           <td key={assignment.id} className="px-4 py-4 text-center">
