@@ -4,6 +4,7 @@ Local deployment with SQLite data storage
 """
 
 import asyncio
+import json
 import math
 import os
 from contextlib import asynccontextmanager
@@ -14,7 +15,7 @@ from dateutil import parser as dateutil_parser
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -171,6 +172,92 @@ class PeerReviewAnalysis(BaseModel):
     penalized_reviewers: list[PenalizedReviewer]
 
 
+class CommentTemplateCreate(BaseModel):
+    template_type: str  # "penalty" or "non_penalty"
+    template_text: str
+    template_variables: list[str] | None = None
+
+    @field_validator("template_type")
+    @classmethod
+    def validate_type(cls, v):
+        if v not in ("penalty", "non_penalty"):
+            raise ValueError("template_type must be 'penalty' or 'non_penalty'")
+        return v
+
+    @field_validator("template_text")
+    @classmethod
+    def validate_text_not_empty(cls, v):
+        if not v.strip():
+            raise ValueError("template_text cannot be empty")
+        return v
+
+
+class CommentTemplateUpdate(BaseModel):
+    template_type: str | None = None
+    template_text: str | None = None
+    template_variables: list[str] | None = None
+
+    @field_validator("template_type")
+    @classmethod
+    def validate_type(cls, v):
+        if v is not None and v not in ("penalty", "non_penalty"):
+            raise ValueError("template_type must be 'penalty' or 'non_penalty'")
+        return v
+
+
+class CommentTemplateResponse(BaseModel):
+    id: int
+    template_type: str
+    template_text: str
+    template_variables: list[str] | None
+    created_at: str
+    updated_at: str
+
+
+# Allowed template variables (from PROJECT.md requirements)
+ALLOWED_TEMPLATE_VARIABLES = {
+    "days_late",
+    "days_remaining",
+    "penalty_days",
+    "penalty_percent",
+    "max_late_days",
+}
+
+
+def validate_template_syntax(
+    template_text: str, variables: list[str]
+) -> tuple[bool, str]:
+    """Validate template syntax by test-rendering with dummy data.
+
+    Checks for:
+    1. Unclosed or unmatched braces
+    2. Variables not in the allowed set
+    3. Template renders without errors
+
+    Returns (is_valid, error_message).
+    """
+    # Check for unknown variables
+    unknown = set(variables) - ALLOWED_TEMPLATE_VARIABLES
+    if unknown:
+        unknown_str = ", ".join(sorted(unknown))
+        allowed_str = ", ".join(sorted(ALLOWED_TEMPLATE_VARIABLES))
+        msg = f"Unknown template variables: {unknown_str}. Allowed: {allowed_str}"
+        return False, msg
+
+    # Create dummy data for all allowed variables
+    dummy_data = {var: f"[{var}]" for var in ALLOWED_TEMPLATE_VARIABLES}
+
+    try:
+        template_text.format(**dummy_data)
+        return True, ""
+    except KeyError as e:
+        return False, f"Template references undefined variable: {e}"
+    except ValueError as e:
+        return False, f"Invalid template syntax (check for unclosed braces): {e}"
+    except Exception as e:
+        return False, f"Template validation error: {e}"
+
+
 # Health check endpoints
 @app.get("/health")
 async def simple_health_check():
@@ -305,6 +392,117 @@ async def get_sync_status(course_id: str | None = None) -> dict[str, Any]:
         "last_sync": last_sync,
         "history": history,
     }
+
+
+# Template management endpoints
+@app.get("/api/templates")
+async def get_templates(template_type: str | None = None) -> dict[str, Any]:
+    """Get all comment templates, optionally filtered by type."""
+    templates = db.get_templates(template_type)
+    # Parse template_variables from JSON string to list for each template
+    for t in templates:
+        if t.get("template_variables"):
+            try:
+                t["template_variables"] = json.loads(t["template_variables"])
+            except (json.JSONDecodeError, TypeError):
+                t["template_variables"] = []
+        else:
+            t["template_variables"] = []
+    return {"templates": templates, "total": len(templates)}
+
+
+@app.post("/api/templates", status_code=status.HTTP_201_CREATED)
+async def create_template(template: CommentTemplateCreate) -> dict[str, Any]:
+    """Create a new comment template with syntax validation."""
+    variables = template.template_variables or []
+
+    # Validate template syntax
+    is_valid, error = validate_template_syntax(template.template_text, variables)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error,
+        )
+
+    template_id = db.create_template(
+        template_type=template.template_type,
+        template_text=template.template_text,
+        template_variables=json.dumps(variables) if variables else None,
+    )
+    logger.info(f"Created template {template_id} of type {template.template_type}")
+
+    return {
+        "status": "success",
+        "template_id": template_id,
+        "message": "Template created successfully",
+    }
+
+
+@app.put("/api/templates/{template_id}")
+async def update_template(
+    template_id: int, template: CommentTemplateUpdate
+) -> dict[str, Any]:
+    """Update an existing comment template with syntax validation."""
+    # Get existing template
+    existing = db.get_template_by_id(template_id)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Template {template_id} not found",
+        )
+
+    # Merge with existing values
+    new_type = template.template_type or existing["template_type"]
+    new_text = template.template_text or existing["template_text"]
+
+    if template.template_variables is not None:
+        new_variables = template.template_variables
+    elif existing.get("template_variables"):
+        try:
+            new_variables = json.loads(existing["template_variables"])
+        except (json.JSONDecodeError, TypeError):
+            new_variables = []
+    else:
+        new_variables = []
+
+    # Validate if text or variables changed
+    if template.template_text is not None or template.template_variables is not None:
+        is_valid, error = validate_template_syntax(new_text, new_variables)
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error,
+            )
+
+    updated = db.update_template(
+        template_id=template_id,
+        template_type=new_type,
+        template_text=new_text,
+        template_variables=json.dumps(new_variables) if new_variables else None,
+    )
+
+    if not updated:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update template",
+        )
+
+    logger.info(f"Updated template {template_id}")
+    return {"status": "success", "message": "Template updated"}
+
+
+@app.delete("/api/templates/{template_id}")
+async def delete_template(template_id: int) -> dict[str, Any]:
+    """Delete a comment template."""
+    deleted = db.delete_template(template_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Template {template_id} not found",
+        )
+
+    logger.info(f"Deleted template {template_id}")
+    return {"status": "success", "message": "Template deleted"}
 
 
 # Canvas data endpoints
