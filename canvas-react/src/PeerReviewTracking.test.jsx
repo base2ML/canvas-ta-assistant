@@ -8,8 +8,7 @@ vi.mock('./api');
 
 describe('PeerReviewTracking', () => {
   const mockCourses = [
-    { id: '123', name: 'Test Course 1' },
-    { id: '456', name: 'Test Course 2' }
+    { id: '20960000000447574', name: 'Sandbox Course' }
   ];
 
   const mockAssignments = [
@@ -120,7 +119,7 @@ describe('PeerReviewTracking', () => {
       render(<PeerReviewTracking courses={mockCourses} />);
 
       const courseSelect = screen.getByLabelText('Select course');
-      expect(courseSelect).toHaveValue('123');
+      expect(courseSelect).toHaveValue('20960000000447574');
     });
 
     it('renders all form fields with proper labels', () => {
@@ -148,7 +147,7 @@ describe('PeerReviewTracking', () => {
       render(<PeerReviewTracking courses={mockCourses} />);
 
       await waitFor(() => {
-        expect(api.apiFetch).toHaveBeenCalledWith('/api/canvas/peer-review-assignments/123');
+        expect(api.apiFetch).toHaveBeenCalledWith('/api/canvas/peer-review-assignments/20960000000447574');
       });
 
       await waitFor(() => {

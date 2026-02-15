@@ -1,38 +1,36 @@
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
-import LateDaysTracking from './LateDaysTracking';
+import EnrollmentTracking from './EnrollmentTracking';
 import { BrowserRouter } from 'react-router-dom';
 
-describe('LateDaysTracking', () => {
+describe('EnrollmentTracking', () => {
     const mockCourses = [
         { id: '20960000000447574', name: 'Sandbox Course', course_code: 'CS101' }
     ];
 
-    it('renders without crashing and shows course name', () => {
+    it('renders without crashing and shows page title', () => {
         render(
             <BrowserRouter>
-                <LateDaysTracking
+                <EnrollmentTracking
                     courses={mockCourses}
                     onLoadCourses={vi.fn()}
                 />
             </BrowserRouter>
         );
 
-        expect(screen.getByText(/Late Days Tracking/i)).toBeInTheDocument();
-        // It might show "Test Course" if it selects the first one
-        // expect(screen.getByText(/Test Course/i)).toBeInTheDocument();
+        expect(screen.getByText(/Enrollment Tracking/i)).toBeInTheDocument();
     });
 
     it('shows no course message when courses are empty', () => {
         render(
             <BrowserRouter>
-                <LateDaysTracking
+                <EnrollmentTracking
                     courses={[]}
                     onLoadCourses={vi.fn()}
                 />
             </BrowserRouter>
         );
 
-        expect(screen.getByText(/No course available/i)).toBeInTheDocument();
+        expect(screen.getByText(/No course configured/i)).toBeInTheDocument();
     });
 });

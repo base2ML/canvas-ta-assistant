@@ -307,6 +307,11 @@ const Settings = () => {
                                 {settings.last_sync.submissions_count} submissions,{' '}
                                 {settings.last_sync.users_count} users,{' '}
                                 {settings.last_sync.groups_count} groups
+                                {settings.last_sync.dropped_users_count > 0 && (
+                                    <span className="text-orange-600">
+                                        {' '}({settings.last_sync.dropped_users_count} dropped)
+                                    </span>
+                                )}
                             </p>
                         )}
                     </div>
@@ -345,6 +350,11 @@ const Settings = () => {
                                 {sync.status === 'success' && (
                                     <span className="text-xs text-gray-500">
                                         {sync.assignments_count} assignments, {sync.users_count} users
+                                        {sync.dropped_users_count > 0 && (
+                                            <span className="text-orange-600">
+                                                {' '}({sync.dropped_users_count} dropped)
+                                            </span>
+                                        )}
                                     </span>
                                 )}
                             </div>

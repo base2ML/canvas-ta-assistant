@@ -334,11 +334,13 @@ async def get_courses() -> dict[str, Any]:
 
 @app.get("/api/canvas/data/{course_id}")
 async def get_canvas_data(course_id: str) -> dict[str, Any]:
-    """Get complete Canvas data for a course."""
+    """Get complete Canvas data for a course (includes all users)."""
     assignments = db.get_assignments(course_id)
     submissions = db.get_submissions(course_id)
-    users = db.get_users(course_id)
+    # Full dump includes all users (active and dropped)
+    users = db.get_users(course_id, include_dropped=True)
     groups = db.get_groups(course_id)
+    enrollment_counts = db.get_enrollment_counts(course_id)
 
     if not assignments and not users:
         raise HTTPException(
@@ -354,6 +356,7 @@ async def get_canvas_data(course_id: str) -> dict[str, Any]:
         "users": users,
         "groups": groups,
         "enrollments": [],
+        "enrollment_counts": enrollment_counts,
     }
 
 
@@ -374,9 +377,9 @@ async def get_submissions(
 
 
 @app.get("/api/canvas/users/{course_id}")
-async def get_users(course_id: str) -> dict[str, Any]:
-    """Get users for a course."""
-    users = db.get_users(course_id)
+async def get_users(course_id: str, include_dropped: bool = False) -> dict[str, Any]:
+    """Get users for a course. Defaults to active students only."""
+    users = db.get_users(course_id, include_dropped=include_dropped)
     return {"users": users, "total": len(users)}
 
 
@@ -1036,6 +1039,36 @@ async def analyze_peer_reviews(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to analyze peer reviews",
+        ) from e
+
+
+@app.get("/api/dashboard/enrollment-history/{course_id}")
+async def get_enrollment_history(course_id: str) -> dict[str, Any]:
+    """
+    Get enrollment history for a course.
+
+    Returns enrollment snapshots and individual student status change events.
+    """
+    try:
+        current_counts = db.get_enrollment_counts(course_id)
+        snapshots = db.get_enrollment_history(course_id, limit=20)
+        events = db.get_enrollment_events(course_id, limit=50)
+
+        return {
+            "course_id": course_id,
+            "current_counts": current_counts,
+            "snapshots": snapshots,
+            "events": events,
+        }
+
+    except Exception as e:
+        logger.error(
+            f"Error fetching enrollment history for course {course_id}: {str(e)}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch enrollment history",
         ) from e
 
 

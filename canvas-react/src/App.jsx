@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import EnhancedTADashboard from './EnhancedTADashboard';
 import LateDaysTracking from './LateDaysTracking';
 import PeerReviewTracking from './PeerReviewTracking';
+import EnrollmentTracking from './EnrollmentTracking';
 import Settings from './Settings';
 import Navigation from './components/Navigation';
 import { RefreshCw } from 'lucide-react';
@@ -115,6 +116,15 @@ const App = () => {
             path="/peer-reviews"
             element={
               <PeerReviewTracking
+                courses={courses}
+                onLoadCourses={loadCourses}
+              />
+            }
+          />
+          <Route
+            path="/enrollment"
+            element={
+              <EnrollmentTracking
                 courses={courses}
                 onLoadCourses={loadCourses}
               />

@@ -19,8 +19,7 @@ describe('EnhancedTADashboard', () => {
     const mockBackendUrl = 'http://localhost:8000';
 
     const mockCourses = [
-        { id: '1', name: 'Course 1' },
-        { id: '2', name: 'Course 2' }
+        { id: '20960000000447574', name: 'Sandbox Course' }
     ];
 
     const mockAssignments = {
@@ -57,7 +56,7 @@ describe('EnhancedTADashboard', () => {
         );
 
         expect(screen.getByText(/TA Grading Dashboard/i)).toBeInTheDocument();
-        expect(screen.getByText('Course 1')).toBeInTheDocument();
+        expect(screen.getByText('Sandbox Course')).toBeInTheDocument();
     });
 
     it('loads course data and handles mixed group member formats', async () => {

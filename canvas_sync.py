@@ -189,13 +189,22 @@ def sync_course_data(
 
         # Use transaction to write all data atomically
         total_submissions = 0
+        dropped_count = 0
         with db.get_db_transaction() as conn:
-            # Clear existing data within transaction
-            db.clear_course_data(course_id, conn)
+            # Capture enrollment state before sync modifies anything
+            before_enrollment = db.get_enrollment_state_snapshot(course_id, conn)
 
-            # Store assignments, users, and groups
+            # Step 1: Mark all existing users as pending verification
+            pending_count = db.mark_all_users_pending(course_id, conn)
+            logger.info(f"Marked {pending_count} existing users as pending_check")
+
+            # Step 2: Clear refreshable data (assignments, groups, peer reviews)
+            # Users and submissions are preserved
+            db.clear_refreshable_data(course_id, conn)
+
+            # Step 3: Upsert data (assignments, users, groups)
             db.upsert_assignments(course_id, assignments, conn)
-            db.upsert_users(course_id, users, conn)
+            db.upsert_users(course_id, users, conn)  # Sets enrollment_status='active'
             db.upsert_groups(course_id, groups, conn)
 
             # Fetch and store submissions per-assignment to reduce memory usage
@@ -300,6 +309,39 @@ def sync_course_data(
                     f"({total_peer_reviews} reviews, {total_peer_review_comments} comments)"  # noqa: E501
                 )
 
+            # Step 6: Clean up orphaned submissions (assignments removed from Canvas)
+            db.cleanup_orphaned_submissions(course_id, conn)
+
+            # Step 7: Mark remaining pending users as dropped
+            dropped_count = db.mark_dropped_users(course_id, conn)
+            if dropped_count > 0:
+                logger.info(
+                    f"Marked {dropped_count} users as dropped for course {course_id}"
+                )
+
+            # Step 8: Record enrollment events and snapshot
+            event_summary = db.record_enrollment_events(
+                course_id, sync_id, before_enrollment, conn
+            )
+            active_final, dropped_final = db.get_enrollment_counts_transactional(
+                course_id, conn
+            )
+            db.record_enrollment_snapshot(
+                course_id,
+                sync_id,
+                active_final,
+                dropped_final,
+                event_summary["newly_dropped"],
+                event_summary["newly_enrolled"],
+                conn,
+            )
+            logger.info(
+                f"Recorded enrollment snapshot: {active_final} active, "
+                f"{dropped_final} dropped "
+                f"({event_summary['newly_dropped']} newly dropped, "
+                f"{event_summary['newly_enrolled']} newly enrolled)"
+            )
+
         total_time = time.time() - fetch_start
         logger.info(f"Total sync time: {total_time:.2f}s")
 
@@ -312,6 +354,7 @@ def sync_course_data(
             submissions_count=total_submissions,
             users_count=len(users),
             groups_count=len(groups),
+            dropped_users_count=dropped_count,
         )
 
         # Store course name in settings
@@ -329,6 +372,7 @@ def sync_course_data(
                 "groups": len(groups),
                 "peer_reviews": total_peer_reviews,
                 "peer_review_comments": total_peer_review_comments,
+                "dropped_users": dropped_count,
             },
             "duration_seconds": round(total_time, 2),
         }

@@ -28,10 +28,16 @@ print_warning() {
     echo -e "${YELLOW}⚠️  $1${NC}"
 }
 
-# Check if .env file exists
-if [ ! -f ".env" ]; then
-    print_error ".env file not found"
-    print_info "Create .env file with required variables:"
+# Check if .env.test file exists (preferred for testing), fallback to .env
+if [ -f ".env.test" ]; then
+    print_info "Using .env.test for testing configuration"
+    ENV_FILE=".env.test"
+elif [ -f ".env" ]; then
+    print_warning "Using .env (consider creating .env.test for test-specific settings)"
+    ENV_FILE=".env"
+else
+    print_error "No .env.test or .env file found"
+    print_info "Create .env.test file with required variables:"
     echo "  CANVAS_API_TOKEN=your-token"
     echo "  CANVAS_API_URL=https://your-school.instructure.com"
     echo "  CANVAS_COURSE_ID=your-course-id"
@@ -47,8 +53,8 @@ command -v uv >/dev/null 2>&1 || { print_error "uv is required. Install: curl -L
 print_success "Prerequisites met"
 
 # Load environment variables
-print_info "Loading environment variables from .env..."
-export $(grep -v '^#' .env | xargs)
+print_info "Loading environment variables from $ENV_FILE..."
+export $(grep -v '^#' "$ENV_FILE" | xargs)
 
 # Validate required variables
 REQUIRED_VARS=("CANVAS_API_TOKEN" "CANVAS_API_URL")

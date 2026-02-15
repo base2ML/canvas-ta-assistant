@@ -3,6 +3,7 @@ SQLite database module for Canvas TA Dashboard.
 Handles schema creation and CRUD operations for Canvas data.
 """
 
+import contextlib
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -84,8 +85,23 @@ def init_db() -> None:
                 synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Migration: Add enrollment_status column for existing databases
+        try:
+            cursor.execute(
+                "ALTER TABLE users ADD COLUMN enrollment_status TEXT DEFAULT 'active'"
+            )
+            logger.info("Added enrollment_status column to users table")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
+
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_users_course ON users(course_id)"
+        )
+        cursor.execute(
+            """CREATE INDEX IF NOT EXISTS idx_users_enrollment
+               ON users(course_id, enrollment_status)"""
         )
 
         # Submissions table
@@ -154,6 +170,13 @@ def init_db() -> None:
             )
         """)
 
+        # Add dropped_users_count to sync_history if not exists
+        with contextlib.suppress(sqlite3.OperationalError):
+            cursor.execute(
+                """ALTER TABLE sync_history
+                ADD COLUMN dropped_users_count INTEGER DEFAULT 0"""
+            )
+
         # Peer reviews table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS peer_reviews (
@@ -176,6 +199,46 @@ def init_db() -> None:
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_peer_reviews_course_assignment ON peer_reviews(course_id, assignment_id)"  # noqa: E501
+        )
+
+        # Enrollment history table - snapshots of enrollment counts per sync
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS enrollment_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_id TEXT NOT NULL,
+                sync_id INTEGER NOT NULL,
+                active_count INTEGER DEFAULT 0,
+                dropped_count INTEGER DEFAULT 0,
+                newly_dropped_count INTEGER DEFAULT 0,
+                newly_enrolled_count INTEGER DEFAULT 0,
+                recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute(
+            """CREATE INDEX IF NOT EXISTS idx_enrollment_history_course
+            ON enrollment_history(course_id)"""
+        )
+        cursor.execute(
+            """CREATE INDEX IF NOT EXISTS idx_enrollment_history_sync
+            ON enrollment_history(sync_id)"""
+        )
+
+        # Enrollment events table - individual student status changes
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS enrollment_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_id TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                user_name TEXT NOT NULL,
+                previous_status TEXT NOT NULL,
+                new_status TEXT NOT NULL,
+                sync_id INTEGER NOT NULL,
+                occurred_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute(
+            """CREATE INDEX IF NOT EXISTS idx_enrollment_events_course
+            ON enrollment_events(course_id)"""
         )
 
         # Peer review comments table
@@ -238,8 +301,43 @@ def get_all_settings() -> dict[str, str]:
 
 
 # Canvas data operations
+def clear_refreshable_data(course_id: str, conn: sqlite3.Connection) -> None:
+    """Clear refreshable data for a course (preserves users and submissions).
+
+    This function clears data that gets fully re-fetched during sync:
+    - Peer review comments and peer reviews
+    - Groups and group members
+    - Assignments
+
+    Users and submissions are preserved:
+    - Users have enrollment status tracking (active/dropped)
+    - Submissions are upserted (updated if they exist)
+
+    IMPORTANT: This relies on the fact that no FK constraints exist between
+    submissions→assignments or submissions→users in the actual schema.
+    If FK constraints are added in the future, this function must be updated.
+    """
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM peer_review_comments WHERE course_id = ?", (course_id,))
+    cursor.execute("DELETE FROM peer_reviews WHERE course_id = ?", (course_id,))
+    # Note: submissions are preserved (upserted, not cleared)
+    cursor.execute(
+        "DELETE FROM group_members WHERE group_id IN (SELECT id FROM groups WHERE course_id = ?)",  # noqa: E501
+        (course_id,),
+    )
+    cursor.execute("DELETE FROM groups WHERE course_id = ?", (course_id,))
+    cursor.execute("DELETE FROM assignments WHERE course_id = ?", (course_id,))
+    # Note: users are preserved (enrollment status tracked, not cleared)
+    logger.info(f"Cleared refreshable data for course {course_id}")
+
+
 def clear_course_data(course_id: str, conn: sqlite3.Connection | None = None) -> None:
-    """Clear all data for a course before re-sync."""
+    """Clear all data for a course (nuclear option for full reset).
+
+    This is a complete data wipe for a course. Use clear_refreshable_data()
+    for normal syncs. This function is kept for manual reset operations
+    (e.g., from Settings page).
+    """
 
     def _clear(db_conn: sqlite3.Connection) -> None:
         cursor = db_conn.cursor()
@@ -247,6 +345,12 @@ def clear_course_data(course_id: str, conn: sqlite3.Connection | None = None) ->
             "DELETE FROM peer_review_comments WHERE course_id = ?", (course_id,)
         )
         cursor.execute("DELETE FROM peer_reviews WHERE course_id = ?", (course_id,))
+        cursor.execute(
+            "DELETE FROM enrollment_events WHERE course_id = ?", (course_id,)
+        )
+        cursor.execute(
+            "DELETE FROM enrollment_history WHERE course_id = ?", (course_id,)
+        )
         cursor.execute("DELETE FROM submissions WHERE course_id = ?", (course_id,))
         cursor.execute(
             "DELETE FROM group_members WHERE group_id IN (SELECT id FROM groups WHERE course_id = ?)",  # noqa: E501
@@ -257,7 +361,7 @@ def clear_course_data(course_id: str, conn: sqlite3.Connection | None = None) ->
         cursor.execute("DELETE FROM assignments WHERE course_id = ?", (course_id,))
         if conn is None:
             db_conn.commit()
-        logger.info(f"Cleared existing data for course {course_id}")
+        logger.info(f"Cleared all data for course {course_id}")
 
     if conn is not None:
         _clear(conn)
@@ -334,13 +438,14 @@ def upsert_users(
 
         cursor.executemany(
             """
-            INSERT INTO users (id, course_id, name, email, synced_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO users (id, course_id, name, email, synced_at, enrollment_status)
+            VALUES (?, ?, ?, ?, ?, 'active')
             ON CONFLICT(id) DO UPDATE SET
                 course_id = excluded.course_id,
                 name = excluded.name,
                 email = excluded.email,
-                synced_at = excluded.synced_at
+                synced_at = excluded.synced_at,
+                enrollment_status = 'active'
         """,
             data,
         )
@@ -498,18 +603,24 @@ def get_assignments(course_id: str) -> list[dict[str, Any]]:
         return [dict(row) for row in cursor.fetchall()]
 
 
-def get_users(course_id: str) -> list[dict[str, Any]]:
-    """Get all users for a course."""
+def get_users(course_id: str, include_dropped: bool = False) -> list[dict[str, Any]]:
+    """Get users for a course. Defaults to active students only."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT id, course_id, name, email, synced_at
+
+        query = """
+            SELECT id, course_id, name, email, synced_at, enrollment_status
             FROM users WHERE course_id = ?
-            ORDER BY name
-        """,
-            (course_id,),
-        )
+        """
+        params: list[Any] = [course_id]
+
+        if not include_dropped:
+            # Also include 'pending_check' as a safety fallback (treated as active)
+            query += " AND enrollment_status IN ('active', 'pending_check')"
+
+        query += " ORDER BY name"
+
+        cursor.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
 
 
@@ -616,6 +727,7 @@ def update_sync_record(
     submissions_count: int = 0,
     users_count: int = 0,
     groups_count: int = 0,
+    dropped_users_count: int = 0,
 ) -> None:
     """Update a sync history record."""
     with get_db_connection() as conn:
@@ -623,8 +735,9 @@ def update_sync_record(
         cursor.execute(
             """
             UPDATE sync_history
-            SET status = ?, message = ?, assignments_count = ?, submissions_count = ?,
-                users_count = ?, groups_count = ?, completed_at = ?
+            SET status = ?, message = ?, assignments_count = ?,
+                submissions_count = ?, users_count = ?, groups_count = ?,
+                dropped_users_count = ?, completed_at = ?
             WHERE id = ?
         """,
             (
@@ -634,6 +747,7 @@ def update_sync_record(
                 submissions_count,
                 users_count,
                 groups_count,
+                dropped_users_count,
                 datetime.now(UTC),
                 sync_id,
             ),
@@ -961,6 +1075,60 @@ def get_assignments_with_peer_reviews(course_id: str) -> list[dict[str, Any]]:
         return [dict(row) for row in cursor.fetchall()]
 
 
+# Enrollment status management
+def mark_all_users_pending(course_id: str, conn: sqlite3.Connection) -> int:
+    """Mark all users as pending_check before sync. Returns count updated."""
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET enrollment_status = 'pending_check' WHERE course_id = ?",
+        (course_id,),
+    )
+    return cursor.rowcount
+
+
+def mark_dropped_users(course_id: str, conn: sqlite3.Connection) -> int:
+    """Mark users still pending_check after sync as dropped. Returns count dropped."""
+    cursor = conn.cursor()
+    cursor.execute(
+        """UPDATE users SET enrollment_status = 'dropped'
+           WHERE course_id = ? AND enrollment_status = 'pending_check'""",
+        (course_id,),
+    )
+    return cursor.rowcount
+
+
+def get_enrollment_counts(course_id: str) -> dict[str, int]:
+    """Get active and dropped student counts."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT enrollment_status, COUNT(*) as count
+               FROM users WHERE course_id = ?
+               GROUP BY enrollment_status""",
+            (course_id,),
+        )
+        counts = {row["enrollment_status"]: row["count"] for row in cursor.fetchall()}
+        return {
+            "active": counts.get("active", 0),
+            "dropped": counts.get("dropped", 0),
+        }
+
+
+def cleanup_orphaned_submissions(course_id: str, conn: sqlite3.Connection) -> int:
+    """Delete submissions whose assignment_id no longer exists in assignments table."""
+    cursor = conn.cursor()
+    cursor.execute(
+        """DELETE FROM submissions
+           WHERE course_id = ?
+           AND assignment_id NOT IN (SELECT id FROM assignments WHERE course_id = ?)""",
+        (course_id, course_id),
+    )
+    count = cursor.rowcount
+    if count > 0:
+        logger.info(f"Cleaned up {count} orphaned submissions for course {course_id}")
+    return count
+
+
 # Statistics
 def get_submission_stats(course_id: str) -> dict[str, Any]:
     """Get submission statistics for a course."""
@@ -1012,3 +1180,233 @@ def get_submission_stats(course_id: str) -> dict[str, Any]:
             "status_breakdown": status_breakdown,
             "late_submissions": late_count,
         }
+
+
+# Enrollment tracking functions
+
+
+def get_enrollment_state_snapshot(
+    course_id: str, conn: sqlite3.Connection
+) -> dict[int, tuple[str, str]]:
+    """Get current enrollment state before sync modifies anything.
+
+    Returns dict mapping user_id to (enrollment_status, name).
+    Called within transaction, before mark_all_users_pending().
+    """
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id, name, enrollment_status
+        FROM users
+        WHERE course_id = ?
+        """,
+        (course_id,),
+    )
+    return {
+        row["id"]: (row["enrollment_status"], row["name"]) for row in cursor.fetchall()
+    }
+
+
+def record_enrollment_snapshot(
+    course_id: str,
+    sync_id: int,
+    active_count: int,
+    dropped_count: int,
+    newly_dropped_count: int,
+    newly_enrolled_count: int,
+    conn: sqlite3.Connection,
+) -> int:
+    """Record an enrollment snapshot for a sync.
+
+    Returns the snapshot ID.
+    """
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO enrollment_history
+        (course_id, sync_id, active_count, dropped_count,
+         newly_dropped_count, newly_enrolled_count, recorded_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            course_id,
+            sync_id,
+            active_count,
+            dropped_count,
+            newly_dropped_count,
+            newly_enrolled_count,
+            datetime.now(UTC),
+        ),
+    )
+    return cursor.lastrowid
+
+
+def record_enrollment_events(
+    course_id: str,
+    sync_id: int,
+    before_state: dict[int, tuple[str, str]],
+    conn: sqlite3.Connection,
+) -> dict[str, int]:
+    """Record individual enrollment status changes.
+
+    Compares before_state with current DB state and records events.
+    Returns dict with counts: {"events_recorded", "newly_dropped", "newly_enrolled"}.
+    """
+    # Get current state after sync
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id, name, enrollment_status
+        FROM users
+        WHERE course_id = ?
+        """,
+        (course_id,),
+    )
+    current_users = {
+        row["id"]: (row["enrollment_status"], row["name"]) for row in cursor.fetchall()
+    }
+
+    events_recorded = 0
+    newly_dropped = 0
+    newly_enrolled = 0
+
+    # Find status changes and new users
+    for user_id, (current_status, current_name) in current_users.items():
+        if user_id in before_state:
+            previous_status, _ = before_state[user_id]
+            if previous_status != current_status:
+                # Status changed
+                cursor.execute(
+                    """
+                    INSERT INTO enrollment_events
+                    (course_id, user_id, user_name, previous_status,
+                     new_status, sync_id, occurred_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        course_id,
+                        user_id,
+                        current_name,
+                        previous_status,
+                        current_status,
+                        sync_id,
+                        datetime.now(UTC),
+                    ),
+                )
+                events_recorded += 1
+                if current_status == "dropped":
+                    newly_dropped += 1
+                elif current_status == "active" and previous_status == "dropped":
+                    newly_enrolled += 1  # Re-enrolled
+        else:
+            # New user (not in before_state)
+            if current_status == "active":
+                cursor.execute(
+                    """
+                    INSERT INTO enrollment_events
+                    (course_id, user_id, user_name, previous_status,
+                     new_status, sync_id, occurred_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        course_id,
+                        user_id,
+                        current_name,
+                        "new",
+                        current_status,
+                        sync_id,
+                        datetime.now(UTC),
+                    ),
+                )
+                events_recorded += 1
+                newly_enrolled += 1
+
+    return {
+        "events_recorded": events_recorded,
+        "newly_dropped": newly_dropped,
+        "newly_enrolled": newly_enrolled,
+    }
+
+
+def get_enrollment_counts_transactional(
+    course_id: str, conn: sqlite3.Connection
+) -> tuple[int, int]:
+    """Get enrollment counts using existing connection (within transaction).
+
+    Returns (active_count, dropped_count).
+    """
+    cursor = conn.cursor()
+    cursor.execute(
+        """SELECT COUNT(*) as count FROM users
+        WHERE course_id = ? AND enrollment_status = 'active'""",
+        (course_id,),
+    )
+    active_count = cursor.fetchone()["count"]
+
+    cursor.execute(
+        """SELECT COUNT(*) as count FROM users
+        WHERE course_id = ? AND enrollment_status = 'dropped'""",
+        (course_id,),
+    )
+    dropped_count = cursor.fetchone()["count"]
+
+    return active_count, dropped_count
+
+
+def get_enrollment_history(course_id: str, limit: int = 20) -> list[dict[str, Any]]:
+    """Get enrollment history snapshots for a course.
+
+    Returns list of snapshots with sync timestamps, ordered by most recent first.
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                eh.id,
+                eh.course_id,
+                eh.sync_id,
+                eh.active_count,
+                eh.dropped_count,
+                eh.newly_dropped_count,
+                eh.newly_enrolled_count,
+                eh.recorded_at,
+                sh.started_at as sync_started_at,
+                sh.completed_at as sync_completed_at
+            FROM enrollment_history eh
+            LEFT JOIN sync_history sh ON eh.sync_id = sh.id
+            WHERE eh.course_id = ?
+            ORDER BY eh.recorded_at DESC
+            LIMIT ?
+            """,
+            (course_id, limit),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def get_enrollment_events(course_id: str, limit: int = 50) -> list[dict[str, Any]]:
+    """Get recent enrollment events for a course.
+
+    Returns list of individual student status changes, ordered by most recent first.
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                ee.id,
+                ee.course_id,
+                ee.user_id,
+                ee.user_name,
+                ee.previous_status,
+                ee.new_status,
+                ee.sync_id,
+                ee.occurred_at
+            FROM enrollment_events ee
+            WHERE ee.course_id = ?
+            ORDER BY ee.occurred_at DESC
+            LIMIT ?
+            """,
+            (course_id, limit),
+        )
+        return [dict(row) for row in cursor.fetchall()]
