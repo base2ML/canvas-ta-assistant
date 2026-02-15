@@ -30,6 +30,7 @@ logger.add("logs/app.log", rotation="500 MB", retention="10 days", level="INFO")
 # Constants
 APP_VERSION = "5.0.0"
 LATE_SUBMISSION_GRACE_PERIOD_MINUTES = 15
+SANDBOX_COURSE_ID = "20960000000447574"
 
 # Environment variables
 ENVIRONMENT = os.getenv("ENVIRONMENT", "local")
@@ -104,10 +105,25 @@ class SettingsResponse(BaseModel):
     course_name: str | None
     canvas_api_url: str
     last_sync: dict[str, Any] | None
+    test_mode: bool
+    max_late_days_per_assignment: int
+    sandbox_course_id: str
 
 
 class SettingsUpdateRequest(BaseModel):
-    course_id: str
+    course_id: str | None = None
+    test_mode: bool | None = None
+    max_late_days_per_assignment: int | None = None
+
+    @field_validator("max_late_days_per_assignment")
+    @classmethod
+    def validate_max_late_days(cls, v):
+        if v is not None:
+            if v < 0:
+                raise ValueError("max_late_days_per_assignment must be non-negative")
+            if v > 365:
+                raise ValueError("max_late_days_per_assignment cannot exceed 365")
+        return v
 
 
 class SyncResponse(BaseModel):
@@ -258,6 +274,33 @@ def validate_template_syntax(
         return False, f"Template validation error: {e}"
 
 
+def validate_posting_safety(course_id: str) -> tuple[bool, str]:
+    """Validate that posting is safe based on test mode and course ID.
+
+    Returns (is_safe, reason).
+    """
+    test_mode_str = db.get_setting("test_mode")
+    test_mode = test_mode_str == "true" if test_mode_str else False
+
+    if test_mode:
+        if course_id != SANDBOX_COURSE_ID:
+            logger.warning(
+                f"Blocked posting: test mode enabled but course_id {course_id} "
+                f"is not sandbox course {SANDBOX_COURSE_ID}"
+            )
+            return False, (
+                f"Test mode is enabled. Only the sandbox course "
+                f"({SANDBOX_COURSE_ID}) can receive posts. "
+                f"Disable test mode in Settings to post to course {course_id}."
+            )
+        logger.info(f"Test mode: allowing post to sandbox course {course_id}")
+    else:
+        if course_id == SANDBOX_COURSE_ID:
+            logger.warning(f"Production mode but posting to sandbox course {course_id}")
+
+    return True, ""
+
+
 # Health check endpoints
 @app.get("/health")
 async def simple_health_check():
@@ -300,24 +343,59 @@ async def get_settings():
     course_name = db.get_setting(f"course_name_{course_id}") if course_id else None
     last_sync = db.get_last_sync(course_id) if course_id else None
 
+    # Test mode and max late days settings
+    test_mode_str = db.get_setting("test_mode")
+    test_mode = test_mode_str == "true" if test_mode_str else False
+
+    max_late_days_str = db.get_setting("max_late_days_per_assignment")
+    max_late_days = int(max_late_days_str) if max_late_days_str else 7
+
     return SettingsResponse(
         course_id=course_id or None,
         course_name=course_name,
         canvas_api_url=CANVAS_API_URL,
         last_sync=last_sync,
+        test_mode=test_mode,
+        max_late_days_per_assignment=max_late_days,
+        sandbox_course_id=SANDBOX_COURSE_ID,
     )
 
 
 @app.put("/api/settings")
 async def update_settings(settings: SettingsUpdateRequest) -> dict[str, Any]:
-    """Update application settings."""
-    db.set_setting("course_id", settings.course_id)
-    logger.info(f"Course ID updated to: {settings.course_id}")
+    """Update application settings with validation."""
+    updated_fields = []
+
+    if settings.course_id is not None:
+        db.set_setting("course_id", settings.course_id)
+        updated_fields.append("course_id")
+        logger.info(f"Course ID updated to: {settings.course_id}")
+
+    if settings.test_mode is not None:
+        db.set_setting("test_mode", "true" if settings.test_mode else "false")
+        updated_fields.append("test_mode")
+        logger.info(f"Test mode {'enabled' if settings.test_mode else 'disabled'}")
+
+    if settings.max_late_days_per_assignment is not None:
+        db.set_setting(
+            "max_late_days_per_assignment",
+            str(settings.max_late_days_per_assignment),
+        )
+        updated_fields.append("max_late_days_per_assignment")
+        logger.info(
+            f"Max late days updated to: {settings.max_late_days_per_assignment}"
+        )
+
+    if not updated_fields:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No settings provided to update",
+        )
 
     return {
         "status": "success",
-        "message": "Settings updated",
-        "course_id": settings.course_id,
+        "message": f"Settings updated: {', '.join(updated_fields)}",
+        "updated_fields": updated_fields,
     }
 
 
