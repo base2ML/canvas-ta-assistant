@@ -376,6 +376,194 @@ def populate_default_templates() -> None:
         logger.info(f"Populated {len(default_templates)} default comment templates")
 
 
+# Comment template CRUD operations
+def create_template(
+    template_type: str,
+    template_text: str,
+    template_variables: str | None = None,
+) -> int:
+    """Create a new comment template and return its ID."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        now = datetime.now(UTC)
+        cursor.execute(
+            """INSERT INTO comment_templates
+               (template_type, template_text, template_variables,
+                created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (template_type, template_text, template_variables, now, now),
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+
+def get_templates(template_type: str | None = None) -> list[dict[str, Any]]:
+    """Get all templates, optionally filtered by template_type."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        if template_type:
+            cursor.execute(
+                """SELECT * FROM comment_templates
+                   WHERE template_type = ?
+                   ORDER BY template_type, created_at DESC""",
+                (template_type,),
+            )
+        else:
+            cursor.execute(
+                """SELECT * FROM comment_templates
+                   ORDER BY template_type, created_at DESC"""
+            )
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def get_template_by_id(template_id: int) -> dict[str, Any] | None:
+    """Get a single template by ID."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM comment_templates WHERE id = ?", (template_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def update_template(
+    template_id: int,
+    template_type: str,
+    template_text: str,
+    template_variables: str | None = None,
+) -> bool:
+    """Update a template. Returns True if updated, False if not found."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """UPDATE comment_templates
+               SET template_type = ?, template_text = ?,
+                   template_variables = ?, updated_at = ?
+               WHERE id = ?""",
+            (
+                template_type,
+                template_text,
+                template_variables,
+                datetime.now(UTC),
+                template_id,
+            ),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def delete_template(template_id: int) -> bool:
+    """Delete a template. Returns True if deleted, False if not found."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM comment_templates WHERE id = ?", (template_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+# Comment posting history operations
+def record_comment_posting(
+    course_id: str,
+    assignment_id: int,
+    user_id: int,
+    template_id: int | None,
+    comment_text: str,
+    status: str = "posted",
+    canvas_comment_id: int | None = None,
+    error_message: str | None = None,
+) -> int:
+    """Record a comment posting attempt with upsert behavior.
+
+    On conflict (duplicate course_id, assignment_id, user_id, template_id),
+    updates the existing record with new data.
+    Returns the record ID.
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        now = datetime.now(UTC)
+        cursor.execute(
+            """INSERT INTO comment_posting_history
+               (course_id, assignment_id, user_id, template_id, comment_text,
+                canvas_comment_id, posted_at, status, error_message)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(course_id, assignment_id, user_id, template_id)
+               DO UPDATE SET
+                   comment_text = excluded.comment_text,
+                   canvas_comment_id = excluded.canvas_comment_id,
+                   status = excluded.status,
+                   error_message = excluded.error_message,
+                   posted_at = excluded.posted_at""",
+            (
+                course_id,
+                assignment_id,
+                user_id,
+                template_id,
+                comment_text,
+                canvas_comment_id,
+                now,
+                status,
+                error_message,
+            ),
+        )
+        conn.commit()
+        record_id = cursor.lastrowid
+        logger.info(
+            f"Comment posting recorded: course={course_id}, "
+            f"assignment={assignment_id}, user={user_id}, status={status}"
+        )
+        return record_id
+
+
+def get_posting_history(
+    course_id: str,
+    assignment_id: int | None = None,
+    status: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Get posting history with optional filters."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+
+        query = "SELECT * FROM comment_posting_history WHERE course_id = ?"
+        params: list[Any] = [course_id]
+
+        if assignment_id is not None:
+            query += " AND assignment_id = ?"
+            params.append(assignment_id)
+
+        if status is not None:
+            query += " AND status = ?"
+            params.append(status)
+
+        query += " ORDER BY posted_at DESC LIMIT ?"
+        params.append(limit)
+
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def check_duplicate_posting(
+    course_id: str,
+    assignment_id: int,
+    user_id: int,
+    template_id: int | None,
+) -> dict[str, Any] | None:
+    """Check if a comment has already been posted for this combination.
+
+    Returns the existing record if found (status='posted'), None otherwise.
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT * FROM comment_posting_history
+               WHERE course_id = ? AND assignment_id = ?
+                 AND user_id = ? AND template_id = ?
+                 AND status = 'posted'""",
+            (course_id, assignment_id, user_id, template_id),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
 # Settings operations
 def get_setting(key: str) -> str | None:
     """Get a setting value by key."""
