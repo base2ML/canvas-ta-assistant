@@ -4,6 +4,7 @@ Handles schema creation and CRUD operations for Canvas data.
 """
 
 import contextlib
+import json
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -263,8 +264,116 @@ def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS idx_peer_review_comments_course_submission ON peer_review_comments(course_id, submission_id)"  # noqa: E501
         )
 
+        # Comment templates table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS comment_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                template_type TEXT NOT NULL,
+                template_text TEXT NOT NULL,
+                template_variables TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_comment_templates_type ON comment_templates(template_type)"  # noqa: E501
+        )
+
+        # Comment posting history table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS comment_posting_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_id TEXT NOT NULL,
+                assignment_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                template_id INTEGER,
+                comment_text TEXT NOT NULL,
+                canvas_comment_id INTEGER,
+                posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status TEXT DEFAULT 'posted',
+                error_message TEXT,
+                UNIQUE(course_id, assignment_id, user_id, template_id)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_posting_history_course_assignment ON comment_posting_history(course_id, assignment_id)"  # noqa: E501
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_posting_history_user ON comment_posting_history(user_id)"  # noqa: E501
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_posting_history_status ON comment_posting_history(status)"  # noqa: E501
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_posting_history_posted_at ON comment_posting_history(posted_at DESC)"  # noqa: E501
+        )
+
         conn.commit()
         logger.info(f"Database initialized at {DB_PATH}")
+
+        # Populate default templates if needed
+        populate_default_templates()
+
+
+def populate_default_templates() -> None:
+    """Populate default comment templates if table is empty."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as count FROM comment_templates")
+        if cursor.fetchone()["count"] > 0:
+            return  # Templates already exist
+
+        default_templates = [
+            {
+                "template_type": "penalty",
+                "template_text": (
+                    "Late Day Update for this assignment:\n\n"
+                    "Days late: {days_late}\n"
+                    "Late days used (this assignment): {penalty_days}\n"
+                    "Late days remaining: {days_remaining}\n"
+                    "Penalty: {penalty_percent}%\n\n"
+                    "Maximum late days per assignment: {max_late_days}\n\n"
+                    "Please review the course late day policy if you have questions."
+                ),
+                "template_variables": json.dumps(
+                    [
+                        "days_late",
+                        "penalty_days",
+                        "days_remaining",
+                        "penalty_percent",
+                        "max_late_days",
+                    ]
+                ),
+            },
+            {
+                "template_type": "non_penalty",
+                "template_text": (
+                    "Late Day Update for this assignment:\n\n"
+                    "Days late: {days_late}\n"
+                    "Late days remaining: {days_remaining}\n\n"
+                    "No penalty has been applied.\n\n"
+                    "Maximum late days per assignment: {max_late_days}\n\n"
+                    "Please review the course late day policy if you have questions."
+                ),
+                "template_variables": json.dumps(
+                    ["days_late", "days_remaining", "max_late_days"]
+                ),
+            },
+        ]
+
+        for template in default_templates:
+            cursor.execute(
+                """INSERT INTO comment_templates
+                   (template_type, template_text, template_variables)
+                   VALUES (?, ?, ?)""",
+                (
+                    template["template_type"],
+                    template["template_text"],
+                    template["template_variables"],
+                ),
+            )
+        conn.commit()
+        logger.info(f"Populated {len(default_templates)} default comment templates")
 
 
 # Settings operations
