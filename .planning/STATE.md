@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Position
 
 Phase: 3 of 3 (UI Integration)
-Plan: 1 of ? in current phase
+Plan: 2 of ? in current phase
 Status: In progress
-Last activity: 2026-02-17 — 03-01 complete: Comment Templates UI added to Settings page
+Last activity: 2026-02-17 — 03-02 complete: Comment posting workflow in LateDaysTracking
 
-Progress: [███████░░░] 70%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -35,6 +35,7 @@ Progress: [███████░░░] 70%
 | Phase 02 P01 | 2 min | 2 tasks | 3 files |
 | Phase 02 P02 | 1 min | 1 tasks | 1 files |
 | Phase 03 P01 | 1 min | 2 tasks | 1 files |
+| Phase 03 P02 | 6 min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,10 @@ Recent decisions affecting current work:
 - [Phase 03 P01]: Edit-only scope for templates (CONF-03) — templates always pre-populated, no create/delete path needed
 - [Phase 03 P01]: No re-fetch after template save — preserves textarea focus and cursor position
 - [Phase 03 P01]: Button disabled when template id is null — guards against PUT to /api/templates/null before load completes
+- [Phase 03 P02]: Tasks 2+3 combined into one commit — ESLint no-unused-vars blocks committing state/handlers without JSX usage
+- [Phase 03 P02]: React Fragment wrapper (<></>) for modal rendering — fixed-position overlays need fragment sibling root context
+- [Phase 03 P02]: onDry_run handler naming preserves underscore to match backend SSE event name exactly
+- [Phase 03 P02]: Settings fetch on mount is best-effort (silent catch) — production warning is advisory, not blocking
 
 ### Pending Todos
 
@@ -76,5 +81,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 03-ui-integration/03-01-PLAN.md
+Stopped at: Completed 03-ui-integration/03-02-PLAN.md
 Resume file: None
