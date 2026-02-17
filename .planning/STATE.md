@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-15)
 
 **Core value:** Safely and efficiently post accurate late day feedback to student submissions, preventing manual errors and saving TA time while ensuring students receive timely, consistent communication about their late day status.
-**Current focus:** Phase 2: Posting Logic
+**Current focus:** Phase 3: UI Integration
 
 ## Current Position
 
-Phase: 2 of 3 (Posting Logic)
-Plan: 2 of ? in current phase
+Phase: 3 of 3 (UI Integration)
+Plan: 1 of ? in current phase
 Status: In progress
-Last activity: 2026-02-17 — Phase 2 Plan 02 complete
+Last activity: 2026-02-17 — 03-01 complete: Comment Templates UI added to Settings page
 
-Progress: [█████░░░░░] 50%
+Progress: [███████░░░] 70%
 
 ## Performance Metrics
 
@@ -34,6 +34,7 @@ Progress: [█████░░░░░] 50%
 | Phase 01 P02 | 4 min | 2 tasks | 1 files |
 | Phase 02 P01 | 2 min | 2 tasks | 3 files |
 | Phase 02 P02 | 1 min | 1 tasks | 1 files |
+| Phase 03 P01 | 1 min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -60,6 +61,9 @@ Recent decisions affecting current work:
 - [Phase 02 P02]: Pre-flight validation before SSE generator — enables HTTP 4xx errors for top-level failures (safety, missing template, missing assignment) rather than SSE error events
 - [Phase 02 P02]: users list not fetched in post_comments — events use user_id only, frontend has user data, avoids unused variable
 - [Phase 02 P02]: Rate limiting after successful posts only — 0.5s delay applied only for real Canvas API calls, not skips/errors/dry_runs
+- [Phase 03 P01]: Edit-only scope for templates (CONF-03) — templates always pre-populated, no create/delete path needed
+- [Phase 03 P01]: No re-fetch after template save — preserves textarea focus and cursor position
+- [Phase 03 P01]: Button disabled when template id is null — guards against PUT to /api/templates/null before load completes
 
 ### Pending Todos
 
@@ -72,5 +76,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 02-posting-logic/02-02-PLAN.md
+Stopped at: Completed 03-ui-integration/03-01-PLAN.md
 Resume file: None
