@@ -17,6 +17,10 @@ const Settings = () => {
     const [loadingCourses, setLoadingCourses] = useState(false);
     const [message, setMessage] = useState(null);
     const [manualCourseId, setManualCourseId] = useState('');
+    const [penaltyTemplate, setPenaltyTemplate] = useState({ id: null, text: '' });
+    const [nonPenaltyTemplate, setNonPenaltyTemplate] = useState({ id: null, text: '' });
+    const [templateSaving, setTemplateSaving] = useState(false);
+    const [templateMessage, setTemplateMessage] = useState(null);
 
     // Fetch current settings
     const loadSettings = useCallback(async () => {
@@ -108,10 +112,50 @@ const Settings = () => {
         await triggerSync();
     };
 
+    // Fetch comment templates
+    const loadTemplates = useCallback(async () => {
+        try {
+            const data = await apiFetch('/api/templates');
+            const templates = data.templates || [];
+            const penalty = templates.find(t => t.template_type === 'penalty');
+            const nonPenalty = templates.find(t => t.template_type === 'non_penalty');
+            if (penalty) {
+                setPenaltyTemplate({ id: penalty.id, text: penalty.template_text });
+            }
+            if (nonPenalty) {
+                setNonPenaltyTemplate({ id: nonPenalty.id, text: nonPenalty.template_text });
+            }
+        } catch (err) {
+            console.error('Error loading templates:', err);
+        }
+    }, []);
+
+    // Save comment templates
+    const saveTemplates = async () => {
+        setTemplateSaving(true);
+        setTemplateMessage(null);
+        try {
+            await apiFetch(`/api/templates/${penaltyTemplate.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ template_text: penaltyTemplate.text }),
+            });
+            await apiFetch(`/api/templates/${nonPenaltyTemplate.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ template_text: nonPenaltyTemplate.text }),
+            });
+            setTemplateMessage({ type: 'success', text: 'Templates saved successfully' });
+        } catch (err) {
+            setTemplateMessage({ type: 'error', text: err.message || 'Failed to save templates' });
+        } finally {
+            setTemplateSaving(false);
+        }
+    };
+
     useEffect(() => {
         loadSettings();
         loadSyncStatus();
-    }, [loadSettings, loadSyncStatus]);
+        loadTemplates();
+    }, [loadSettings, loadSyncStatus, loadTemplates]);
 
     // Clear message after 5 seconds
     useEffect(() => {
@@ -120,6 +164,14 @@ const Settings = () => {
             return () => clearTimeout(timer);
         }
     }, [message]);
+
+    // Clear template message after 5 seconds
+    useEffect(() => {
+        if (templateMessage) {
+            const timer = setTimeout(() => setTemplateMessage(null), 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [templateMessage]);
 
     if (loading) {
         return (
@@ -362,6 +414,87 @@ const Settings = () => {
                     </div>
                 </div>
             )}
+
+            {/* Comment Templates */}
+            <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Comment Templates</h2>
+                <p className="text-sm text-gray-600 mb-4">
+                    Configure the message templates used for late day comments. Use variables in curly braces for dynamic values.
+                </p>
+
+                {/* Template Message Banner */}
+                {templateMessage && (
+                    <div
+                        className={`mb-6 p-4 rounded-lg flex items-center gap-2 ${templateMessage.type === 'success'
+                                ? 'bg-green-50 text-green-800 border border-green-200'
+                                : 'bg-red-50 text-red-800 border border-red-200'
+                            }`}
+                    >
+                        {templateMessage.type === 'success' ? (
+                            <CheckCircle className="w-5 h-5" />
+                        ) : (
+                            <XCircle className="w-5 h-5" />
+                        )}
+                        {templateMessage.text}
+                    </div>
+                )}
+
+                {/* Variable Reference */}
+                <div className="mb-6 p-3 bg-blue-50 rounded-md border border-blue-200">
+                    <p className="text-sm font-medium text-blue-800 mb-1">Available Variables</p>
+                    <div className="flex flex-wrap gap-2">
+                        {['{days_late}', '{days_remaining}', '{penalty_days}', '{penalty_percent}', '{max_late_days}'].map(v => (
+                            <code key={v} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">{v}</code>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Penalty Template */}
+                <div className="mb-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Penalty Template
+                    </label>
+                    <p className="text-xs text-gray-500 mb-2">
+                        Message for students who have exceeded their late day allowance
+                    </p>
+                    <textarea
+                        value={penaltyTemplate.text}
+                        onChange={(e) => setPenaltyTemplate(prev => ({ ...prev, text: e.target.value }))}
+                        rows={8}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                    />
+                </div>
+
+                {/* Non-Penalty Template */}
+                <div className="mb-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Non-Penalty Template
+                    </label>
+                    <p className="text-xs text-gray-500 mb-2">
+                        Message for students using late days within their allowance
+                    </p>
+                    <textarea
+                        value={nonPenaltyTemplate.text}
+                        onChange={(e) => setNonPenaltyTemplate(prev => ({ ...prev, text: e.target.value }))}
+                        rows={8}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                    />
+                </div>
+
+                {/* Save Button */}
+                <button
+                    onClick={saveTemplates}
+                    disabled={templateSaving || !penaltyTemplate.id || !nonPenaltyTemplate.id}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                    {templateSaving ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                        <Save className="w-4 h-4" />
+                    )}
+                    Save Templates
+                </button>
+            </div>
         </div>
     );
 };
