@@ -230,6 +230,40 @@ class CommentTemplateResponse(BaseModel):
     updated_at: str
 
 
+class PostCommentsRequest(BaseModel):
+    course_id: str
+    template_id: int | None = None
+    template_type: str | None = None  # "penalty" or "non_penalty"
+    user_ids: list[int]
+    override_comment: str | None = None  # Optional manual override text
+    dry_run: bool = False
+
+    @field_validator("template_type")
+    @classmethod
+    def validate_template_type(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("penalty", "non_penalty"):
+            raise ValueError("template_type must be 'penalty' or 'non_penalty'")
+        return v
+
+
+class CommentPreview(BaseModel):
+    user_id: int
+    user_name: str
+    comment_text: str
+    already_posted: bool
+    template_type: str | None
+    variables_used: dict[str, Any]
+
+
+class PreviewResponse(BaseModel):
+    assignment_id: int
+    assignment_name: str
+    template_id: int | None
+    previews: list[CommentPreview]
+    total: int
+    already_posted_count: int
+
+
 # Allowed template variables (from PROJECT.md requirements)
 ALLOWED_TEMPLATE_VARIABLES = {
     "days_late",
@@ -299,6 +333,135 @@ def validate_posting_safety(course_id: str) -> tuple[bool, str]:
             logger.warning(f"Production mode but posting to sandbox course {course_id}")
 
     return True, ""
+
+
+def render_template(template_text: str, submission_data: dict[str, Any]) -> str:
+    """Render a comment template with student-specific variable substitution.
+
+    Substitutes all ALLOWED_TEMPLATE_VARIABLES using str.format().
+    Raises ValueError for undefined variables or template syntax errors.
+    """
+    context = {var: submission_data.get(var, 0) for var in ALLOWED_TEMPLATE_VARIABLES}
+    try:
+        return template_text.format(**context)
+    except KeyError as e:
+        raise ValueError(f"Template uses undefined variable: {e}") from e
+    except ValueError as e:
+        raise ValueError(f"Template syntax error: {e}") from e
+
+
+def calculate_late_days_for_user(
+    user_id: int,
+    assignment: dict[str, Any],
+    submissions: list[dict[str, Any]],
+    max_late_days: int = 7,
+) -> dict[str, Any]:
+    """Calculate late day variables for a single student on a single assignment.
+
+    Applies a grace period of LATE_SUBMISSION_GRACE_PERIOD_MINUTES before
+    counting seconds late. Returns zero-valued dict if not late or no submission.
+    """
+    default = {
+        "days_late": 0,
+        "days_remaining": max_late_days,
+        "penalty_days": 0,
+        "penalty_percent": 0,
+        "max_late_days": max_late_days,
+    }
+
+    due_at = assignment.get("due_at")
+    if not due_at:
+        return default
+
+    # Find this user's submission
+    submission = next(
+        (s for s in submissions if s.get("user_id") == user_id),
+        None,
+    )
+
+    if not submission:
+        return default
+
+    submitted_at = submission.get("submitted_at")
+    workflow_state = submission.get("workflow_state", "")
+
+    if not submitted_at or workflow_state in ("unsubmitted", "pending_review"):
+        return default
+
+    try:
+        submitted_datetime = dateutil_parser.parse(submitted_at)
+        due_datetime = dateutil_parser.parse(due_at)
+
+        if submitted_datetime <= due_datetime:
+            return default
+
+        time_diff = submitted_datetime - due_datetime
+        grace_seconds = LATE_SUBMISSION_GRACE_PERIOD_MINUTES * 60
+        total_seconds = time_diff.total_seconds() - grace_seconds
+
+        if total_seconds <= 0:
+            return default
+
+        days_late = math.ceil(total_seconds / 86400)
+        penalty_days = min(days_late, max_late_days)
+        penalty_percent = penalty_days * 10
+        days_remaining = max(0, max_late_days - penalty_days)
+
+        return {
+            "days_late": days_late,
+            "days_remaining": days_remaining,
+            "penalty_days": penalty_days,
+            "penalty_percent": penalty_percent,
+            "max_late_days": max_late_days,
+        }
+
+    except Exception as e:
+        logger.debug(
+            f"Error calculating late days for user {user_id}, "
+            f"assignment {assignment.get('id')}: {e}"
+        )
+        return default
+
+
+def resolve_template(
+    template_id: int | None, template_type: str | None
+) -> dict[str, Any]:
+    """Resolve a template by ID or type.
+
+    Raises HTTPException 400 if neither provided, 404 if not found.
+    Parses template_variables from JSON string to list before returning.
+    """
+    if template_id is not None:
+        template = db.get_template_by_id(template_id)
+        if not template:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Template {template_id} not found",
+            )
+    elif template_type is not None:
+        templates = db.get_templates(template_type)
+        if not templates:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No template found for type '{template_type}'",
+            )
+        template = templates[0]
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Must provide template_id or template_type",
+        )
+
+    # Parse template_variables from JSON string to list
+    if template.get("template_variables"):
+        try:
+            template["template_variables"] = json.loads(template["template_variables"])
+        except (json.JSONDecodeError, TypeError):
+            template["template_variables"] = []
+    else:
+        template["template_variables"] = []
+
+    return template
 
 
 # Health check endpoints
@@ -581,6 +744,121 @@ async def delete_template(template_id: int) -> dict[str, Any]:
 
     logger.info(f"Deleted template {template_id}")
     return {"status": "success", "message": "Template deleted"}
+
+
+# Comment posting endpoints
+
+
+@app.post("/api/comments/preview/{assignment_id}")
+async def preview_comments(
+    assignment_id: int, request: PostCommentsRequest
+) -> PreviewResponse:
+    """Preview rendered comment templates for a set of users without posting.
+
+    Returns rendered comment text and duplicate detection status for each user.
+    """
+    is_safe, reason = validate_posting_safety(request.course_id)
+    if not is_safe:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=reason)
+
+    # Get assignment
+    assignments = db.get_assignments(request.course_id)
+    assignment = next((a for a in assignments if a.get("id") == assignment_id), None)
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Assignment {assignment_id} not found for course {request.course_id}"
+            ),
+        )
+
+    # Get submissions and users
+    submissions = db.get_submissions(request.course_id, assignment_id)
+    users = db.get_users(request.course_id)
+    user_map = {u["id"]: u.get("name", f"User {u['id']}") for u in users}
+
+    # Resolve template (skip if override_comment provided)
+    resolved_template: dict[str, Any] | None = None
+    if not request.override_comment:
+        resolved_template = resolve_template(request.template_id, request.template_type)
+
+    # Get max_late_days setting
+    max_late_days_str = db.get_setting("max_late_days_per_assignment")
+    max_late_days = int(max_late_days_str) if max_late_days_str else 7
+
+    resolved_template_id = resolved_template["id"] if resolved_template else None
+    resolved_template_type = (
+        resolved_template["template_type"] if resolved_template else None
+    )
+
+    previews: list[CommentPreview] = []
+    already_posted_count = 0
+
+    for user_id in request.user_ids:
+        user_name = user_map.get(user_id, f"User {user_id}")
+
+        # Calculate late day variables
+        variable_data = calculate_late_days_for_user(
+            user_id=user_id,
+            assignment=assignment,
+            submissions=submissions,
+            max_late_days=max_late_days,
+        )
+
+        # Render comment text
+        if request.override_comment:
+            comment_text = request.override_comment
+        else:
+            assert resolved_template is not None  # guarded above
+            try:
+                comment_text = render_template(
+                    resolved_template["template_text"], variable_data
+                )
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Template rendering error for user {user_id}: {e}",
+                ) from e
+
+        # Check duplicate posting status
+        duplicate = db.check_duplicate_posting(
+            request.course_id, assignment_id, user_id, resolved_template_id
+        )
+        already_posted = duplicate is not None
+        if already_posted:
+            already_posted_count += 1
+
+        previews.append(
+            CommentPreview(
+                user_id=user_id,
+                user_name=user_name,
+                comment_text=comment_text,
+                already_posted=already_posted,
+                template_type=resolved_template_type,
+                variables_used=variable_data,
+            )
+        )
+
+    return PreviewResponse(
+        assignment_id=assignment_id,
+        assignment_name=assignment.get("name", f"Assignment {assignment_id}"),
+        template_id=resolved_template_id,
+        previews=previews,
+        total=len(previews),
+        already_posted_count=already_posted_count,
+    )
+
+
+@app.get("/api/comments/history")
+async def get_posting_history_endpoint(
+    course_id: str,
+    assignment_id: int | None = None,
+    status: str | None = None,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Get posting history for a course, filtered by assignment and status."""
+    results = db.get_posting_history(course_id, assignment_id, status, limit)
+    return {"history": results, "total": len(results)}
 
 
 # Canvas data endpoints
