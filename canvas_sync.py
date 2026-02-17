@@ -5,6 +5,7 @@ Fetches data from Canvas API and stores it in SQLite database.
 
 import os
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 from canvasapi import Canvas
@@ -31,6 +32,87 @@ def get_canvas_client(
         )
 
     return Canvas(url, token)
+
+
+def post_submission_comment(
+    course_id: str,
+    assignment_id: int,
+    user_id: int,
+    comment_text: str,
+    max_retries: int = 3,
+) -> dict[str, Any]:
+    """Post a comment to a student submission via Canvas API with retry logic.
+
+    Retries only on 429 (rate limit) errors with exponential backoff.
+    Raises immediately for other Canvas errors (401, 403, 404).
+
+    Args:
+        course_id: Canvas course ID
+        assignment_id: Canvas assignment ID
+        user_id: Canvas user ID of the student
+        comment_text: Text to post as a submission comment
+        max_retries: Maximum number of retry attempts for 429 errors (default: 3)
+
+    Returns:
+        Dictionary with status, canvas_comment_id, user_id, and posted_at.
+
+    Raises:
+        ValueError: If submission not found (404)
+        CanvasException: For other Canvas API errors
+    """
+    canvas = get_canvas_client()
+    course = canvas.get_course(course_id)
+    assignment = course.get_assignment(assignment_id)
+
+    base_delay = 1.0
+
+    for attempt in range(max_retries + 1):
+        try:
+            submission = assignment.get_submission(user_id)
+            result = submission.edit(comment={"text_comment": comment_text})
+            posted_at = datetime.now(UTC).isoformat()
+            canvas_comment_id = getattr(result, "id", None)
+            logger.info(
+                f"Posted comment to course={course_id}, assignment={assignment_id}, "
+                f"user={user_id}, comment_id={canvas_comment_id}"
+            )
+            return {
+                "status": "success",
+                "canvas_comment_id": canvas_comment_id,
+                "user_id": user_id,
+                "posted_at": posted_at,
+            }
+        except CanvasException as e:
+            error_str = str(e)
+            if "404" in error_str:
+                raise ValueError(
+                    f"Submission not found for user {user_id} "
+                    f"on assignment {assignment_id}"
+                ) from e
+            if "429" in error_str and attempt < max_retries:
+                delay = base_delay * (2**attempt)
+                logger.warning(
+                    f"Rate limited (429) posting to user={user_id}, "
+                    f"attempt={attempt + 1}/{max_retries + 1}. "
+                    f"Retrying in {delay:.1f}s..."
+                )
+                time.sleep(delay)
+                continue
+            # Non-429 Canvas errors or exhausted retries — raise immediately
+            if "429" in error_str:
+                logger.error(
+                    f"Rate limit retries exhausted for user={user_id}, "
+                    f"assignment={assignment_id}"
+                )
+            else:
+                logger.error(
+                    f"Canvas API error posting comment to user={user_id}, "
+                    f"assignment={assignment_id}: {e}"
+                )
+            raise
+
+    # Should not reach here — loop always returns or raises
+    raise RuntimeError("Unexpected exit from retry loop")  # pragma: no cover
 
 
 def fetch_available_courses(
