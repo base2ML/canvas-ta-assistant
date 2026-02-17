@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import EnhancedTADashboard from './EnhancedTADashboard';
 import LateDaysTracking from './LateDaysTracking';
 import PeerReviewTracking from './PeerReviewTracking';
@@ -9,11 +9,13 @@ import Navigation from './components/Navigation';
 import { RefreshCw } from 'lucide-react';
 import { apiFetch, BACKEND_URL } from './api';
 
-const App = () => {
+const AppContent = () => {
+  const location = useLocation();
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState(null);
+  const [previousPath, setPreviousPath] = useState(location.pathname);
 
   const loadCourses = useCallback(async () => {
     setLoading(true);
@@ -54,6 +56,15 @@ const App = () => {
     loadCourses();
   }, [loadCourses]);
 
+  // Reload courses when navigating away from Settings
+  useEffect(() => {
+    if (previousPath === '/settings' && location.pathname !== '/settings') {
+      console.log('Navigated away from Settings, reloading courses...');
+      loadCourses();
+    }
+    setPreviousPath(location.pathname);
+  }, [location.pathname, previousPath, loadCourses]);
+
   // Clear sync message after 5 seconds
   useEffect(() => {
     if (syncMessage) {
@@ -63,7 +74,7 @@ const App = () => {
   }, [syncMessage]);
 
   return (
-    <BrowserRouter>
+    <>
       {/* Header with Refresh Button */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
@@ -136,6 +147,14 @@ const App = () => {
           />
         </Routes>
       </main>
+    </>
+  );
+};
+
+const App = () => {
+  return (
+    <BrowserRouter>
+      <AppContent />
     </BrowserRouter>
   );
 };
