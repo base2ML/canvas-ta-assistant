@@ -19,6 +19,8 @@ from pydantic import BaseModel, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from sse_starlette import EventSourceResponse
+from starlette.requests import Request
 
 import canvas_sync
 import database as db
@@ -859,6 +861,262 @@ async def get_posting_history_endpoint(
     """Get posting history for a course, filtered by assignment and status."""
     results = db.get_posting_history(course_id, assignment_id, status, limit)
     return {"history": results, "total": len(results)}
+
+
+@app.post("/api/comments/post/{assignment_id}")
+async def post_comments(
+    assignment_id: int,
+    request_body: PostCommentsRequest,
+    request: Request,
+) -> EventSourceResponse:
+    """Post comments to Canvas submissions for a list of users via SSE streaming.
+
+    Streams SSE progress events (started, progress, posted, skipped, error,
+    dry_run, complete) while posting comments to Canvas. Best-effort execution
+    continues on individual failures. Dry run mode renders without Canvas API
+    calls.
+    """
+    # Pre-flight validation (before SSE generator)
+    is_safe, reason = validate_posting_safety(request_body.course_id)
+    if not is_safe:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=reason)
+
+    if not request_body.user_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No user_ids provided",
+        )
+
+    # Resolve template (skip if override_comment provided)
+    resolved_template: dict[str, Any] | None = None
+    if not request_body.override_comment:
+        resolved_template = resolve_template(
+            request_body.template_id, request_body.template_type
+        )
+
+    # Get assignment
+    assignments = db.get_assignments(request_body.course_id)
+    assignment = next((a for a in assignments if a.get("id") == assignment_id), None)
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Assignment {assignment_id} not found "
+                f"for course {request_body.course_id}"
+            ),
+        )
+
+    # Get submissions (users not needed: events use user_id, frontend has user data)
+    submissions = db.get_submissions(request_body.course_id, assignment_id)
+
+    # Read max_late_days setting
+    max_late_days_str = db.get_setting("max_late_days_per_assignment")
+    max_late_days = int(max_late_days_str) if max_late_days_str else 7
+
+    # Build set of user_ids that have submissions for quick lookup (SAFE-06)
+    submission_user_ids = {s["user_id"] for s in submissions}
+
+    # Resolved template values for use inside generator
+    resolved_template_id = resolved_template["id"] if resolved_template else None
+    resolved_template_text = (
+        resolved_template["template_text"] if resolved_template else None
+    )
+
+    course_id = request_body.course_id
+    total = len(request_body.user_ids)
+    dry_run = request_body.dry_run
+    override_comment = request_body.override_comment
+
+    async def event_generator():
+        # Track results
+        successful: list[dict[str, Any]] = []
+        failed: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+
+        # "started" event
+        yield {
+            "event": "started",
+            "data": json.dumps(
+                {
+                    "total": total,
+                    "assignment_id": assignment_id,
+                    "dry_run": dry_run,
+                }
+            ),
+        }
+
+        for idx, user_id in enumerate(request_body.user_ids, start=1):
+            # Client disconnect check
+            if await request.is_disconnected():
+                yield {
+                    "event": "cancelled",
+                    "data": json.dumps(
+                        {
+                            "message": "Client disconnected",
+                            "processed": idx - 1,
+                            "total": total,
+                        }
+                    ),
+                }
+                return
+
+            # "progress" event
+            yield {
+                "event": "progress",
+                "data": json.dumps(
+                    {
+                        "current": idx,
+                        "total": total,
+                        "user_id": user_id,
+                        "status": "processing",
+                    }
+                ),
+            }
+
+            # Submission existence check (SAFE-06)
+            if user_id not in submission_user_ids:
+                logger.warning(
+                    f"No submission found for user {user_id} "
+                    f"on assignment {assignment_id}, skipping"
+                )
+                skipped.append({"user_id": user_id, "reason": "no_submission"})
+                yield {
+                    "event": "skipped",
+                    "data": json.dumps({"user_id": user_id, "reason": "no_submission"}),
+                }
+                continue
+
+            # In-loop duplicate check (fresh check per user)
+            duplicate = db.check_duplicate_posting(
+                course_id, assignment_id, user_id, resolved_template_id
+            )
+            if duplicate is not None:
+                skipped.append({"user_id": user_id, "reason": "already_posted"})
+                yield {
+                    "event": "skipped",
+                    "data": json.dumps(
+                        {"user_id": user_id, "reason": "already_posted"}
+                    ),
+                }
+                continue
+
+            # Calculate late day variables
+            late_days_data = calculate_late_days_for_user(
+                user_id=user_id,
+                assignment=assignment,
+                submissions=submissions,
+                max_late_days=max_late_days,
+            )
+
+            # Render comment text
+            if override_comment:
+                comment_text = override_comment
+            else:
+                assert resolved_template_text is not None  # guarded above
+                try:
+                    comment_text = render_template(
+                        resolved_template_text, late_days_data
+                    )
+                except ValueError as e:
+                    failed.append({"user_id": user_id, "error": str(e)})
+                    yield {
+                        "event": "error",
+                        "data": json.dumps({"user_id": user_id, "error": str(e)}),
+                    }
+                    logger.error(
+                        f"Template rendering error for user {user_id}, "
+                        f"assignment {assignment_id}: {e}"
+                    )
+                    continue
+
+            # Dry run — no Canvas API call
+            if dry_run:
+                successful.append({"user_id": user_id, "dry_run": True})
+                yield {
+                    "event": "dry_run",
+                    "data": json.dumps(
+                        {
+                            "user_id": user_id,
+                            "comment_text": comment_text,
+                            "variables": late_days_data,
+                        }
+                    ),
+                }
+                continue
+
+            # Post to Canvas
+            try:
+                result = await asyncio.to_thread(
+                    canvas_sync.post_submission_comment,
+                    course_id,
+                    assignment_id,
+                    user_id,
+                    comment_text,
+                )
+                canvas_comment_id = result.get("canvas_comment_id")
+                db.record_comment_posting(
+                    course_id=course_id,
+                    assignment_id=assignment_id,
+                    user_id=user_id,
+                    template_id=resolved_template_id,
+                    comment_text=comment_text,
+                    status="posted",
+                    canvas_comment_id=canvas_comment_id,
+                )
+                successful.append({"user_id": user_id})
+                yield {
+                    "event": "posted",
+                    "data": json.dumps(
+                        {"user_id": user_id, "canvas_comment_id": canvas_comment_id}
+                    ),
+                }
+                # Rate limiting: 0.5s delay between Canvas API calls (INFRA-06)
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                db.record_comment_posting(
+                    course_id=course_id,
+                    assignment_id=assignment_id,
+                    user_id=user_id,
+                    template_id=resolved_template_id,
+                    comment_text=comment_text,
+                    status="failed",
+                    error_message=str(e),
+                )
+                failed.append({"user_id": user_id, "error": str(e)})
+                yield {
+                    "event": "error",
+                    "data": json.dumps({"user_id": user_id, "error": str(e)}),
+                }
+                logger.error(
+                    f"Failed to post comment to user {user_id}, "
+                    f"assignment {assignment_id}: {e}"
+                )
+                # Best-effort: continue to next user
+
+        # "complete" event — summary after all users processed
+        yield {
+            "event": "complete",
+            "data": json.dumps(
+                {
+                    "attempted": total,
+                    "successful": len(successful),
+                    "failed": len(failed),
+                    "skipped": len(skipped),
+                    "dry_run": dry_run,
+                    "failed_details": [
+                        {"user_id": f["user_id"], "error": f["error"]}
+                        for f in failed
+                        if "error" in f
+                    ],
+                    "skipped_details": [
+                        {"user_id": s["user_id"], "reason": s["reason"]}
+                        for s in skipped
+                    ],
+                }
+            ),
+        }
+
+    return EventSourceResponse(event_generator())
 
 
 # Canvas data endpoints
