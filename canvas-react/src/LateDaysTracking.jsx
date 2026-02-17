@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { RefreshCw, Calendar, FileText, ChevronUp, ChevronDown, User, Filter, MessageSquare, Eye, AlertTriangle, X, Send } from 'lucide-react';
 import { apiFetch } from './api.js';
 import { useSSEPost } from './hooks/useSSEPost.js';
@@ -35,6 +35,10 @@ const LateDaysTracking = ({ courses, onLoadCourses }) => {
   // Confirmation dialog state
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
+  // Posting history state
+  const [postingHistory, setPostingHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   // Progress state
   const [posting, setPosting] = useState(false);
   const [postProgress, setPostProgress] = useState({ current: 0, total: 0, skipped: 0 });
@@ -52,6 +56,23 @@ const LateDaysTracking = ({ courses, onLoadCourses }) => {
       throw new Error(`Error fetching late days data: ${err.message}`);
     }
   }, []);
+
+  const loadPostingHistory = useCallback(async () => {
+    if (!currentCourse) return;
+    setHistoryLoading(true);
+    try {
+      const params = new URLSearchParams({ course_id: String(currentCourse.id) });
+      if (postAssignmentId) {
+        params.append('assignment_id', String(postAssignmentId));
+      }
+      const data = await apiFetch(`/api/comments/history?${params.toString()}`);
+      setPostingHistory(data.history || []);
+    } catch (err) {
+      console.error('Error loading posting history:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [currentCourse, postAssignmentId]);
 
   const loadCourseData = useCallback(async () => {
     if (!currentCourse) return;
@@ -107,6 +128,13 @@ const LateDaysTracking = ({ courses, onLoadCourses }) => {
       .then(data => setAppSettings({ test_mode: data.test_mode, sandbox_course_id: data.sandbox_course_id }))
       .catch(() => {}); // Silently fail — settings are best-effort for safety warning
   }, []);
+
+  // Load posting history when posting panel is open and assignment or course changes
+  useEffect(() => {
+    if (showPostingPanel) {
+      loadPostingHistory();
+    }
+  }, [showPostingPanel, loadPostingHistory]);
 
   // Cleanup: cancel any in-progress posting on unmount
   useEffect(() => {
@@ -165,7 +193,7 @@ const LateDaysTracking = ({ courses, onLoadCourses }) => {
         onSkipped: () => setPostProgress(prev => ({ ...prev, skipped: prev.skipped + 1 })),
         onError: () => {},
         onDry_run: () => setPostProgress(prev => ({ ...prev, current: prev.current + 1 })),
-        onComplete: (data) => setPostResult(data),
+        onComplete: (data) => { setPostResult(data); loadPostingHistory(); },
       });
     } catch (err) {
       if (err.name !== 'AbortError') {
@@ -302,6 +330,16 @@ const LateDaysTracking = ({ courses, onLoadCourses }) => {
       return 0;
     });
   }, [filteredLateDaysData, sortConfig]);
+
+  // Build set of user IDs that already have posted comments for the selected assignment
+  const postedUserIds = useMemo(() => {
+    if (!postAssignmentId || !postingHistory.length) return new Set();
+    return new Set(
+      postingHistory
+        .filter(h => String(h.assignment_id) === String(postAssignmentId) && h.status === 'posted')
+        .map(h => h.user_id)
+    );
+  }, [postingHistory, postAssignmentId]);
 
   // Sort indicator component
   const SortIndicator = ({ column }) => {
@@ -539,6 +577,11 @@ const LateDaysTracking = ({ courses, onLoadCourses }) => {
                   />
                   <span className="text-sm text-gray-800">{student.student_name}</span>
                   <span className="text-xs text-gray-500">({student.total_late_days} late days)</span>
+                  {postedUserIds.has(parseInt(student.student_id, 10)) && (
+                    <span className="ml-2 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                      Already posted
+                    </span>
+                  )}
                 </label>
               ))}
             </div>
@@ -582,6 +625,65 @@ const LateDaysTracking = ({ courses, onLoadCourses }) => {
             {/* Preview error */}
             {previewError && (
               <p className="mt-2 text-sm text-red-600">{previewError}</p>
+            )}
+          </div>
+        )}
+
+        {/* Posting History Table (POST-09) */}
+        {showPostingPanel && postingHistory.length > 0 && (
+          <div className="p-6 border-b border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Posting History</h3>
+            {historyLoading && (
+              <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Loading history...</span>
+              </div>
+            )}
+            <div className="overflow-x-auto">
+              <table className="min-w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Student</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Comment</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Posted At</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {postingHistory.slice(0, 50).map((h, idx) => {
+                    const studentName = lateDaysData.find(s => parseInt(s.student_id, 10) === h.user_id)?.student_name || `User ${h.user_id}`;
+                    const commentPreview = h.comment_text && h.comment_text.length > 100
+                      ? h.comment_text.substring(0, 100) + '...'
+                      : h.comment_text || '';
+                    const statusColors = {
+                      posted: 'bg-green-100 text-green-800',
+                      failed: 'bg-red-100 text-red-800',
+                      skipped: 'bg-gray-100 text-gray-700',
+                      dry_run: 'bg-blue-100 text-blue-800',
+                    };
+                    const statusColor = statusColors[h.status] || 'bg-gray-100 text-gray-700';
+                    return (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{studentName}</td>
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-xs text-gray-700">{commentPreview}</span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${statusColor}`}>
+                            {h.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                          {h.posted_at ? new Date(h.posted_at).toLocaleString() : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {postingHistory.length > 50 && (
+              <p className="mt-2 text-xs text-gray-500">Showing most recent 50 entries.</p>
             )}
           </div>
         )}
