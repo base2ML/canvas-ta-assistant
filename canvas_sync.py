@@ -128,11 +128,14 @@ def fetch_available_courses(
             course_id = str(course.id)
             if course_id not in seen_ids:
                 seen_ids.add(course_id)
+                term_obj = getattr(course, "enrollment_term", None)
                 courses.append(
                     {
                         "id": course_id,
                         "name": getattr(course, "name", f"Course {course.id}"),
                         "code": getattr(course, "course_code", ""),
+                        "term": getattr(term_obj, "name", None)
+                        or getattr(course, "term_name", None),
                     }
                 )
 
@@ -143,11 +146,14 @@ def fetch_available_courses(
             course_id = str(course.id)
             if course_id not in seen_ids:
                 seen_ids.add(course_id)
+                term_obj = getattr(course, "enrollment_term", None)
                 courses.append(
                     {
                         "id": course_id,
                         "name": getattr(course, "name", f"Course {course.id}"),
                         "code": getattr(course, "course_code", ""),
+                        "term": getattr(term_obj, "name", None)
+                        or getattr(course, "term_name", None),
                     }
                 )
 
@@ -187,6 +193,10 @@ def sync_course_data(
         canvas = get_canvas_client(api_url, api_token)
         course = canvas.get_course(course_id)
         course_name = getattr(course, "name", f"Course {course_id}")
+        _term_obj = getattr(course, "enrollment_term", None)
+        course_term = getattr(_term_obj, "name", None) or getattr(
+            course, "term_name", None
+        )
         logger.info(f"Fetching data for course: {course_name}")
 
         fetch_start = time.time()
@@ -439,13 +449,16 @@ def sync_course_data(
             dropped_users_count=dropped_count,
         )
 
-        # Store course name in settings
+        # Store course name and term in settings
         db.set_setting(f"course_name_{course_id}", course_name)
+        if course_term:
+            db.set_setting(f"course_term_{course_id}", course_term)
 
         return {
             "status": "success",
             "course_id": course_id,
             "course_name": course_name,
+            "course_term": course_term,
             "sync_id": sync_id,
             "stats": {
                 "assignments": len(assignments),

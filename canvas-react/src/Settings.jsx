@@ -269,7 +269,7 @@ const Settings = () => {
                             <option value="">Select a course...</option>
                             {availableCourses.map((course) => (
                                 <option key={course.id} value={course.id}>
-                                    {course.name} ({course.code || course.id})
+                                    {course.name}{course.term ? ` — ${course.term}` : ''} ({course.code || course.id})
                                 </option>
                             ))}
                         </select>

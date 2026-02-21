@@ -1133,6 +1133,7 @@ async def get_courses() -> dict[str, Any]:
             {
                 "id": course_id,
                 "name": course_name or f"Course {course_id}",
+                "term": db.get_setting(f"course_term_{course_id}"),
                 "last_updated": last_sync.get("completed_at") if last_sync else None,
             }
         )
