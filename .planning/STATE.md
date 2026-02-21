@@ -2,17 +2,17 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-15)
+See: .planning/PROJECT.md (updated 2026-02-21)
 
 **Core value:** Safely and efficiently post accurate late day feedback to student submissions, preventing manual errors and saving TA time while ensuring students receive timely, consistent communication about their late day status.
-**Current focus:** Phase 3: UI Integration
+**Current focus:** Milestone v1.0 complete — ready for sandbox testing and next milestone planning
 
 ## Current Position
 
-Phase: 3 of 3 (UI Integration)
-Plan: 4 of 4 in current phase
-Status: Complete
-Last activity: 2026-02-21 — 03-04 complete: Phase 3 UI integration verified and approved
+Milestone: v1.0 Late Day Comment Posting (COMPLETE)
+Phases: 3/3 complete (8 plans total)
+Status: Shipped
+Last activity: 2026-02-21 — Milestone v1.0 archived
 
 Progress: [██████████] 100%
 
@@ -39,6 +39,7 @@ Progress: [██████████] 100%
 | Phase 03 P02 | 6 min | 3 tasks | 2 files |
 | Phase 03 P03 | 3 min | 1 tasks | 1 files |
 | Phase 03-ui-integration P04 | 0 | 1 tasks | 0 files |
+| Quick 1 | 3 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -76,6 +77,9 @@ Recent decisions affecting current work:
 - [Phase 03 P03]: History table only renders when showPostingPanel && postingHistory.length > 0 — avoids empty-state clutter
 - [Phase 03 P03]: History table limited to 50 most recent entries — keeps table lightweight
 - [Phase 03 P04]: Human verification required for visual UI correctness — automated tests cannot verify rendering quality and workflow UX
+- [Quick 1]: activeCourseId derived at App.jsx level from courses[0] and passed as prop — single source of truth for course selection across all pages
+- [Quick 1]: selectedCourse excluded from useEffect deps in EnhancedTADashboard and PeerReviewTracking — used only as comparison guard, not reactive input; eslint-disable comment added with explanation
+- [Quick 1]: course_term stored in SQLite settings after each sync as course_term_{course_id} — enables /api/canvas/courses to return term without extra Canvas API calls
 
 ### Pending Todos
 
@@ -88,5 +92,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-21
-Stopped at: Completed 03-ui-integration/03-04-PLAN.md (Phase 3 complete — all UI integration verified)
+Stopped at: Completed quick/1-fix-course-selection-not-propagating-to-/1-PLAN.md
 Resume file: None
