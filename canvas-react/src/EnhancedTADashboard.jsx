@@ -3,7 +3,7 @@ import { RefreshCw } from 'lucide-react';
 import AssignmentStatusBreakdown from './components/AssignmentStatusBreakdown';
 import { apiFetch } from './api';
 
-const EnhancedTADashboard = ({ courses = [], onLoadCourses }) => {
+const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId }) => {
   // Use courses from props, but keep local state for selection
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [assignments, setAssignments] = useState([]);
@@ -55,14 +55,18 @@ const EnhancedTADashboard = ({ courses = [], onLoadCourses }) => {
     }
   }, []);
 
-  // Initialize selected course when courses are loaded
+  // Initialize or reset selected course when courses or activeCourseId changes.
+  // selectedCourse is intentionally excluded from deps — it is only used as a
+  // comparison guard to avoid redundant resets, not as a reactive input.
   useEffect(() => {
-    if (courses && courses.length > 0 && !selectedCourse) {
-      const firstCourse = courses[0];
-      setSelectedCourse(firstCourse);
-      loadCourseData(firstCourse.id);
+    if (courses && courses.length > 0) {
+      const target = courses.find(c => String(c.id) === String(activeCourseId)) || courses[0];
+      if (!selectedCourse || String(selectedCourse.id) !== String(target.id)) {
+        setSelectedCourse(target);
+        loadCourseData(target.id);
+      }
     }
-  }, [courses, selectedCourse, loadCourseData]);
+  }, [courses, activeCourseId, loadCourseData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Trigger parent to load courses if empty
   useEffect(() => {

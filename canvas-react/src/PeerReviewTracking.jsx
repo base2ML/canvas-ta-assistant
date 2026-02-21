@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Users, Calendar, AlertCircle, CheckCircle, Clock, XCircle } from 'lucide-react';
 import { apiFetch } from './api';
 
-const PeerReviewTracking = ({ courses }) => {
+const PeerReviewTracking = ({ courses, activeCourseId }) => {
   const [selectedCourse, setSelectedCourse] = useState('');
   const [assignments, setAssignments] = useState([]);
   const [selectedAssignment, setSelectedAssignment] = useState('');
@@ -14,12 +14,17 @@ const PeerReviewTracking = ({ courses }) => {
   const [error, setError] = useState('');
   const [loadingAssignments, setLoadingAssignments] = useState(false);
 
-  // Auto-select first course on mount
+  // Auto-select first course on mount or reset when activeCourseId changes.
+  // selectedCourse is intentionally excluded from deps — it is only used as a
+  // comparison guard to avoid redundant resets, not as a reactive input.
   useEffect(() => {
-    if (courses && courses.length > 0 && !selectedCourse) {
-      setSelectedCourse(courses[0].id);
+    if (courses && courses.length > 0) {
+      const targetId = activeCourseId ?? courses[0].id;
+      if (!selectedCourse || String(selectedCourse) !== String(targetId)) {
+        setSelectedCourse(String(targetId));
+      }
     }
-  }, [courses, selectedCourse]);
+  }, [courses, activeCourseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchCourseAssignments = useCallback(async () => {
     if (!selectedCourse) return;

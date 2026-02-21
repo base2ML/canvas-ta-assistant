@@ -73,12 +73,23 @@ const AppContent = () => {
     }
   }, [syncMessage]);
 
+  // Derive active course from the first course in the list
+  const activeCourse = courses.length > 0 ? courses[0] : null;
+  const activeCourseId = activeCourse?.id ?? null;
+
   return (
     <>
       {/* Header with Refresh Button */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-          <h1 className="text-xl font-bold text-gray-900">Canvas TA Dashboard</h1>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Canvas TA Dashboard</h1>
+            {activeCourse && (
+              <p className="text-sm text-gray-500 leading-tight">
+                {activeCourse.name}{activeCourse.term ? ` — ${activeCourse.term}` : ''}
+              </p>
+            )}
+          </div>
           <div className="flex items-center gap-4">
             {syncMessage && (
               <span
@@ -111,6 +122,7 @@ const AppContent = () => {
                 courses={courses}
                 onLoadCourses={loadCourses}
                 loadingCourses={loading}
+                activeCourseId={activeCourseId}
               />
             }
           />
@@ -120,6 +132,7 @@ const AppContent = () => {
               <LateDaysTracking
                 courses={courses}
                 onLoadCourses={loadCourses}
+                activeCourseId={activeCourseId}
               />
             }
           />
@@ -129,6 +142,7 @@ const AppContent = () => {
               <PeerReviewTracking
                 courses={courses}
                 onLoadCourses={loadCourses}
+                activeCourseId={activeCourseId}
               />
             }
           />
@@ -138,6 +152,7 @@ const AppContent = () => {
               <EnrollmentTracking
                 courses={courses}
                 onLoadCourses={loadCourses}
+                activeCourseId={activeCourseId}
               />
             }
           />
