@@ -12,10 +12,24 @@ import { apiFetch, BACKEND_URL } from './api';
 const AppContent = () => {
   const location = useLocation();
   const [courses, setCourses] = useState([]);
+  const [configuredCourse, setConfiguredCourse] = useState(null); // from settings
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState(null);
   const [previousPath, setPreviousPath] = useState(location.pathname);
+
+  const loadSettings = useCallback(async () => {
+    try {
+      const data = await apiFetch('/api/settings');
+      if (data.course_id) {
+        setConfiguredCourse({ id: data.course_id, name: data.course_name || data.course_id });
+      } else {
+        setConfiguredCourse(null);
+      }
+    } catch (err) {
+      console.error('Error loading settings:', err);
+    }
+  }, []);
 
   const loadCourses = useCallback(async () => {
     setLoading(true);
@@ -38,7 +52,8 @@ const AppContent = () => {
         type: 'success',
         text: `Synced ${data.stats?.assignments || 0} assignments, ${data.stats?.users || 0} users`,
       });
-      // Reload courses after sync
+      // Reload settings and courses after sync
+      loadSettings();
       loadCourses();
     } catch (err) {
       console.error('Sync failed:', err);
@@ -51,19 +66,20 @@ const AppContent = () => {
     }
   };
 
-  // Load courses on mount
+  // Load settings and courses on mount
   useEffect(() => {
+    loadSettings();
     loadCourses();
-  }, [loadCourses]);
+  }, [loadSettings, loadCourses]);
 
-  // Reload courses when navigating away from Settings
+  // Reload settings and courses when navigating away from Settings
   useEffect(() => {
     if (previousPath === '/settings' && location.pathname !== '/settings') {
-      console.log('Navigated away from Settings, reloading courses...');
+      loadSettings();
       loadCourses();
     }
     setPreviousPath(location.pathname);
-  }, [location.pathname, previousPath, loadCourses]);
+  }, [location.pathname, previousPath, loadSettings, loadCourses]);
 
   // Clear sync message after 5 seconds
   useEffect(() => {
@@ -73,9 +89,13 @@ const AppContent = () => {
     }
   }, [syncMessage]);
 
-  // Derive active course from the first course in the list
-  const activeCourse = courses.length > 0 ? courses[0] : null;
-  const activeCourseId = activeCourse?.id ?? null;
+  // Active course: find configured course in synced courses (for term info), fall back to settings
+  const activeCourseId = configuredCourse?.id ?? null;
+  const syncedActiveCourse = activeCourseId
+    ? courses.find(c => String(c.id) === String(activeCourseId)) ?? null
+    : null;
+  // Use synced course for term info if available, otherwise show configured course name
+  const activeCourse = syncedActiveCourse ?? configuredCourse;
 
   return (
     <>

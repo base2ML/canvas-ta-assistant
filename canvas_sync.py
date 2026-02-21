@@ -124,7 +124,9 @@ def fetch_available_courses(
         courses = []
         seen_ids = set()
 
-        for course in canvas.get_courses(enrollment_type="ta", state=["available"]):
+        for course in canvas.get_courses(
+            enrollment_type="ta", state=["available"], include=["term"]
+        ):
             course_id = str(course.id)
             if course_id not in seen_ids:
                 seen_ids.add(course_id)
@@ -141,7 +143,7 @@ def fetch_available_courses(
 
         # Also try teacher enrollment
         for course in canvas.get_courses(
-            enrollment_type="teacher", state=["available"]
+            enrollment_type="teacher", state=["available"], include=["term"]
         ):
             course_id = str(course.id)
             if course_id not in seen_ids:
