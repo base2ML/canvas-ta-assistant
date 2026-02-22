@@ -15,6 +15,21 @@ from loguru import logger
 import database as db
 
 
+def _get_term_name(course: Any) -> str | None:
+    """Extract enrollment term name from a Canvas course object.
+
+    canvasapi may return enrollment_term as a plain dict (JSON) or as a
+    CanvasObject depending on the library version. Handle both cases.
+    """
+    term_obj = getattr(course, "enrollment_term", None)
+    if term_obj is not None:
+        if isinstance(term_obj, dict):
+            return term_obj.get("name")
+        return getattr(term_obj, "name", None)
+    # Fallback: some Canvas instances expose term_name directly on the course
+    return getattr(course, "term_name", None)
+
+
 def get_canvas_client(
     api_url: str | None = None, api_token: str | None = None
 ) -> Canvas:
@@ -130,14 +145,12 @@ def fetch_available_courses(
             course_id = str(course.id)
             if course_id not in seen_ids:
                 seen_ids.add(course_id)
-                term_obj = getattr(course, "enrollment_term", None)
                 courses.append(
                     {
                         "id": course_id,
                         "name": getattr(course, "name", f"Course {course.id}"),
                         "code": getattr(course, "course_code", ""),
-                        "term": getattr(term_obj, "name", None)
-                        or getattr(course, "term_name", None),
+                        "term": _get_term_name(course),
                     }
                 )
 
@@ -148,14 +161,12 @@ def fetch_available_courses(
             course_id = str(course.id)
             if course_id not in seen_ids:
                 seen_ids.add(course_id)
-                term_obj = getattr(course, "enrollment_term", None)
                 courses.append(
                     {
                         "id": course_id,
                         "name": getattr(course, "name", f"Course {course.id}"),
                         "code": getattr(course, "course_code", ""),
-                        "term": getattr(term_obj, "name", None)
-                        or getattr(course, "term_name", None),
+                        "term": _get_term_name(course),
                     }
                 )
 
@@ -195,10 +206,7 @@ def sync_course_data(
         canvas = get_canvas_client(api_url, api_token)
         course = canvas.get_course(course_id)
         course_name = getattr(course, "name", f"Course {course_id}")
-        _term_obj = getattr(course, "enrollment_term", None)
-        course_term = getattr(_term_obj, "name", None) or getattr(
-            course, "term_name", None
-        )
+        course_term = _get_term_name(course)
         logger.info(f"Fetching data for course: {course_name}")
 
         fetch_start = time.time()

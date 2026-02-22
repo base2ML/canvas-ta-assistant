@@ -3,7 +3,7 @@ import { RefreshCw, Calendar, FileText, ChevronUp, ChevronDown, User, Filter, Me
 import { apiFetch } from './api.js';
 import { useSSEPost } from './hooks/useSSEPost.js';
 
-const LateDaysTracking = ({ courses, onLoadCourses }) => {
+const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId }) => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -45,8 +45,10 @@ const LateDaysTracking = ({ courses, onLoadCourses }) => {
   const [postResult, setPostResult] = useState(null);
   const [postError, setPostError] = useState('');
 
-  // Use the first available course (since this tool is for single course use)
-  const currentCourse = courses && courses.length > 0 ? courses[0] : null;
+  // Use the configured active course, falling back to courses[0]
+  const currentCourse = courses && courses.length > 0
+    ? (activeCourseId ? (courses.find(c => String(c.id) === String(activeCourseId)) || courses[0]) : courses[0])
+    : null;
 
   const fetchLateDaysData = useCallback(async (courseId) => {
     try {

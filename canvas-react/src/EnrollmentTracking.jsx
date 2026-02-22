@@ -2,15 +2,17 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { RefreshCw, UserCheck, UserMinus, UserPlus, TrendingUp } from 'lucide-react';
 import { apiFetch } from './api.js';
 
-const EnrollmentTracking = ({ courses, onLoadCourses }) => {
+const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId }) => {
   const [enrollmentData, setEnrollmentData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [loadTime, setLoadTime] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  // Use the first available course (since this tool is for single course use)
-  const currentCourse = courses && courses.length > 0 ? courses[0] : null;
+  // Use the configured active course, falling back to courses[0]
+  const currentCourse = courses && courses.length > 0
+    ? (activeCourseId ? (courses.find(c => String(c.id) === String(activeCourseId)) || courses[0]) : courses[0])
+    : null;
 
   const fetchEnrollmentData = useCallback(async (courseId) => {
     try {
