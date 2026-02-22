@@ -145,6 +145,11 @@ def fetch_available_courses(
             course_id = str(course.id)
             if course_id not in seen_ids:
                 seen_ids.add(course_id)
+                logger.debug(
+                    f"Course {course_id}: name={getattr(course, 'name', None)!r}, "
+                    f"enrollment_term={getattr(course, 'enrollment_term', None)!r}, "
+                    f"term_name={getattr(course, 'term_name', None)!r}"
+                )
                 courses.append(
                     {
                         "id": course_id,
@@ -161,6 +166,11 @@ def fetch_available_courses(
             course_id = str(course.id)
             if course_id not in seen_ids:
                 seen_ids.add(course_id)
+                logger.debug(
+                    f"Course {course_id}: name={getattr(course, 'name', None)!r}, "
+                    f"enrollment_term={getattr(course, 'enrollment_term', None)!r}, "
+                    f"term_name={getattr(course, 'term_name', None)!r}"
+                )
                 courses.append(
                     {
                         "id": course_id,
@@ -204,7 +214,7 @@ def sync_course_data(
     try:
         # Create Canvas client
         canvas = get_canvas_client(api_url, api_token)
-        course = canvas.get_course(course_id)
+        course = canvas.get_course(course_id, include=["term"])
         course_name = getattr(course, "name", f"Course {course_id}")
         course_term = _get_term_name(course)
         logger.info(f"Fetching data for course: {course_name}")
