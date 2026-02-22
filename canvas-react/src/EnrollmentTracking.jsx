@@ -242,8 +242,12 @@ const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId }) => {
 
           {/* Enrollment Changes */}
           {(() => {
-            const changedSnapshots = (enrollmentData.snapshots || []).filter(
-              s => s.newly_enrolled_count > 0 || s.newly_dropped_count > 0
+            const allSnapshots = enrollmentData.snapshots || [];
+            const firstSnapshot = allSnapshots.length > 0
+              ? allSnapshots[allSnapshots.length - 1]
+              : null;
+            const changedSnapshots = allSnapshots.filter(
+              s => s.newly_enrolled_count > 0 || s.newly_dropped_count > 0 || s === firstSnapshot
             );
             if (changedSnapshots.length === 0) return null;
             return (
@@ -320,7 +324,7 @@ const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId }) => {
           )}
 
           {/* Empty State */}
-          {((enrollmentData.snapshots || []).filter(s => s.newly_enrolled_count > 0 || s.newly_dropped_count > 0).length === 0) &&
+          {((enrollmentData.snapshots || []).length === 0) &&
            (!enrollmentData.events || enrollmentData.events.length === 0) && (
             <div className="bg-white rounded-lg shadow-sm border p-6 text-center">
               <p className="text-gray-500">No enrollment history available yet. Sync data to begin tracking enrollment changes.</p>
