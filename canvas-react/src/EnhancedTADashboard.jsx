@@ -46,7 +46,16 @@ const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId }) =>
       setAssignments(assignmentsData.assignments || []);
       setSubmissions(submissionsData.submissions || []);
       setGroups(groupsData.groups || []);
-      setLastUpdated(new Date());
+
+      // Fetch the actual last sync time from the backend (best-effort)
+      try {
+        const syncData = await apiFetch(`/api/canvas/sync/status?course_id=${courseId}`);
+        const completedAt = syncData?.last_sync?.completed_at;
+        setLastUpdated(completedAt ? new Date(completedAt) : new Date());
+      } catch (syncErr) {
+        console.warn('Could not fetch sync status, falling back to current time:', syncErr);
+        setLastUpdated(new Date());
+      }
     } catch (err) {
       console.error('Error loading course data:', err);
       setError(err.message);
