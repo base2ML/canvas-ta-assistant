@@ -18,14 +18,18 @@ import database as db
 def _get_term_name(course: Any) -> str | None:
     """Extract enrollment term name from a Canvas course object.
 
-    canvasapi may return enrollment_term as a plain dict (JSON) or as a
-    CanvasObject depending on the library version. Handle both cases.
+    When include=["term"] is passed to the Canvas API, the term data is
+    returned under the `term` attribute (as a plain dict), NOT `enrollment_term`.
+    The `enrollment_term` attribute is returned only with include=["enrollment_term"].
+    Both cases are handled here for robustness.
     """
-    term_obj = getattr(course, "enrollment_term", None)
-    if term_obj is not None:
-        if isinstance(term_obj, dict):
-            return term_obj.get("name")
-        return getattr(term_obj, "name", None)
+    # Primary: Canvas API returns term as `term` dict when include=["term"]
+    for attr in ("term", "enrollment_term"):
+        term_obj = getattr(course, attr, None)
+        if term_obj is not None:
+            if isinstance(term_obj, dict):
+                return term_obj.get("name")
+            return getattr(term_obj, "name", None)
     # Fallback: some Canvas instances expose term_name directly on the course
     return getattr(course, "term_name", None)
 
