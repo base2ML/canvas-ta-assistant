@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Users, Calendar, AlertCircle, CheckCircle, Clock, XCircle } from 'lucide-react';
 import { apiFetch } from './api';
+import { formatDate as formatDateUtil } from './utils/dates';
 
 const PeerReviewTracking = ({ courses, activeCourseId }) => {
   const [selectedCourse, setSelectedCourse] = useState('');
@@ -105,15 +106,6 @@ const PeerReviewTracking = ({ courses, activeCourseId }) => {
         return 'text-red-700 bg-red-100';
       default:
         return 'text-gray-700 bg-gray-100';
-    }
-  };
-
-  const formatDateTime = (dateTimeStr) => {
-    if (!dateTimeStr) return 'Not submitted';
-    try {
-      return new Date(dateTimeStr).toLocaleString();
-    } catch {
-      return dateTimeStr;
     }
   };
 
@@ -432,7 +424,7 @@ const PeerReviewTracking = ({ courses, activeCourseId }) => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
-                            {formatDateTime(event.comment_timestamp)}
+                            {formatDateUtil(event.comment_timestamp)}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">

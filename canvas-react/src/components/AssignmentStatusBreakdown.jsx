@@ -1,19 +1,9 @@
 import React from 'react';
 import { CheckCircle, Clock, XCircle, ChevronDown, ChevronRight, Calendar, AlertTriangle, Eye, AlertCircleIcon } from 'lucide-react';
+import { formatDate as formatDateUtil } from '../utils/dates';
 
 const AssignmentStatusBreakdown = ({ assignmentStats, expandedAssignments, onToggleExpanded }) => {
   if (!assignmentStats || assignmentStats.length === 0) return null;
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'No due date';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
 
   return (
     <div className="bg-white shadow-sm rounded-lg p-6 mb-6">
@@ -88,7 +78,7 @@ const AssignmentStatusBreakdown = ({ assignmentStats, expandedAssignments, onTog
                           {assignment.due_at && (
                             <div className="flex items-center">
                               <Calendar className="h-4 w-4 mr-1" />
-                              Due: {formatDate(assignment.due_at)}
+                              Due: {formatDateUtil(assignment.due_at)}
                             </div>
                           )}
                         </div>

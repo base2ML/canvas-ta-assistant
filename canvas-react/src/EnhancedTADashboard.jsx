@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { RefreshCw } from 'lucide-react';
 import AssignmentStatusBreakdown from './components/AssignmentStatusBreakdown';
 import { apiFetch } from './api';
+import { formatDate } from './utils/dates';
 
 const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId }) => {
   // Use courses from props, but keep local state for selection
@@ -229,23 +230,6 @@ const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId }) =>
     }
   };
 
-  // Format last updated time in EST
-  const formatLastUpdated = (date) => {
-    if (!date) return 'Never';
-
-    const options = {
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      timeZone: 'America/New_York',
-      hour12: false
-    };
-
-    return new Intl.DateTimeFormat('en-US', options).format(date) + ' EST';
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -256,7 +240,7 @@ const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId }) =>
             <div className="flex flex-col items-end space-y-2">
               {lastUpdated && (
                 <div className="text-sm text-gray-500">
-                  Last Updated: {formatLastUpdated(lastUpdated)}
+                  Last Updated: {lastUpdated ? formatDate(lastUpdated) : 'Never'}
                 </div>
               )}
               <button

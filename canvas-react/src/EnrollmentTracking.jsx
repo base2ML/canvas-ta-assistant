@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { RefreshCw, UserCheck, UserMinus, UserPlus, TrendingUp } from 'lucide-react';
 import { apiFetch } from './api.js';
+import { formatDate as formatDateUtil, formatDateOnly } from './utils/dates';
 
 const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId }) => {
   const [enrollmentData, setEnrollmentData] = useState(null);
@@ -78,18 +79,6 @@ const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId }) => {
     return `${previousStatus} → ${newStatus}`;
   };
 
-  const formatDateTime = (dateString) => {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleString();
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString();
-  };
-
   // Show "no course configured" message
   if (!currentCourse) {
     return (
@@ -117,7 +106,7 @@ const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId }) => {
         <div className="flex items-center gap-4 text-sm text-gray-600">
           <span className="font-medium">{currentCourse.name || `Course ${currentCourse.id}`}</span>
           {lastUpdated && (
-            <span>Last updated: {lastUpdated.toLocaleString()}</span>
+            <span>Last updated: {formatDateUtil(lastUpdated)}</span>
           )}
           {loadTime && (
             <span className="text-gray-500">Load time: {loadTime.toFixed(2)}s</span>
@@ -211,8 +200,8 @@ const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId }) => {
 
             const points = chronologicalSnapshots.map((s, i) => `${toX(i)},${toY(s.active_count)}`).join(' ');
 
-            const firstDate = new Date(chronologicalSnapshots[0].sync_completed_at || chronologicalSnapshots[0].recorded_at).toLocaleDateString();
-            const lastDate = new Date(chronologicalSnapshots[chronologicalSnapshots.length - 1].sync_completed_at || chronologicalSnapshots[chronologicalSnapshots.length - 1].recorded_at).toLocaleDateString();
+            const firstDate = formatDateOnly(chronologicalSnapshots[0].sync_completed_at || chronologicalSnapshots[0].recorded_at);
+            const lastDate = formatDateOnly(chronologicalSnapshots[chronologicalSnapshots.length - 1].sync_completed_at || chronologicalSnapshots[chronologicalSnapshots.length - 1].recorded_at);
 
             return (
               <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
@@ -262,10 +251,10 @@ const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId }) => {
                       <div className="flex items-center gap-3">
                         <div>
                           <p className="text-sm font-medium">
-                            {formatDate(snapshot.sync_completed_at || snapshot.recorded_at)}
+                            {formatDateOnly(snapshot.sync_completed_at || snapshot.recorded_at)}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {formatDateTime(snapshot.sync_completed_at || snapshot.recorded_at)}
+                            {formatDateUtil(snapshot.sync_completed_at || snapshot.recorded_at)}
                           </p>
                         </div>
                       </div>
@@ -315,7 +304,7 @@ const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId }) => {
                       </div>
                     </div>
                     <span className="text-xs text-gray-500">
-                      {formatDateTime(event.occurred_at)}
+                      {formatDateUtil(event.occurred_at)}
                     </span>
                   </div>
                 ))}

@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { RefreshCw, Calendar, FileText, ChevronUp, ChevronDown, User, Filter, MessageSquare, Eye, AlertTriangle, X, Send } from 'lucide-react';
 import { apiFetch } from './api.js';
 import { useSSEPost } from './hooks/useSSEPost.js';
+import { formatDate, formatDateOnly, formatTime } from './utils/dates';
 
 const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId }) => {
   const [assignments, setAssignments] = useState([]);
@@ -399,7 +400,7 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId }) => {
               )}
               {lastUpdated && (
                 <div className="flex items-center mt-1 text-xs text-gray-500">
-                  🕒 Cached: {lastUpdated.toLocaleTimeString()}
+                  🕒 Cached: {formatTime(lastUpdated)}
                 </div>
               )}
             </div>
@@ -491,11 +492,7 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId }) => {
                         </div>
                         {assignment.due_at && (
                           <div className="text-xs text-gray-500 mt-1">
-                            Due: {new Date(assignment.due_at).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
+                            Due: {formatDateOnly(assignment.due_at)}
                           </div>
                         )}
                         {!assignment.due_at && (
@@ -543,7 +540,7 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId }) => {
                 <option value="">Select an assignment...</option>
                 {sortedAssignments.map(a => (
                   <option key={a.id} value={String(a.id)}>
-                    {a.name}{a.due_at ? ` (Due: ${new Date(a.due_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})` : ''}
+                    {a.name}{a.due_at ? ` (Due: ${formatDateOnly(a.due_at)})` : ''}
                   </option>
                 ))}
               </select>
@@ -676,7 +673,7 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId }) => {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
-                          {h.posted_at ? new Date(h.posted_at).toLocaleString() : '—'}
+                          {h.posted_at ? formatDate(h.posted_at) : '—'}
                         </td>
                       </tr>
                     );
@@ -845,10 +842,7 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId }) => {
                           </div>
                           {assignment.due_at && (
                             <div className="text-xs text-gray-500">
-                              Due: {new Date(assignment.due_at).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric'
-                              })}
+                              Due: {formatDateOnly(assignment.due_at)}
                             </div>
                           )}
                         </div>
