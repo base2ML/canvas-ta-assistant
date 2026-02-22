@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Save, CheckCircle, XCircle, Clock, Settings as SettingsIcon } from 'lucide-react';
 import { apiFetch } from './api';
+import { formatDate } from './utils/dates';
 
 const Settings = () => {
     const [settings, setSettings] = useState({
@@ -17,6 +18,7 @@ const Settings = () => {
     const [loadingCourses, setLoadingCourses] = useState(false);
     const [message, setMessage] = useState(null);
     const [manualCourseId, setManualCourseId] = useState('');
+    const [timezone, setTimezoneState] = useState('');
     const [penaltyTemplate, setPenaltyTemplate] = useState({ id: null, text: '' });
     const [nonPenaltyTemplate, setNonPenaltyTemplate] = useState({ id: null, text: '' });
     const [templateSaving, setTemplateSaving] = useState(false);
@@ -28,6 +30,7 @@ const Settings = () => {
             const data = await apiFetch('/api/settings');
             setSettings(data);
             setManualCourseId(data.course_id || '');
+            setTimezoneState(data.timezone || '');
         } catch (err) {
             console.error('Error loading settings:', err);
             setMessage({ type: 'error', text: 'Failed to load settings' });
@@ -71,7 +74,10 @@ const Settings = () => {
         try {
             await apiFetch('/api/settings', {
                 method: 'PUT',
-                body: JSON.stringify({ course_id: manualCourseId.trim() }),
+                body: JSON.stringify({
+                    course_id: manualCourseId.trim(),
+                    timezone: timezone || null,
+                }),
             });
             setMessage({ type: 'success', text: 'Settings saved successfully' });
             loadSettings();
@@ -285,6 +291,25 @@ const Settings = () => {
                     </div>
                 )}
 
+                {/* Timezone Setting */}
+                <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Display Timezone
+                    </label>
+                    <select
+                        value={timezone}
+                        onChange={(e) => setTimezoneState(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="">Browser local time</option>
+                        <option value="UTC">UTC</option>
+                        <option value="America/New_York">Eastern (ET)</option>
+                        <option value="America/Chicago">Central (CT)</option>
+                        <option value="America/Denver">Mountain (MT)</option>
+                        <option value="America/Los_Angeles">Pacific (PT)</option>
+                    </select>
+                </div>
+
                 {/* Action Buttons */}
                 <div className="flex gap-3">
                     <button
@@ -347,7 +372,7 @@ const Settings = () => {
                         {settings.last_sync.completed_at && (
                             <p className="text-sm text-gray-600 flex items-center gap-1">
                                 <Clock className="w-4 h-4" />
-                                Last synced: {new Date(settings.last_sync.completed_at).toLocaleString()}
+                                Last synced: {formatDate(settings.last_sync.completed_at)}
                             </p>
                         )}
                         {settings.last_sync.message && (
@@ -395,7 +420,7 @@ const Settings = () => {
                                             Course {sync.course_id}
                                         </p>
                                         <p className="text-xs text-gray-500">
-                                            {new Date(sync.started_at).toLocaleString()}
+                                            {formatDate(sync.started_at)}
                                         </p>
                                     </div>
                                 </div>
