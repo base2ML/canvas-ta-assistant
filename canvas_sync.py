@@ -184,6 +184,16 @@ def fetch_available_courses(
                     }
                 )
 
+        # Sort newest-first: by year desc, then by semester order within year
+        _SEMESTER_ORDER = {"spring": 1, "summer": 2, "fall": 3, "winter": 0}
+
+        def _term_sort_key(c: dict[str, Any]) -> tuple[int, int]:
+            term = (c.get("term") or "").lower().split()
+            year = next((int(p) for p in term if p.isdigit() and len(p) == 4), 0)
+            sem = next((_SEMESTER_ORDER[p] for p in term if p in _SEMESTER_ORDER), 0)
+            return (year, sem)
+
+        courses.sort(key=_term_sort_key, reverse=True)
         logger.info(f"Found {len(courses)} available courses")
         return courses
 
