@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-21)
 Milestone: v1.0 Late Day Comment Posting (COMPLETE)
 Phases: 3/3 complete (8 plans total)
 Status: Shipped
-Last activity: 2026-02-22 - Fixed Last Updated timestamp to show actual Canvas sync time instead of browser clock
+Last activity: 2026-02-22 - Filtered enrollment timeline to changes-only and added SVG enrollment line chart
 
 Progress: [██████████] 100%
 
@@ -42,6 +42,7 @@ Progress: [██████████] 100%
 | Quick 1 | 3 min | 2 tasks | 6 files |
 | Quick 2 | 1 min | 1 tasks | 1 files |
 | Quick 3 | 2 min | 1 tasks | 1 files |
+| Quick 4 | 3 min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,7 @@ Recent decisions affecting current work:
 - [Quick 2]: Debug logging placed inside seen_ids guard in fetch_available_courses — logs only new (non-duplicate) courses, helps diagnose when Canvas returns enrollment_term=None
 - [Quick 3]: Canvas API returns term data under 'term' key (not 'enrollment_term') when include=["term"] is passed — _get_term_name() previously only checked enrollment_term so term was always None; fixed by iterating both attribute names
 - [Quick 4]: Best-effort inner try/catch for sync-status fetch in loadCourseData — prevents sync-status failure from breaking main data load; falls back to new Date()
+- [Quick 4]: IIFE pattern used for chart and filter sections in EnrollmentTracking — keeps derived variables scoped without polluting component scope
 
 ### Pending Todos
 
@@ -102,9 +104,10 @@ None yet.
 | 1 | Fix course selection not propagating to dashboard pages and add course name with term to header and settings | 2026-02-21 | 10dc439 | [1-fix-course-selection-not-propagating-to-](./quick/1-fix-course-selection-not-propagating-to-/) |
 | 2 | Fix term information not appearing in Browse Courses dropdown and course header | 2026-02-22 | 01660eb | [2-research-the-canvas-api-and-determine-wh](./quick/2-research-the-canvas-api-and-determine-wh/) |
 | 3 | Fix Last Updated timestamp to show actual Canvas sync time instead of browser clock | 2026-02-22 | 3736c35 | [3-the-last-updated-time-on-the-main-dashbo](./quick/3-the-last-updated-time-on-the-main-dashbo/) |
+| 4 | Filter enrollment timeline to changes-only and add SVG enrollment line chart | 2026-02-22 | 48ca026 | [4-filter-enrollment-sync-history-to-only-s](./quick/4-filter-enrollment-sync-history-to-only-s/) |
 
 ## Session Continuity
 
 Last session: 2026-02-22
-Stopped at: Completed quick/3-the-last-updated-time-on-the-main-dashbo/3-PLAN.md
+Stopped at: Completed quick/4-filter-enrollment-sync-history-to-only-s/4-PLAN.md
 Resume file: None
