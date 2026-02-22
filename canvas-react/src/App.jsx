@@ -8,6 +8,7 @@ import Settings from './Settings';
 import Navigation from './components/Navigation';
 import { RefreshCw } from 'lucide-react';
 import { apiFetch, BACKEND_URL } from './api';
+import { setTimezone } from './utils/dates';
 
 const AppContent = () => {
   const location = useLocation();
@@ -26,6 +27,7 @@ const AppContent = () => {
       } else {
         setConfiguredCourse(null);
       }
+      setTimezone(data.timezone ?? null);
     } catch (err) {
       console.error('Error loading settings:', err);
     }
