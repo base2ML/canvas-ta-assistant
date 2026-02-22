@@ -110,12 +110,14 @@ class SettingsResponse(BaseModel):
     test_mode: bool
     max_late_days_per_assignment: int
     sandbox_course_id: str
+    timezone: str | None
 
 
 class SettingsUpdateRequest(BaseModel):
     course_id: str | None = None
     test_mode: bool | None = None
     max_late_days_per_assignment: int | None = None
+    timezone: str | None = None
 
     @field_validator("max_late_days_per_assignment")
     @classmethod
@@ -515,6 +517,8 @@ async def get_settings():
     max_late_days_str = db.get_setting("max_late_days_per_assignment")
     max_late_days = int(max_late_days_str) if max_late_days_str else 7
 
+    timezone = db.get_setting("timezone") or None
+
     return SettingsResponse(
         course_id=course_id or None,
         course_name=course_name,
@@ -523,6 +527,7 @@ async def get_settings():
         test_mode=test_mode,
         max_late_days_per_assignment=max_late_days,
         sandbox_course_id=SANDBOX_COURSE_ID,
+        timezone=timezone,
     )
 
 
@@ -550,6 +555,11 @@ async def update_settings(settings: SettingsUpdateRequest) -> dict[str, Any]:
         logger.info(
             f"Max late days updated to: {settings.max_late_days_per_assignment}"
         )
+
+    if settings.timezone is not None:
+        db.set_setting("timezone", settings.timezone)
+        updated_fields.append("timezone")
+        logger.info(f"Timezone updated to: {settings.timezone}")
 
     if not updated_fields:
         raise HTTPException(
