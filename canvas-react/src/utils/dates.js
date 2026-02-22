@@ -25,8 +25,7 @@ function toDate(input) {
  */
 export function formatDate(dateInput) {
   const d = toDate(dateInput);
-  if (!d && dateInput == null) return 'N/A';
-  if (!d) return 'Invalid Date';
+  if (!d) return dateInput == null || dateInput === '' ? 'N/A' : 'Invalid Date';
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
@@ -42,8 +41,7 @@ export function formatDate(dateInput) {
  */
 export function formatDateOnly(dateInput) {
   const d = toDate(dateInput);
-  if (!d && dateInput == null) return 'N/A';
-  if (!d) return 'Invalid Date';
+  if (!d) return dateInput == null || dateInput === '' ? 'N/A' : 'Invalid Date';
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
@@ -57,8 +55,7 @@ export function formatDateOnly(dateInput) {
  */
 export function formatTime(dateInput) {
   const d = toDate(dateInput);
-  if (!d && dateInput == null) return 'N/A';
-  if (!d) return 'Invalid Date';
+  if (!d) return dateInput == null || dateInput === '' ? 'N/A' : 'Invalid Date';
   return new Intl.DateTimeFormat('en-US', {
     hour: 'numeric',
     minute: '2-digit',
