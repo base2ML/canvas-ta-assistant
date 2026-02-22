@@ -184,32 +184,92 @@ const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId }) => {
             </div>
           </div>
 
-          {/* Enrollment Timeline */}
-          {enrollmentData.snapshots && enrollmentData.snapshots.length > 0 && (
-            <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Enrollment Timeline</h2>
-              <div className="space-y-3">
-                {enrollmentData.snapshots.map((snapshot, index) => (
-                  <div
-                    key={snapshot.id || index}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-md"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div>
-                        <p className="text-sm font-medium">
-                          {formatDate(snapshot.sync_completed_at || snapshot.recorded_at)}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {formatDateTime(snapshot.sync_completed_at || snapshot.recorded_at)}
-                        </p>
+          {/* Enrollment Over Time - SVG Line Chart */}
+          {(() => {
+            const chronologicalSnapshots = [...(enrollmentData.snapshots || [])].reverse();
+            if (chronologicalSnapshots.length < 2) return null;
+
+            const padL = 50, padR = 20, padT = 16, padB = 32;
+            const width = 600, height = 160;
+            const plotW = width - padL - padR;
+            const plotH = height - padT - padB;
+
+            const counts = chronologicalSnapshots.map(s => s.active_count);
+            let minCount = Math.min(...counts);
+            let maxCount = Math.max(...counts);
+            if (minCount === maxCount) {
+              minCount = minCount - 1;
+              maxCount = maxCount + 1;
+            }
+            const range = maxCount - minCount;
+            const padding = range * 0.05;
+            const yMin = minCount - padding;
+            const yMax = maxCount + padding;
+
+            const toX = (i) => padL + (i / (chronologicalSnapshots.length - 1)) * plotW;
+            const toY = (val) => padT + plotH - ((val - yMin) / (yMax - yMin)) * plotH;
+
+            const points = chronologicalSnapshots.map((s, i) => `${toX(i)},${toY(s.active_count)}`).join(' ');
+
+            const firstDate = new Date(chronologicalSnapshots[0].sync_completed_at || chronologicalSnapshots[0].recorded_at).toLocaleDateString();
+            const lastDate = new Date(chronologicalSnapshots[chronologicalSnapshots.length - 1].sync_completed_at || chronologicalSnapshots[chronologicalSnapshots.length - 1].recorded_at).toLocaleDateString();
+
+            return (
+              <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Enrollment Over Time</h2>
+                <svg viewBox="0 0 600 160" className="w-full h-40">
+                  {/* Y-axis labels */}
+                  <text x={padL - 6} y={toY(maxCount)} fontSize="10" fill="#6b7280" textAnchor="end" dominantBaseline="middle">{Math.round(maxCount)}</text>
+                  <text x={padL - 6} y={toY(minCount)} fontSize="10" fill="#6b7280" textAnchor="end" dominantBaseline="middle">{Math.round(minCount)}</text>
+                  {/* Line */}
+                  <polyline
+                    points={points}
+                    stroke="#2563eb"
+                    strokeWidth="2"
+                    fill="none"
+                  />
+                  {/* Dots */}
+                  {chronologicalSnapshots.map((s, i) => (
+                    <circle key={i} cx={toX(i)} cy={toY(s.active_count)} r="3" fill="#2563eb" />
+                  ))}
+                  {/* X-axis labels */}
+                  <text x={toX(0)} y={height - 4} fontSize="10" fill="#6b7280" textAnchor="middle">{firstDate}</text>
+                  <text x={toX(chronologicalSnapshots.length - 1)} y={height - 4} fontSize="10" fill="#6b7280" textAnchor="middle">{lastDate}</text>
+                </svg>
+              </div>
+            );
+          })()}
+
+          {/* Enrollment Changes */}
+          {(() => {
+            const changedSnapshots = (enrollmentData.snapshots || []).filter(
+              s => s.newly_enrolled_count > 0 || s.newly_dropped_count > 0
+            );
+            if (changedSnapshots.length === 0) return null;
+            return (
+              <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Enrollment Changes</h2>
+                <div className="space-y-3">
+                  {changedSnapshots.map((snapshot, index) => (
+                    <div
+                      key={snapshot.id || index}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-md"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div>
+                          <p className="text-sm font-medium">
+                            {formatDate(snapshot.sync_completed_at || snapshot.recorded_at)}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {formatDateTime(snapshot.sync_completed_at || snapshot.recorded_at)}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-sm text-gray-700">
-                        <span className="font-medium text-green-600">{snapshot.active_count}</span> active,{' '}
-                        <span className="font-medium text-orange-600">{snapshot.dropped_count}</span> dropped
-                      </span>
-                      {(snapshot.newly_dropped_count > 0 || snapshot.newly_enrolled_count > 0) && (
+                      <div className="flex items-center gap-4">
+                        <span className="text-sm text-gray-700">
+                          <span className="font-medium text-green-600">{snapshot.active_count}</span> active,{' '}
+                          <span className="font-medium text-orange-600">{snapshot.dropped_count}</span> dropped
+                        </span>
                         <span className="text-xs text-gray-500">
                           {snapshot.newly_enrolled_count > 0 && (
                             <span className="text-green-600">
@@ -223,13 +283,13 @@ const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId }) => {
                             </span>
                           )}
                         </span>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Recent Events */}
           {enrollmentData.events && enrollmentData.events.length > 0 && (
@@ -260,7 +320,7 @@ const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId }) => {
           )}
 
           {/* Empty State */}
-          {(!enrollmentData.snapshots || enrollmentData.snapshots.length === 0) &&
+          {((enrollmentData.snapshots || []).filter(s => s.newly_enrolled_count > 0 || s.newly_dropped_count > 0).length === 0) &&
            (!enrollmentData.events || enrollmentData.events.length === 0) && (
             <div className="bg-white rounded-lg shadow-sm border p-6 text-center">
               <p className="text-gray-500">No enrollment history available yet. Sync data to begin tracking enrollment changes.</p>
