@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-21)
 Milestone: v1.0 Late Day Comment Posting (COMPLETE)
 Phases: 3/3 complete (8 plans total)
 Status: Shipped
-Last activity: 2026-02-21 — Milestone v1.0 archived
+Last activity: 2026-02-21 - Completed quick task 2: Fix term information not appearing in Browse Courses dropdown and course header
 
 Progress: [██████████] 100%
 
@@ -40,6 +40,7 @@ Progress: [██████████] 100%
 | Phase 03 P03 | 3 min | 1 tasks | 1 files |
 | Phase 03-ui-integration P04 | 0 | 1 tasks | 0 files |
 | Quick 1 | 3 min | 2 tasks | 6 files |
+| Quick 2 | 1 min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,8 @@ Recent decisions affecting current work:
 - [Quick 1]: activeCourseId derived at App.jsx level from courses[0] and passed as prop — single source of truth for course selection across all pages
 - [Quick 1]: selectedCourse excluded from useEffect deps in EnhancedTADashboard and PeerReviewTracking — used only as comparison guard, not reactive input; eslint-disable comment added with explanation
 - [Quick 1]: course_term stored in SQLite settings after each sync as course_term_{course_id} — enables /api/canvas/courses to return term without extra Canvas API calls
+- [Quick 2]: include=["term"] added only to sync_course_data's get_course call — fetch_available_courses already passed it correctly to get_courses
+- [Quick 2]: Debug logging placed inside seen_ids guard in fetch_available_courses — logs only new (non-duplicate) courses, helps diagnose when Canvas returns enrollment_term=None
 
 ### Pending Todos
 
@@ -89,8 +92,15 @@ None yet.
 
 None yet.
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 1 | Fix course selection not propagating to dashboard pages and add course name with term to header and settings | 2026-02-21 | 10dc439 | [1-fix-course-selection-not-propagating-to-](./quick/1-fix-course-selection-not-propagating-to-/) |
+| 2 | Fix term information not appearing in Browse Courses dropdown and course header | 2026-02-21 | 01660eb | [2-research-the-canvas-api-and-determine-wh](./quick/2-research-the-canvas-api-and-determine-wh/) |
+
 ## Session Continuity
 
 Last session: 2026-02-21
-Stopped at: Completed quick/1-fix-course-selection-not-propagating-to-/1-PLAN.md
+Stopped at: Completed quick/2-research-the-canvas-api-and-determine-wh/2-PLAN.md
 Resume file: None
