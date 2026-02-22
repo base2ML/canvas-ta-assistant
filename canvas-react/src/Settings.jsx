@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Save, CheckCircle, XCircle, Clock, Settings as SettingsIcon } from 'lucide-react';
 import { apiFetch } from './api';
-import { formatDate } from './utils/dates';
+import { formatDate, setTimezone } from './utils/dates';
 
 const Settings = () => {
     const [settings, setSettings] = useState({
@@ -31,6 +31,7 @@ const Settings = () => {
             setSettings(data);
             setManualCourseId(data.course_id || '');
             setTimezoneState(data.timezone || '');
+            setTimezone(data.timezone || null);
         } catch (err) {
             console.error('Error loading settings:', err);
             setMessage({ type: 'error', text: 'Failed to load settings' });
@@ -76,7 +77,7 @@ const Settings = () => {
                 method: 'PUT',
                 body: JSON.stringify({
                     course_id: manualCourseId.trim(),
-                    timezone: timezone || null,
+                    timezone: timezone,
                 }),
             });
             setMessage({ type: 'success', text: 'Settings saved successfully' });
