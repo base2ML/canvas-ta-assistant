@@ -48,11 +48,14 @@ async def lifespan(_app: FastAPI):
     logger.info("Starting Canvas TA Dashboard...")
     db.init_db()
 
-    # Run startup sync if course is configured
-    try:
-        canvas_sync.sync_on_startup()
-    except Exception as e:
-        logger.warning(f"Startup sync skipped or failed: {e}")
+    # Run startup sync in background so the server can accept health checks immediately
+    async def _run_startup_sync() -> None:
+        try:
+            await asyncio.to_thread(canvas_sync.sync_on_startup)
+        except Exception as e:
+            logger.warning(f"Startup sync failed: {e}")
+
+    asyncio.create_task(_run_startup_sync())
 
     yield
 
