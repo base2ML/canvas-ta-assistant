@@ -557,10 +557,7 @@ async def update_settings(settings: SettingsUpdateRequest) -> dict[str, Any]:
         )
 
     if settings.timezone is not None:
-        if settings.timezone == "":
-            db.set_setting("timezone", "")
-        else:
-            db.set_setting("timezone", settings.timezone)
+        db.set_setting("timezone", settings.timezone)
         updated_fields.append("timezone")
         logger.info(f"Timezone updated to: {settings.timezone!r}")
 

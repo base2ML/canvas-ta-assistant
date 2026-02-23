@@ -66,19 +66,15 @@ const Settings = () => {
 
     // Save settings
     const saveSettings = async () => {
-        if (!manualCourseId.trim()) {
-            setMessage({ type: 'error', text: 'Please enter a course ID' });
-            return;
-        }
-
         setSaving(true);
         try {
+            const body = { timezone: timezone };
+            if (manualCourseId.trim()) {
+                body.course_id = manualCourseId.trim();
+            }
             await apiFetch('/api/settings', {
                 method: 'PUT',
-                body: JSON.stringify({
-                    course_id: manualCourseId.trim(),
-                    timezone: timezone,
-                }),
+                body: JSON.stringify(body),
             });
             setMessage({ type: 'success', text: 'Settings saved successfully' });
             loadSettings();
@@ -315,7 +311,7 @@ const Settings = () => {
                 <div className="flex gap-3">
                     <button
                         onClick={saveSettings}
-                        disabled={saving || !manualCourseId.trim()}
+                        disabled={saving}
                         className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
                     >
                         {saving ? (
