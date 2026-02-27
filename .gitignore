@@ -240,3 +240,10 @@ claudedocs/
 users.json
 mock_canvas_data.json
 .ruff_cache/
+
+# =============================================================================
+# GSD Planning
+# =============================================================================
+# Keep planning docs local-only (not committed to version control)
+.planning/
+docs/plans/
