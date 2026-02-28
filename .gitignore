@@ -144,6 +144,7 @@ dist-ssr/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.test
 # Note: .env.example is NOT ignored - it should be committed as a template
 
 # Canvas API credentials (if stored in files)
@@ -202,8 +203,7 @@ test-results.xml
 .playwright-mcp/
 
 # Modern Development Tools
-# UV Package Manager
-uv.lock
+# UV Package Manager (lockfile should be committed for reproducible builds)
 
 # Jupyter Notebooks
 .ipynb_checkpoints/
@@ -219,36 +219,31 @@ dmypy.json
 
 # FastAPI specific
 .fastapi/
-.github/AWS_DEPLOYMENT_SETUP.md
 
 # =============================================================================
-# AWS Lambda & Terraform Build Artifacts
+# Local Data Storage
 # =============================================================================
-# Lambda deployment packages (auto-generated)
-lambda-package/
-lambda-packages/
-lambda-linux-package/
-lambda-pkg/
-lambda-deployment.zip
-lambda-enhanced.zip
-lambda-fixed.zip
-lambda-list-fix.zip
-lambda-updated.zip
-canvas-sync.zip
+# SQLite database and local data
+data/
+!data/.gitkeep
 
-# Terraform build artifacts
-terraform-serverless/
-terraform/.terraform/
-terraform/.terraform.lock.hcl
-*.tfstate
-*.tfstate.backup
+# =============================================================================
+# Docker
+# =============================================================================
+# Docker-compose override files
+docker-compose.override.yml
 
-# Temporary CloudFront config
-cf-config-*.json
-
-
-
-lambda-build/boto3/data/cloudformation/*
+# =============================================================================
+# Miscellaneous
+# =============================================================================
 claudedocs/
 users.json
 mock_canvas_data.json
+.ruff_cache/
+
+# =============================================================================
+# GSD Planning
+# =============================================================================
+# Keep planning docs local-only (not committed to version control)
+.planning/
+docs/plans/

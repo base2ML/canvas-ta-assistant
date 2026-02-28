@@ -1,9 +1,6 @@
 # Load context from Agents.MD
 @docs/AGENTS.md
 
-# Authentication Context
-@docs/AUTHENTICATION.md
-
 # Architecture Context
 @docs/ARCHITECTURE.md
 

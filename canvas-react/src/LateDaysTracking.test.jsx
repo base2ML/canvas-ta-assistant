@@ -5,14 +5,13 @@ import { BrowserRouter } from 'react-router-dom';
 
 describe('LateDaysTracking', () => {
     const mockCourses = [
-        { id: '1', name: 'Test Course', course_code: 'TEST101' }
+        { id: '20960000000447574', name: 'Sandbox Course', course_code: 'CS101' }
     ];
 
     it('renders without crashing and shows course name', () => {
         render(
             <BrowserRouter>
                 <LateDaysTracking
-                    backendUrl="http://localhost:8000"
                     courses={mockCourses}
                     onLoadCourses={vi.fn()}
                 />
@@ -28,7 +27,6 @@ describe('LateDaysTracking', () => {
         render(
             <BrowserRouter>
                 <LateDaysTracking
-                    backendUrl="http://localhost:8000"
                     courses={[]}
                     onLoadCourses={vi.fn()}
                 />

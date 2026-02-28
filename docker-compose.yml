@@ -1,0 +1,37 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ta-dashboard-backend
+    expose:
+      - "8000"
+    environment:
+      - CANVAS_API_URL=${CANVAS_API_URL:?CANVAS_API_URL is required}
+      - CANVAS_API_TOKEN=${CANVAS_API_TOKEN:?CANVAS_API_TOKEN is required}
+      - CANVAS_COURSE_ID=${CANVAS_COURSE_ID:-}
+      - ENVIRONMENT=local
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 240s
+
+  frontend:
+    build:
+      context: ./canvas-react
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_ENDPOINT=
+    container_name: ta-dashboard-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

@@ -1,211 +1,257 @@
-# Canvas TA Assistant - Serverless AWS Architecture Design
+# Canvas TA Dashboard - Local Docker Architecture
 
 ## Executive Summary
 
-**Objective**: Deploy Canvas TA Assistant with lightweight, affordable serverless microservices architecture on AWS with automated CI/CD from GitHub.
+**Objective**: Deploy Canvas TA Dashboard as a local-only application using Docker Compose for single-user use.
 
-**Key Requirements**:
-- Serverless-first architecture for cost optimization
-- Automated deployment from Git repository
-- Single-command deployment capability
-- Production-grade security and scalability
-- Minimal operational overhead
+**Key Features**:
+
+- Single-command deployment via Docker Compose
+- SQLite database for local data persistence
+- No cloud dependencies or authentication
+- Canvas data sync on startup and manual refresh
+- Settings UI for course configuration
 
 ## Architecture Overview
 
 ### Design Principles
-- **Serverless-First**: Lambda, API Gateway, S3 instead of ECS/EC2
-- **Event-Driven**: Decoupled microservices
-- **Cost-Optimized**: Pay-per-use pricing model (~$15-25/month)
-- **Infrastructure-as-Code**: 100% Terraform-managed
-- **GitOps**: Automated deployments via scripts and CI/CD
+
+- **Local-First**: All data stored locally in SQLite
+- **Simple Deployment**: Single `docker-compose up` command
+- **No Authentication**: Single-user local deployment
+- **Docker-Based**: Containerized services for consistency
 
 ## System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         GitHub Repository                        │
-│                  (base2ML/canvas-ta-assistant)                   │
-└──────────────────┬──────────────────────────────────────────────┘
-                   │ Git Push Trigger
-                   ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Deployment Scripts                          │
-│  • package-lambda-api.sh • deploy-frontend.sh                   │
-│  • Terraform Apply                                              │
-└──────────────────┬──────────────────────────────────────────────┘
-                   │ Deploy
-                   ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         AWS Cloud                                │
+│                      User's Machine                              │
 │                                                                  │
-│  ┌────────────────────────────────────────────────────────┐    │
-│  │              CloudFront CDN (Frontend)                  │    │
-│  │  • React SPA delivery • Edge caching • HTTPS           │    │
-│  └──────────────────┬─────────────────────────────────────┘    │
-│                     │                                            │
-│  ┌────────────────────────────────────────────────────────┐    │
-│  │              S3 Bucket (Static Assets)                  │    │
-│  │  • React build artifacts • Versioned deployments       │    │
-│  └─────────────────────────────────────────────────────────┘    │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                  Docker Compose                             │ │
+│  │                                                             │ │
+│  │  ┌─────────────────────┐    ┌─────────────────────────┐   │ │
+│  │  │   Frontend (Nginx)  │    │   Backend (FastAPI)     │   │ │
+│  │  │   Port 3000         │───▶│   Port 8000             │   │ │
+│  │  │                     │    │                         │   │ │
+│  │  │  • React SPA        │    │  • REST API             │   │ │
+│  │  │  • Reverse Proxy    │    │  • Canvas Sync          │   │ │
+│  │  │  • Static Assets    │    │  • SQLite Access        │   │ │
+│  │  └─────────────────────┘    └───────────┬─────────────┘   │ │
+│  │                                          │                  │ │
+│  │                              ┌───────────▼─────────────┐   │ │
+│  │                              │   SQLite Database       │   │ │
+│  │                              │   ./data/canvas.db      │   │ │
+│  │                              │                         │   │ │
+│  │                              │  • Settings             │   │ │
+│  │                              │  • Assignments          │   │ │
+│  │                              │  • Submissions          │   │ │
+│  │                              │  • Users & Groups       │   │ │
+│  │                              └─────────────────────────┘   │ │
+│  └────────────────────────────────────────────────────────────┘ │
 │                                                                  │
-│  ┌────────────────────────────────────────────────────────┐    │
-│  │              API Gateway (HTTP API)                     │    │
-│  │  • HTTPS endpoints • Rate limiting • CORS              │    │
-│  └──────────────────┬─────────────────────────────────────┘    │
-│                     │                                            │
-│  ┌────────────────────────────────────────────────────────┐    │
-│  │         Lambda Functions (Microservices)                │    │
-│  │  ┌──────────────────────────────────────────────┐      │    │
-│  │  │ API Handler Lambda (FastAPI + Mangum)        │      │    │
-│  │  │ • Auth • Course data • Assignments           │      │    │
-│  │  └──────────────────────────────────────────────┘      │    │
-│  │  ┌──────────────────────────────────────────────┐      │    │
-│  │  │ Canvas Data Fetcher Lambda                   │      │    │
-│  │  │ • Scheduled Canvas API sync                  │      │    │
-│  │  └──────────────────────────────────────────────┘      │    │
-│  └─────────────────┬────────────────────┬──────────────────┘    │
-│                    │                    │                        │
-│  ┌────────────────────────────┐  ┌────────────────────────┐    │
-│  │   S3 Bucket (Canvas Data)  │  │      Secrets Manager   │    │
-│  │  • JSON data storage       │  │  • Canvas API Token    │    │
-│  │  • Lifecycle policies      │  │  • JWT Secret          │    │
-│  └────────────────────────────┘  └────────────────────────┘    │
+│                              │                                   │
+│                              ▼                                   │
+│                    ┌─────────────────┐                          │
+│                    │   Canvas API    │                          │
+│                    │   (External)    │                          │
+│                    └─────────────────┘                          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Microservices Architecture
+## Service Components
 
-### 1. Frontend Service (Serverless Static Hosting)
-**Technology**: React 19 SPA + CloudFront + S3
-**Purpose**: User interface delivery
+### 1. Frontend Service (Nginx + React)
 
-**Components**:
-- S3 bucket for static hosting (versioned)
-- CloudFront distribution with HTTPS and OAC (Origin Access Control)
-- Global CDN for low latency
+**Technology**: React SPA served by Nginx
 
-**Cost**: ~$1-5/month (based on traffic)
+**Container**: `ta-dashboard-frontend`
 
-### 2. API Service (Lambda + API Gateway)
-**Technology**: Python 3.11 Lambda functions + API Gateway HTTP API
-**Purpose**: Backend API endpoints
+**Port**: 3000
 
-**Endpoints**:
-- `GET /api/health` - Health check
-- `POST /api/auth/login` - JWT Authentication
-- `GET /api/canvas/data/{course_id}` - Get Canvas data
+**Responsibilities**:
 
-**Lambda Configuration**:
-- Runtime: Python 3.11
-- Memory: 1024 MB
-- Timeout: 30 seconds
-- Adapter: Mangum (ASGI adapter)
+- Serve React static assets
+- Reverse proxy API requests to backend
+- SPA routing (fallback to index.html)
 
-**Cost**: ~$5-10/month (1M requests free tier, then $0.20/1M)
+**Nginx Configuration**:
 
-### 3. Canvas Data Sync Service (Lambda)
-**Technology**: Python 3.11 Lambda
-**Purpose**: Periodic Canvas API data synchronization
+- `/` → Static React files
+- `/api/*` → Proxy to backend:8000
+- `/health` → Proxy to backend:8000
 
-**Functionality**:
-- Fetch Canvas data via CanvasAPI library
-- Transform and store in S3 (JSON format)
-- Error handling and retry logic
+### 2. Backend Service (FastAPI + SQLite)
 
-**Cost**: ~$1-3/month (based on execution time)
+**Technology**: Python 3.11 + FastAPI + SQLite
 
-### 4. Data Storage Services
+**Container**: `ta-dashboard-backend`
 
-#### S3 Buckets
-1. **Frontend Assets Bucket**
-   - Static React build files
-   - CloudFront origin
+**Port**: 8000
 
-2. **Canvas Data Bucket**
-   - JSON data from Canvas API
-   - Versioning enabled
-   - Lifecycle policies for cost optimization
+**Responsibilities**:
 
-**Cost**: ~$1-3/month
+- REST API endpoints
+- Canvas API integration
+- SQLite database operations
+- Data synchronization
 
-## Infrastructure-as-Code Structure
+**Key Modules**:
+
+- `main.py` - FastAPI application
+- `database.py` - SQLite schema and operations
+- `canvas_sync.py` - Canvas data fetching
+
+### 3. Data Storage (SQLite)
+
+**Location**: `./data/canvas.db`
+
+**Persistence**: Docker volume mount
+
+**Tables**:
+
+| Table | Purpose |
+|-------|---------|
+| `settings` | Application configuration |
+| `assignments` | Canvas assignments |
+| `users` | Enrolled students |
+| `submissions` | Assignment submissions |
+| `groups` | TA grading groups |
+| `group_members` | Group membership |
+| `sync_history` | Sync operation history |
+
+## Data Flow
+
+### Startup Sync
 
 ```
-terraform/
-├── main.tf                    # Root module orchestration
-├── variables.tf               # Input variables
-├── outputs.tf                 # Output values
-├── modules/
-│   ├── frontend/              # CloudFront + S3 for React
-│   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   └── outputs.tf
-│   ├── api-gateway/           # API Gateway + Lambda integration
-│   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   └── outputs.tf
-│   ├── lambda-api/            # Backend Lambda function
-│   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   └── outputs.tf
-│   └── s3/                    # Data storage buckets
-│       ├── main.tf
-│       ├── variables.tf
-│       └── outputs.tf
+1. Docker Compose starts services
+2. Backend initializes SQLite database
+3. If course ID configured:
+   a. Backend connects to Canvas API
+   b. Fetches assignments, users, submissions, groups
+   c. Stores data in SQLite
+4. Frontend becomes available
 ```
 
-## Security Architecture
+### Manual Sync
 
-### Network Security
-- **API Gateway**: Throttling and rate limiting
-- **CloudFront**: HTTPS only, OAC for S3 security
-- **CORS**: Strict origin validation in production
+```
+1. User clicks "Refresh Data" or "Sync Now"
+2. Frontend calls POST /api/canvas/sync
+3. Backend fetches fresh data from Canvas API
+4. Backend updates SQLite database
+5. Frontend reloads data from backend
+```
 
-### Authentication & Authorization
-- **JWT Authentication**: Stateless, secure token-based auth
-- **IAM Roles**: Least-privilege principle for all services
+### Data Query
 
-### Data Security
-- **Encryption at Rest**: S3 (SSE-S3), Secrets Manager
-- **Encryption in Transit**: TLS 1.2+ everywhere
-- **Secrets Management**: Environment variables injected securely
+```
+1. Frontend requests data (e.g., GET /api/canvas/assignments/{course_id})
+2. Backend queries SQLite database
+3. Backend returns JSON response
+4. Frontend renders data
+```
 
-## Cost Optimization Strategies
+## API Endpoints
 
-### 1. Serverless-First Approach
-- **No idle costs**: Pay only for actual usage
-- **Auto-scaling**: Handles traffic spikes without over-provisioning
-- **Free tiers**: Leverage AWS Free Tier (Lambda, API Gateway, S3)
+See [AGENTS.md](AGENTS.md#backend-structure) for full endpoint documentation.
 
-### 2. Resource Right-Sizing
-- **Lambda Memory**: Optimized for performance/cost ratio
-- **S3 Lifecycle**: Move old data to cheaper storage classes
+## Configuration
 
-## Deployment Process
+### Environment Variables
 
-### 1. Package Backend
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `CANVAS_API_URL` | Yes | Canvas instance URL |
+| `CANVAS_API_TOKEN` | Yes | Canvas API token |
+| `CANVAS_COURSE_ID` | No | Default course ID |
+| `ENVIRONMENT` | No | Environment name (default: local) |
+
+### Docker Compose Configuration
+
+```yaml
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - CANVAS_API_URL=${CANVAS_API_URL}
+      - CANVAS_API_TOKEN=${CANVAS_API_TOKEN}
+      - CANVAS_COURSE_ID=${CANVAS_COURSE_ID:-}
+    volumes:
+      - ./data:/app/data
+
+  frontend:
+    build: ./canvas-react
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+```
+
+## Deployment
+
+### Quick Start
+
 ```bash
-./scripts/package-lambda-api.sh
+# 1. Configure environment
+cp .env.example .env
+# Edit .env with Canvas credentials
+
+# 2. Build and run
+docker-compose up --build
+
+# 3. Access dashboard
+open http://localhost:3000
 ```
 
-### 2. Deploy Infrastructure
+### Docker Commands
+
 ```bash
-cd terraform
-terraform apply
+# Start services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+
+# Rebuild
+docker-compose up -d --build
+
+# Reset database
+docker-compose down -v
 ```
 
-### 3. Deploy Frontend
-```bash
-./scripts/deploy-frontend.sh
-```
+## Security Considerations
 
-## Conclusion
+### Local Deployment
 
-This serverless architecture provides:
-- **70-80% cost reduction** compared to ECS Fargate
-- **Simplified operations** (no Docker management, no cluster patching)
-- **Production-grade security** with JWT and AWS IAM
-- **Infinite scalability** with pay-per-use pricing
+- No authentication required (single-user)
+- Data stored locally on user's machine
+- Canvas API token stored in `.env` file
+- SQLite database not encrypted
 
-The design balances affordability, scalability, and maintainability while maintaining professional quality standards for educational technology applications.
+### Best Practices
+
+- Never commit `.env` files
+- Regenerate Canvas tokens periodically
+- Handle student data per FERPA guidelines
+- Keep `data/` directory in `.gitignore`
+
+## Comparison with Previous AWS Architecture
+
+| Aspect | Previous (AWS) | Current (Local Docker) |
+|--------|----------------|------------------------|
+| Deployment | Lambda + CloudFront | Docker Compose |
+| Database | S3 JSON files | SQLite |
+| Authentication | JWT + bcrypt | None (single-user) |
+| Data Sync | Scheduled Lambda | On-demand + startup |
+| Cost | ~$15-25/month | Free (local) |
+| Scalability | Auto-scaling | Single user |
+| Dependencies | AWS services | Docker only |

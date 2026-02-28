@@ -11,7 +11,6 @@
     "test": "vitest"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.1.12",
     "lucide-react": "^0.539.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
@@ -19,6 +18,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
+    "@tailwindcss/vite": "^4.1.12",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",

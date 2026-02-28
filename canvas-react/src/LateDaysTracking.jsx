@@ -1,7 +1,10 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { RefreshCw, Calendar, User, Clock, ArrowLeft, FileText, ChevronUp, ChevronDown, MessageCircle } from 'lucide-react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { RefreshCw, Calendar, FileText, ChevronUp, ChevronDown, User, Filter, MessageSquare, Eye, AlertTriangle, X, Send } from 'lucide-react';
+import { apiFetch } from './api.js';
+import { useSSEPost } from './hooks/useSSEPost.js';
+import { formatDate, formatDateOnly, formatTime } from './utils/dates';
 
-const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerReviews, onLoadCourses, apiToken }) => {
+const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId }) => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -11,38 +14,68 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
   const [selectedTAGroup, setSelectedTAGroup] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'student_name', direction: 'asc' });
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [selectedAssignments, setSelectedAssignments] = useState([]);
+  const [showAssignmentFilter, setShowAssignmentFilter] = useState(false);
 
-  // Use the first available course (since this tool is for single course use)
-  const currentCourse = courses && courses.length > 0 ? courses[0] : null;
+  // Posting panel state
+  const [showPostingPanel, setShowPostingPanel] = useState(false);
+  const [postAssignmentId, setPostAssignmentId] = useState('');
+  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  const [overrideComment, setOverrideComment] = useState('');
+  const [isDryRun, setIsDryRun] = useState(false);
+
+  // Settings state (for SAFE-04 production warning)
+  const [appSettings, setAppSettings] = useState(null);
+
+  // Preview modal state
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewData, setPreviewData] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+
+  // Confirmation dialog state
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+
+  // Posting history state
+  const [postingHistory, setPostingHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  // Progress state
+  const [posting, setPosting] = useState(false);
+  const [postProgress, setPostProgress] = useState({ current: 0, total: 0, skipped: 0 });
+  const [postResult, setPostResult] = useState(null);
+  const [postError, setPostError] = useState('');
+
+  // Use the configured active course, falling back to courses[0]
+  const currentCourse = courses && courses.length > 0
+    ? (activeCourseId ? (courses.find(c => String(c.id) === String(activeCourseId)) || courses[0]) : courses[0])
+    : null;
 
   const fetchLateDaysData = useCallback(async (courseId) => {
     try {
-      // Get JWT token from prop or localStorage
-      const token = apiToken || localStorage.getItem('access_token');
-      if (!token) {
-        throw new Error('Not authenticated. Please log in.');
-      }
-
-      // Use the new dashboard endpoint with JWT authentication
-      const response = await fetch(`${backendUrl}/api/dashboard/late-days/${courseId}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        }
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to fetch late days data');
-      }
-
+      const data = await apiFetch(`/api/dashboard/late-days/${courseId}`);
       return data;
     } catch (err) {
       throw new Error(`Error fetching late days data: ${err.message}`);
     }
-  }, [backendUrl, apiToken]);
+  }, []);
+
+  const loadPostingHistory = useCallback(async () => {
+    if (!currentCourse) return;
+    setHistoryLoading(true);
+    try {
+      const params = new URLSearchParams({ course_id: String(currentCourse.id) });
+      if (postAssignmentId) {
+        params.append('assignment_id', String(postAssignmentId));
+      }
+      const data = await apiFetch(`/api/comments/history?${params.toString()}`);
+      setPostingHistory(data.history || []);
+    } catch (err) {
+      console.error('Error loading posting history:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [currentCourse, postAssignmentId]);
 
   const loadCourseData = useCallback(async () => {
     if (!currentCourse) return;
@@ -56,7 +89,12 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
     try {
       const data = await fetchLateDaysData(currentCourse.id);
       setLateDaysData(data.students || []);
-      setAssignments(data.assignments || []);
+      const assignmentList = data.assignments || [];
+      setAssignments(assignmentList);
+
+      // Initialize selectedAssignments with all assignment IDs
+      setSelectedAssignments(assignmentList.map(a => a.id));
+
       setCourseInfo(data.course_info);
 
       // Set last updated from API response timestamp
@@ -74,6 +112,9 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
     }
   }, [currentCourse, fetchLateDaysData]);
 
+  // Hook initialization
+  const { startPosting, cancel: cancelPosting } = useSSEPost();
+
   // Load data automatically when component mounts and currentCourse is available
   useEffect(() => {
     if (currentCourse) {
@@ -84,9 +125,141 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
     }
   }, [currentCourse, loadCourseData, courses, onLoadCourses]);
 
+  // Settings fetch (for SAFE-04 production warning)
+  useEffect(() => {
+    apiFetch('/api/settings')
+      .then(data => setAppSettings({ test_mode: data.test_mode, sandbox_course_id: data.sandbox_course_id }))
+      .catch(() => {}); // Silently fail — settings are best-effort for safety warning
+  }, []);
+
+  // Load posting history when posting panel is open and assignment or course changes
+  useEffect(() => {
+    if (showPostingPanel) {
+      loadPostingHistory();
+    }
+  }, [showPostingPanel, loadPostingHistory]);
+
+  // Cleanup: cancel any in-progress posting on unmount
+  useEffect(() => {
+    return () => cancelPosting();
+  }, [cancelPosting]);
+
+  // Auto-select students with late days when assignment changes
+  useEffect(() => {
+    if (postAssignmentId) {
+      setSelectedStudentIds(sortedData.filter(s => s.total_late_days > 0).map(s => parseInt(s.student_id, 10)));
+    }
+  }, [postAssignmentId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Preview handler
+  const handlePreview = async () => {
+    if (!postAssignmentId || selectedStudentIds.length === 0) return;
+    setPreviewLoading(true);
+    setPreviewError('');
+    try {
+      const data = await apiFetch(`/api/comments/preview/${postAssignmentId}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          course_id: String(currentCourse.id),
+          template_type: 'penalty',
+          user_ids: selectedStudentIds,
+        }),
+      });
+      setPreviewData(data);
+      setShowPreviewModal(true);
+    } catch (err) {
+      setPreviewError(err.message);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Post handler
+  const handlePost = async () => {
+    setShowConfirmDialog(false);
+    setShowPreviewModal(false);
+    setPosting(true);
+    setPostResult(null);
+    setPostError('');
+    setPostProgress({ current: 0, total: 0, skipped: 0 });
+    try {
+      await startPosting(postAssignmentId, {
+        course_id: String(currentCourse.id),
+        template_type: 'penalty',
+        user_ids: selectedStudentIds,
+        override_comment: overrideComment || null,
+        dry_run: isDryRun,
+      }, {
+        onStarted: ({ total }) => setPostProgress(prev => ({ ...prev, total })),
+        onProgress: ({ current, total }) => setPostProgress(prev => ({ ...prev, current, total })),
+        onPosted: () => {},
+        onSkipped: () => setPostProgress(prev => ({ ...prev, skipped: prev.skipped + 1 })),
+        onError: () => {},
+        onDry_run: () => setPostProgress(prev => ({ ...prev, current: prev.current + 1 })),
+        onComplete: (data) => { setPostResult(data); loadPostingHistory(); },
+      });
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        setPostError(err.message);
+      }
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  // Student toggle handler for posting panel
+  const handlePostStudentToggle = (studentId) => {
+    const id = parseInt(studentId, 10);
+    setSelectedStudentIds(prev =>
+      prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]
+    );
+  };
+
+  // Compute isProductionCourse for SAFE-04 warning
+  const isProductionCourse = appSettings && currentCourse &&
+    String(currentCourse.id) !== String(appSettings.sandbox_course_id);
+
   const handleTAGroupChange = (taGroup) => {
     setSelectedTAGroup(taGroup);
   };
+
+  // Handle assignment selection
+  const handleAssignmentToggle = (assignmentId) => {
+    setSelectedAssignments(prev => {
+      if (prev.includes(assignmentId)) {
+        return prev.filter(id => id !== assignmentId);
+      } else {
+        return [...prev, assignmentId];
+      }
+    });
+  };
+
+  const handleSelectAllAssignments = () => {
+    setSelectedAssignments(assignments.map(a => a.id));
+  };
+
+  const handleDeselectAllAssignments = () => {
+    setSelectedAssignments([]);
+  };
+
+  // Sort assignments by due date (earliest to latest)
+  // Assignments without due dates appear at the end
+  const sortedAssignments = React.useMemo(() => {
+    return [...assignments].sort((a, b) => {
+      // Handle null/undefined due dates - put them at the end
+      if (!a.due_at && !b.due_at) return 0;
+      if (!a.due_at) return 1;
+      if (!b.due_at) return -1;
+
+      // Sort by due date
+      return new Date(a.due_at) - new Date(b.due_at);
+    });
+  }, [assignments]);
+
+  // Filter assignments based on selection
+  const displayedAssignments = sortedAssignments.filter(
+    assignment => selectedAssignments.includes(assignment.id)
+  );
 
   // Filter students by TA group if a filter is selected
   const filteredLateDaysData = selectedTAGroup
@@ -161,6 +334,16 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
     });
   }, [filteredLateDaysData, sortConfig]);
 
+  // Build set of user IDs that already have posted comments for the selected assignment
+  const postedUserIds = useMemo(() => {
+    if (!postAssignmentId || !postingHistory.length) return new Set();
+    return new Set(
+      postingHistory
+        .filter(h => String(h.assignment_id) === String(postAssignmentId) && h.status === 'posted')
+        .map(h => h.user_id)
+    );
+  }, [postingHistory, postAssignmentId]);
+
   // Sort indicator component
   const SortIndicator = ({ column }) => {
     if (sortConfig.key !== column) {
@@ -195,40 +378,14 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
   };
 
   return (
+    <>
     <div className="max-w-full mx-auto p-6">
       <div className="bg-white rounded-lg shadow-lg">
         {/* Header */}
         <div className="border-b border-gray-200 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <div className="flex items-center space-x-4">
-                <button
-                  onClick={onBack}
-                  className="text-purple-500 hover:text-purple-600 flex items-center"
-                >
-                  <ArrowLeft className="h-4 w-4 mr-1" />
-                  Back to Assignment View
-                </button>
-                {onTAGrading && (
-                  <button
-                    onClick={onTAGrading}
-                    className="text-purple-500 hover:text-purple-600 flex items-center"
-                  >
-                    <User className="h-4 w-4 mr-1" />
-                    TA Grading
-                  </button>
-                )}
-                {onPeerReviews && (
-                  <button
-                    onClick={onPeerReviews}
-                    className="text-green-500 hover:text-green-600 flex items-center"
-                  >
-                    <MessageCircle className="h-4 w-4 mr-1" />
-                    Peer Reviews
-                  </button>
-                )}
-              </div>
-              <h1 className="text-2xl font-bold text-gray-900 mt-2">Late Days Tracking</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Late Days Tracking</h1>
               <p className="text-gray-600 mt-1">Monitor student late day usage across assignments</p>
               {courseInfo && (
                 <div className="flex items-center mt-2 text-sm text-gray-500">
@@ -243,12 +400,18 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
               )}
               {lastUpdated && (
                 <div className="flex items-center mt-1 text-xs text-gray-500">
-                  🕒 Cached: {lastUpdated.toLocaleTimeString()}
+                  🕒 Cached: {formatTime(lastUpdated)}
                 </div>
               )}
             </div>
             <div className="flex space-x-2">
-              {/* Buttons removed as data loads automatically */}
+              <button
+                onClick={() => setShowPostingPanel(!showPostingPanel)}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 flex items-center gap-2 text-sm"
+              >
+                <MessageSquare className="w-4 h-4" />
+                Post Comments
+              </button>
             </div>
           </div>
         </div>
@@ -276,6 +439,282 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
                 })}
               </select>
             </div>
+          </div>
+        )}
+
+        {/* Assignment Filter */}
+        {currentCourse && assignments.length > 0 && (
+          <div className="p-6 border-b border-gray-200">
+            <button
+              onClick={() => setShowAssignmentFilter(!showAssignmentFilter)}
+              className="flex items-center space-x-2 text-sm font-medium text-gray-700 hover:text-blue-600 transition-colors"
+            >
+              <Filter className="h-4 w-4" />
+              <span>
+                Select Assignments ({selectedAssignments.length} of {assignments.length} shown)
+              </span>
+              <ChevronDown className={`h-4 w-4 transition-transform ${showAssignmentFilter ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showAssignmentFilter && (
+              <div className="mt-4">
+                <div className="flex items-center space-x-3 mb-4">
+                  <button
+                    onClick={handleSelectAllAssignments}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Select All
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    onClick={handleDeselectAllAssignments}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Deselect All
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto">
+                  {sortedAssignments.map(assignment => (
+                    <label
+                      key={assignment.id}
+                      className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedAssignments.includes(assignment.id)}
+                        onChange={() => handleAssignmentToggle(assignment.id)}
+                        className="mt-1 h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">
+                          {assignment.name}
+                        </div>
+                        {assignment.due_at && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            Due: {formatDateOnly(assignment.due_at)}
+                          </div>
+                        )}
+                        {!assignment.due_at && (
+                          <div className="text-xs text-gray-400 mt-1">
+                            No due date
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Posting Panel */}
+        {showPostingPanel && currentCourse && (
+          <div className="p-6 border-b border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Post Late Day Comments</h3>
+
+            {/* Production warning (SAFE-04) */}
+            {isProductionCourse && (
+              <div className="bg-yellow-50 border border-yellow-300 rounded p-3 mb-4 text-yellow-800 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                <span>Warning: You are posting to a live production course. Comments will appear on real student submissions.</span>
+              </div>
+            )}
+
+            {/* Test mode info */}
+            {appSettings?.test_mode && (
+              <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-4 text-blue-800 flex items-center gap-2">
+                <span className="font-medium">Test mode is active.</span> Comments will be validated but not posted to Canvas.
+              </div>
+            )}
+
+            {/* Assignment dropdown */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Assignment</label>
+              <select
+                value={postAssignmentId}
+                onChange={(e) => setPostAssignmentId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">Select an assignment...</option>
+                {sortedAssignments.map(a => (
+                  <option key={a.id} value={String(a.id)}>
+                    {a.name}{a.due_at ? ` (Due: ${formatDateOnly(a.due_at)})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Student selection summary */}
+            <div className="mb-2 flex items-center gap-3 text-sm text-gray-600">
+              <span>{selectedStudentIds.length} of {sortedData.length} students selected (those with late days)</span>
+              <button
+                onClick={() => setSelectedStudentIds(sortedData.map(s => parseInt(s.student_id, 10)))}
+                className="text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Select All
+              </button>
+              <span className="text-gray-300">|</span>
+              <button
+                onClick={() => setSelectedStudentIds([])}
+                className="text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Deselect All
+              </button>
+            </div>
+
+            {/* Student list */}
+            <div className="mb-4 max-h-48 overflow-y-auto border border-gray-200 rounded-md p-2">
+              {sortedData.map(student => (
+                <label key={student.student_id} className="flex items-center gap-2 p-1 hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedStudentIds.includes(parseInt(student.student_id, 10))}
+                    onChange={() => handlePostStudentToggle(student.student_id)}
+                    className="h-4 w-4 text-indigo-600 rounded focus:ring-indigo-500"
+                  />
+                  <span className="text-sm text-gray-800">{student.student_name}</span>
+                  <span className="text-xs text-gray-500">({student.total_late_days} late days)</span>
+                  {postedUserIds.has(parseInt(student.student_id, 10)) && (
+                    <span className="ml-2 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                      Already posted
+                    </span>
+                  )}
+                </label>
+              ))}
+            </div>
+
+            {/* Override comment textarea (POST-08) */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Override Comment (optional)</label>
+              <p className="text-xs text-gray-500 mb-1">If provided, this replaces the template for all selected students.</p>
+              <textarea
+                rows={4}
+                value={overrideComment}
+                onChange={(e) => setOverrideComment(e.target.value)}
+                placeholder="Leave blank to use the default template..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
+              />
+            </div>
+
+            {/* Dry run checkbox */}
+            <div className="mb-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isDryRun}
+                  onChange={(e) => setIsDryRun(e.target.checked)}
+                  className="h-4 w-4 text-indigo-600 rounded focus:ring-indigo-500"
+                />
+                <span className="text-sm text-gray-700">Dry run (preview only, no Canvas API calls)</span>
+              </label>
+            </div>
+
+            {/* Preview button */}
+            <button
+              onClick={handlePreview}
+              disabled={!postAssignmentId || selectedStudentIds.length === 0 || previewLoading || posting}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+            >
+              {previewLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+              Preview Comments
+            </button>
+
+            {/* Preview error */}
+            {previewError && (
+              <p className="mt-2 text-sm text-red-600">{previewError}</p>
+            )}
+          </div>
+        )}
+
+        {/* Posting History Table (POST-09) */}
+        {showPostingPanel && postingHistory.length > 0 && (
+          <div className="p-6 border-b border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Posting History</h3>
+            {historyLoading && (
+              <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Loading history...</span>
+              </div>
+            )}
+            <div className="overflow-x-auto">
+              <table className="min-w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Student</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Comment</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Posted At</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {postingHistory.slice(0, 50).map((h, idx) => {
+                    const studentName = lateDaysData.find(s => parseInt(s.student_id, 10) === h.user_id)?.student_name || `User ${h.user_id}`;
+                    const commentPreview = h.comment_text && h.comment_text.length > 100
+                      ? h.comment_text.substring(0, 100) + '...'
+                      : h.comment_text || '';
+                    const statusColors = {
+                      posted: 'bg-green-100 text-green-800',
+                      failed: 'bg-red-100 text-red-800',
+                      skipped: 'bg-gray-100 text-gray-700',
+                      dry_run: 'bg-blue-100 text-blue-800',
+                    };
+                    const statusColor = statusColors[h.status] || 'bg-gray-100 text-gray-700';
+                    return (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{studentName}</td>
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-xs text-gray-700">{commentPreview}</span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${statusColor}`}>
+                            {h.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                          {h.posted_at ? formatDate(h.posted_at) : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {postingHistory.length > 50 && (
+              <p className="mt-2 text-xs text-gray-500">Showing most recent 50 entries.</p>
+            )}
+          </div>
+        )}
+
+        {/* Progress indicator (POST-07) */}
+        {posting && (
+          <div className="mx-6 my-4 flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+            <span className="text-blue-800 font-medium">
+              Posting {postProgress.current}/{postProgress.total} comments...
+              {postProgress.skipped > 0 && ` (${postProgress.skipped} skipped)`}
+            </span>
+            <button onClick={cancelPosting} className="ml-auto text-sm text-red-600 hover:text-red-800">
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {/* Post result summary */}
+        {postResult && !posting && (
+          <div className="mx-6 my-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <p className="font-medium text-green-800">
+              Posting complete: {postResult.successful} posted, {postResult.failed} failed, {postResult.skipped} skipped
+              {postResult.dry_run && ' (DRY RUN)'}
+            </p>
+          </div>
+        )}
+
+        {/* Post error banner */}
+        {postError && (
+          <div className="mx-6 my-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="font-medium text-red-800">Error: {postError}</p>
           </div>
         )}
 
@@ -359,7 +798,7 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
                 </div>
                 <div>
                   <span className="text-gray-500">Assignments:</span>
-                  <span className="ml-2 font-semibold">{assignments.length}</span>
+                  <span className="ml-2 font-semibold">{displayedAssignments.length}</span>
                 </div>
                 <div>
                   <span className="text-gray-500">On-Time Rate:</span>
@@ -386,7 +825,7 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
                         <SortIndicator column="student_name" />
                       </div>
                     </th>
-                    {assignments.map(assignment => (
+                    {displayedAssignments.map(assignment => (
                       <th
                         key={assignment.id}
                         onClick={() => handleSort(`assignment_${assignment.id}`)}
@@ -403,10 +842,7 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
                           </div>
                           {assignment.due_at && (
                             <div className="text-xs text-gray-500">
-                              Due: {new Date(assignment.due_at).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric'
-                              })}
+                              Due: {formatDateOnly(assignment.due_at)}
                             </div>
                           )}
                         </div>
@@ -438,7 +874,7 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
                           </div>
                         </div>
                       </td>
-                      {assignments.map(assignment => {
+                      {displayedAssignments.map(assignment => {
                         const lateDays = student.assignments[assignment.id] || 0;
                         return (
                           <td key={assignment.id} className="px-4 py-4 text-center">
@@ -506,6 +942,147 @@ const LateDaysTracking = ({ backendUrl, courses, onBack, onTAGrading, onPeerRevi
         )}
       </div>
     </div>
+
+    {/* Preview Modal (POST-03) */}
+    {showPreviewModal && previewData && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col">
+          {/* Modal header */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900">
+              Preview Comments for {previewData.assignment_name}
+            </h3>
+            <button onClick={() => setShowPreviewModal(false)} className="text-gray-400 hover:text-gray-600">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Modal body */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {/* Production warning in modal */}
+            {isProductionCourse && (
+              <div className="bg-yellow-50 border border-yellow-300 rounded p-3 mb-4 text-yellow-800 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                <span>Warning: You are posting to a live production course. Comments will appear on real student submissions.</span>
+              </div>
+            )}
+
+            {/* Preview table */}
+            <table className="min-w-full border border-gray-200 rounded-lg overflow-hidden">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Student</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Comment</th>
+                  <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {(previewData.previews || []).map((item, idx) => (
+                  <tr key={idx} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.user_name}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      <pre className="whitespace-pre-wrap font-mono text-xs bg-gray-50 p-2 rounded">{item.comment_text}</pre>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {item.already_posted && (
+                        <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full">Already posted</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Modal footer */}
+          <div className="p-4 border-t border-gray-200">
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Override Comment (optional)</label>
+              <textarea
+                rows={3}
+                value={overrideComment}
+                onChange={(e) => setOverrideComment(e.target.value)}
+                placeholder="Leave blank to use the default template..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
+              />
+            </div>
+            <div className="mb-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isDryRun}
+                  onChange={(e) => setIsDryRun(e.target.checked)}
+                  className="h-4 w-4 text-indigo-600 rounded"
+                />
+                <span className="text-sm text-gray-700">Dry run (preview only, no Canvas API calls)</span>
+              </label>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowPreviewModal(false)}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => setShowConfirmDialog(true)}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 flex items-center gap-2"
+              >
+                <Send className="w-4 h-4" />
+                Post Comments
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Confirmation Dialog (POST-04) */}
+    {showConfirmDialog && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+        <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Confirm Posting</h3>
+
+          <div className="space-y-2 mb-4 text-sm text-gray-700">
+            <div><span className="font-medium">Course:</span> {courseInfo?.name || currentCourse?.name}</div>
+            <div><span className="font-medium">Assignment:</span> {assignments.find(a => String(a.id) === String(postAssignmentId))?.name}</div>
+            <div>
+              <span className="font-medium">Students:</span> {selectedStudentIds.length - (previewData?.already_posted_count || 0)} new posts
+            </div>
+            <div>
+              <span className="font-medium">Mode:</span>{' '}
+              {isDryRun
+                ? <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs">Dry Run</span>
+                : <span className="px-2 py-0.5 bg-red-100 text-red-800 rounded-full text-xs font-bold">LIVE</span>
+              }
+            </div>
+          </div>
+
+          {isProductionCourse && !isDryRun && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-300 rounded text-red-800 text-sm">
+              This will post to a LIVE production course!
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => setShowConfirmDialog(false)}
+              className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handlePost}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 flex items-center gap-2"
+            >
+              <Send className="w-4 h-4" />
+              Confirm &amp; Post
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 

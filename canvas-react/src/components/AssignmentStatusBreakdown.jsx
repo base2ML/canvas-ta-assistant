@@ -1,19 +1,9 @@
 import React from 'react';
 import { CheckCircle, Clock, XCircle, ChevronDown, ChevronRight, Calendar, AlertTriangle, Eye, AlertCircleIcon } from 'lucide-react';
+import { formatDate as formatDateUtil } from '../utils/dates';
 
 const AssignmentStatusBreakdown = ({ assignmentStats, expandedAssignments, onToggleExpanded }) => {
   if (!assignmentStats || assignmentStats.length === 0) return null;
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'No due date';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
 
   return (
     <div className="bg-white shadow-sm rounded-lg p-6 mb-6">
@@ -60,7 +50,7 @@ const AssignmentStatusBreakdown = ({ assignmentStats, expandedAssignments, onTog
                             <div>
                               <h4 className="font-medium text-gray-900">{assignment.assignment_name}</h4>
                               <p className="text-sm text-gray-600">
-                                {assignment.graded_submissions}/{assignment.total_submissions} submissions graded
+                                {assignment.graded_submissions}/{assignment.actually_submitted} submissions graded
                               </p>
                             </div>
                             <button className="ml-2 p-1 hover:bg-gray-100 rounded">
@@ -88,7 +78,7 @@ const AssignmentStatusBreakdown = ({ assignmentStats, expandedAssignments, onTog
                           {assignment.due_at && (
                             <div className="flex items-center">
                               <Calendar className="h-4 w-4 mr-1" />
-                              Due: {formatDate(assignment.due_at)}
+                              Due: {formatDateUtil(assignment.due_at)}
                             </div>
                           )}
                         </div>
@@ -144,14 +134,22 @@ const AssignmentStatusBreakdown = ({ assignmentStats, expandedAssignments, onTog
                     </div>
 
                     <div className="text-right ml-4">
-                      <div
-                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${isCompleted
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-yellow-100 text-yellow-800'
-                          }`}
-                      >
-                        {isCompleted ? 'Complete' : `${assignment.ungraded_submissions} Pending`}
-                      </div>
+                      {isCompleted ? (
+                        <div className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          Complete
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          <div className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                            {assignment.pending_submissions} Pending
+                          </div>
+                          {assignment.not_submitted > 0 && (
+                            <div className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                              {assignment.not_submitted} Missing
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {assignment.html_url && (
                         <a
                           href={assignment.html_url}
@@ -210,7 +208,7 @@ const AssignmentStatusBreakdown = ({ assignmentStats, expandedAssignments, onTog
                                   {taStats.total_assigned}
                                 </td>
                                 <td className="px-4 py-3 text-sm text-gray-600">
-                                  {taStats.graded}/{taStats.total_assigned}
+                                  {taStats.graded}/{taStats.actually_submitted}
                                 </td>
                                 <td className="px-4 py-3 text-sm">
                                   <div className="flex items-center space-x-2">

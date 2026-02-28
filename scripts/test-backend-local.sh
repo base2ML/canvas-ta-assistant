@@ -28,16 +28,19 @@ print_warning() {
     echo -e "${YELLOW}⚠️  $1${NC}"
 }
 
-# Check if .env file exists
-if [ ! -f ".env" ]; then
-    print_error ".env file not found"
-    print_info "Create .env file with required variables:"
+# Check if .env.test file exists (preferred for testing), fallback to .env
+if [ -f ".env.test" ]; then
+    print_info "Using .env.test for testing configuration"
+    ENV_FILE=".env.test"
+elif [ -f ".env" ]; then
+    print_warning "Using .env (consider creating .env.test for test-specific settings)"
+    ENV_FILE=".env"
+else
+    print_error "No .env.test or .env file found"
+    print_info "Create .env.test file with required variables:"
     echo "  CANVAS_API_TOKEN=your-token"
     echo "  CANVAS_API_URL=https://your-school.instructure.com"
     echo "  CANVAS_COURSE_ID=your-course-id"
-    echo "  S3_BUCKET_NAME=your-bucket-name"
-    echo "  JWT_SECRET_KEY=your-dev-secret"
-    echo "  ENVIRONMENT=dev"
     exit 1
 fi
 
@@ -50,11 +53,11 @@ command -v uv >/dev/null 2>&1 || { print_error "uv is required. Install: curl -L
 print_success "Prerequisites met"
 
 # Load environment variables
-print_info "Loading environment variables from .env..."
-export $(grep -v '^#' .env | xargs)
+print_info "Loading environment variables from $ENV_FILE..."
+export $(grep -v '^#' "$ENV_FILE" | xargs)
 
 # Validate required variables
-REQUIRED_VARS=("CANVAS_API_TOKEN" "CANVAS_API_URL" "CANVAS_COURSE_ID" "S3_BUCKET_NAME")
+REQUIRED_VARS=("CANVAS_API_TOKEN" "CANVAS_API_URL")
 for var in "${REQUIRED_VARS[@]}"; do
     if [ -z "${!var}" ]; then
         print_error "Missing required environment variable: $var"
@@ -65,10 +68,14 @@ print_success "Environment variables loaded"
 
 # Test Canvas data extraction
 print_header "Testing Canvas Data Extraction"
-python scripts/test-canvas-extraction.py --dry-run
-if [ $? -ne 0 ]; then
-    print_error "Canvas data extraction test failed"
-    exit 1
+if [ -f "scripts/test-canvas-extraction.py" ]; then
+    python scripts/test-canvas-extraction.py --dry-run
+    if [ $? -ne 0 ]; then
+        print_error "Canvas data extraction test failed"
+        exit 1
+    fi
+else
+    print_warning "Canvas extraction test script not found, skipping..."
 fi
 
 # Start backend server
@@ -100,36 +107,33 @@ else
     exit 1
 fi
 
-# Test auth endpoint (should fail without credentials)
-print_info "Testing auth endpoint (expecting 401)..."
-AUTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-    -X POST http://localhost:8000/api/auth/login \
-    -H "Content-Type: application/json" \
-    -d '{"email":"test@example.com","password":"wrongpassword"}')  # pragma: allowlist secret
-
-if [ "$AUTH_RESPONSE" = "401" ]; then
-    print_success "Auth endpoint correctly returns 401 for invalid credentials"
-else
-    print_warning "Auth endpoint returned unexpected status: $AUTH_RESPONSE"
-fi
-
-# Test Canvas data endpoint (should require auth)
-print_info "Testing protected Canvas endpoint (expecting 401)..."
-CANVAS_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+# Test Canvas courses endpoint
+print_info "Testing Canvas courses endpoint..."
+COURSES_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
     http://localhost:8000/api/canvas/courses)
 
-if [ "$CANVAS_RESPONSE" = "401" ] || [ "$CANVAS_RESPONSE" = "403" ]; then
-    print_success "Canvas endpoint correctly requires authentication"
+if [ "$COURSES_RESPONSE" = "200" ]; then
+    print_success "Canvas courses endpoint working (status: $COURSES_RESPONSE)"
 else
-    print_warning "Canvas endpoint returned unexpected status: $CANVAS_RESPONSE"
+    print_warning "Canvas courses endpoint returned status: $COURSES_RESPONSE"
+fi
+
+# Test settings endpoint
+print_info "Testing settings endpoint..."
+SETTINGS_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+    http://localhost:8000/api/settings)
+
+if [ "$SETTINGS_RESPONSE" = "200" ]; then
+    print_success "Settings endpoint working (status: $SETTINGS_RESPONSE)"
+else
+    print_warning "Settings endpoint returned status: $SETTINGS_RESPONSE"
 fi
 
 # Summary
 print_header "Test Summary"
 print_success "✅ Backend server started successfully"
 print_success "✅ Health endpoint working"
-print_success "✅ Authentication endpoint working"
-print_success "✅ Protected endpoints require auth"
+print_success "✅ API endpoints accessible"
 
 echo ""
 print_info "Server is running on http://localhost:8000"

@@ -47,14 +47,20 @@ command -v uv >/dev/null 2>&1 || { print_error "uv is required"; exit 1; }
 command -v npm >/dev/null 2>&1 || { print_error "npm is required"; exit 1; }
 print_success "Prerequisites met"
 
-# Check .env file
-if [ ! -f ".env" ]; then
-    print_error ".env file not found. Create it with required variables."
+# Check if .env.test file exists (preferred for testing), fallback to .env
+if [ -f ".env.test" ]; then
+    print_info "Using .env.test for testing configuration"
+    ENV_FILE=".env.test"
+elif [ -f ".env" ]; then
+    print_warning "Using .env (consider creating .env.test for test-specific settings)"
+    ENV_FILE=".env"
+else
+    print_error "No .env.test or .env file found. Create one with required variables."
     exit 1
 fi
 
 # Load environment variables
-export $(grep -v '^#' .env | xargs)
+export $(grep -v '^#' "$ENV_FILE" | xargs)
 
 # Test 1: Canvas Data Extraction
 print_header "Test 1: Canvas Data Extraction"

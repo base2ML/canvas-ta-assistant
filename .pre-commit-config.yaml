@@ -65,12 +65,12 @@ repos:
       - id: ruff
         name: Lint Python with Ruff
         args: [--fix, --exit-non-zero-on-fix]
-        files: ^backend-canvas-fastapi/.*\.py$
+        files: \.py$
 
       # Run the formatter
       - id: ruff-format
         name: Format Python code with Ruff
-        files: ^backend-canvas-fastapi/.*\.py$
+        files: \.py$
 
   # JavaScript/React specific hooks
   - repo: https://github.com/pre-commit/mirrors-eslint
@@ -107,10 +107,11 @@ exclude: |
   (?x)^(
     canvas-react/node_modules/|
     canvas-react/dist/|
-    backend-canvas-fastapi/.venv/|
-    backend-canvas-fastapi/__pycache__/|
+    \.venv/|
+    __pycache__/|
     .*\.egg-info/|
     \.git/|
     \.pytest_cache/|
-    \.mypy_cache/
+    \.mypy_cache/|
+    \.ruff_cache/
   )$

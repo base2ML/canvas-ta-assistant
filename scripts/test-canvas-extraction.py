@@ -2,20 +2,21 @@
 """
 Canvas Data Extraction Test Script
 
-Tests Canvas API connectivity and data fetching without uploading to S3.
+Tests Canvas API connectivity and data fetching.
 Useful for local development and CI/CD validation.
 
 Usage:
     python scripts/test-canvas-extraction.py [--dry-run] [--output-dir DIR]
 """
 
+import argparse
+import json
 import os
 import sys
-import json
-import argparse
 from datetime import datetime
-from typing import Dict, Any, Optional
 from pathlib import Path
+from typing import Any
+
 
 try:
     from canvasapi import Canvas
@@ -27,11 +28,12 @@ except ImportError:
 
 class Colors:
     """ANSI color codes for terminal output"""
-    GREEN = '\033[0;32m'
-    BLUE = '\033[0;34m'
-    YELLOW = '\033[1;33m'
-    RED = '\033[0;31m'
-    NC = '\033[0m'  # No Color
+
+    GREEN = "\033[0;32m"
+    BLUE = "\033[0;34m"
+    YELLOW = "\033[1;33m"
+    RED = "\033[0;31m"
+    NC = "\033[0m"  # No Color
 
 
 def print_success(msg: str):
@@ -50,7 +52,7 @@ def print_warning(msg: str):
     print(f"{Colors.YELLOW}⚠️  {msg}{Colors.NC}")
 
 
-def get_env_var(name: str, required: bool = True) -> Optional[str]:
+def get_env_var(name: str, required: bool = True) -> str | None:
     """Get environment variable with validation"""
     value = os.getenv(name)
     if required and not value:
@@ -59,7 +61,7 @@ def get_env_var(name: str, required: bool = True) -> Optional[str]:
     return value
 
 
-def test_canvas_connection(canvas_url: str, api_token: str) -> Optional[Canvas]:
+def test_canvas_connection(canvas_url: str, api_token: str) -> Canvas | None:
     """Test Canvas API connection"""
     print_info(f"Testing connection to: {canvas_url}")
 
@@ -77,7 +79,9 @@ def test_canvas_connection(canvas_url: str, api_token: str) -> Optional[Canvas]:
         return None
 
 
-def fetch_course_data(canvas: Canvas, course_id: str, dry_run: bool = False) -> Optional[Dict[str, Any]]:
+def fetch_course_data(
+    canvas: Canvas, course_id: str, dry_run: bool = False
+) -> dict[str, Any] | None:
     """Fetch course data from Canvas"""
 
     try:
@@ -85,9 +89,9 @@ def fetch_course_data(canvas: Canvas, course_id: str, dry_run: bool = False) -> 
         course = canvas.get_course(course_id)
 
         course_data = {
-            'id': course.id,
-            'name': course.name,
-            'course_code': getattr(course, 'course_code', 'N/A'),
+            "id": course.id,
+            "name": course.name,
+            "course_code": getattr(course, "course_code", "N/A"),
         }
 
         print_success(f"Course: {course.name} ({course.course_code})")
@@ -95,32 +99,36 @@ def fetch_course_data(canvas: Canvas, course_id: str, dry_run: bool = False) -> 
         if dry_run:
             print_info("Dry-run mode: Skipping full data fetch")
             return {
-                'course': course_data,
-                'dry_run': True,
-                'timestamp': datetime.utcnow().isoformat()
+                "course": course_data,
+                "dry_run": True,
+                "timestamp": datetime.utcnow().isoformat(),
             }
 
         # Fetch assignments
         print_info("Fetching assignments...")
         assignments = []
         for assignment in course.get_assignments(per_page=100):
-            assignments.append({
-                'id': assignment.id,
-                'name': assignment.name,
-                'due_at': getattr(assignment, 'due_at', None),
-                'points_possible': getattr(assignment, 'points_possible', None),
-            })
+            assignments.append(
+                {
+                    "id": assignment.id,
+                    "name": assignment.name,
+                    "due_at": getattr(assignment, "due_at", None),
+                    "points_possible": getattr(assignment, "points_possible", None),
+                }
+            )
         print_success(f"Found {len(assignments)} assignments")
 
         # Fetch users (students)
         print_info("Fetching users...")
         users = []
-        for user in course.get_users(enrollment_type=['student'], per_page=100):
-            users.append({
-                'id': user.id,
-                'name': user.name,
-                'sortable_name': getattr(user, 'sortable_name', user.name),
-            })
+        for user in course.get_users(enrollment_type=["student"], per_page=100):
+            users.append(
+                {
+                    "id": user.id,
+                    "name": user.name,
+                    "sortable_name": getattr(user, "sortable_name", user.name),
+                }
+            )
         print_success(f"Found {len(users)} users")
 
         # Fetch submissions (sample from first assignment)
@@ -128,16 +136,20 @@ def fetch_course_data(canvas: Canvas, course_id: str, dry_run: bool = False) -> 
         submissions = []
         if assignments:
             try:
-                first_assignment = course.get_assignment(assignments[0]['id'])
+                first_assignment = course.get_assignment(assignments[0]["id"])
                 for submission in first_assignment.get_submissions():
-                    submissions.append({
-                        'id': submission.id,
-                        'assignment_id': first_assignment.id,
-                        'user_id': submission.user_id,
-                        'workflow_state': submission.workflow_state,
-                        'submitted_at': getattr(submission, 'submitted_at', None),
-                    })
-                print_success(f"Found {len(submissions)} submissions (from first assignment)")
+                    submissions.append(
+                        {
+                            "id": submission.id,
+                            "assignment_id": first_assignment.id,
+                            "user_id": submission.user_id,
+                            "workflow_state": submission.workflow_state,
+                            "submitted_at": getattr(submission, "submitted_at", None),
+                        }
+                    )
+                print_success(
+                    f"Found {len(submissions)} submissions (from first assignment)"
+                )
             except Exception as e:
                 print_warning(f"Could not fetch submissions: {e}")
 
@@ -150,25 +162,27 @@ def fetch_course_data(canvas: Canvas, course_id: str, dry_run: bool = False) -> 
                 try:
                     for member in group.get_users():
                         members.append(member.id)
-                except: # noqa: E722
+                except:  # noqa: E722
                     pass
 
-                groups.append({
-                    'id': group.id,
-                    'name': group.name,
-                    'members_count': len(members),
-                })
+                groups.append(
+                    {
+                        "id": group.id,
+                        "name": group.name,
+                        "members_count": len(members),
+                    }
+                )
             print_success(f"Found {len(groups)} groups")
         except Exception as e:
             print_warning(f"Could not fetch groups: {e}")
 
         return {
-            'course': course_data,
-            'assignments': assignments,
-            'users': users,
-            'submissions': submissions,
-            'groups': groups,
-            'timestamp': datetime.utcnow().isoformat(),
+            "course": course_data,
+            "assignments": assignments,
+            "users": users,
+            "submissions": submissions,
+            "groups": groups,
+            "timestamp": datetime.utcnow().isoformat(),
         }
 
     except CanvasException as e:
@@ -177,11 +191,12 @@ def fetch_course_data(canvas: Canvas, course_id: str, dry_run: bool = False) -> 
     except Exception as e:
         print_error(f"Error fetching course data: {e}")
         import traceback
+
         traceback.print_exc()
         return None
 
 
-def save_output(data: Dict[str, Any], output_dir: str):
+def save_output(data: dict[str, Any], output_dir: str):
     """Save test output to JSON file"""
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -190,16 +205,22 @@ def save_output(data: Dict[str, Any], output_dir: str):
     filename = f"canvas_data_{timestamp}.json"
     filepath = output_path / filename
 
-    with open(filepath, 'w') as f:
+    with open(filepath, "w") as f:
         json.dump(data, f, indent=2)
 
     print_success(f"Data saved to: {filepath}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Test Canvas API data extraction')
-    parser.add_argument('--dry-run', action='store_true', help='Only test connection, skip full data fetch')
-    parser.add_argument('--output-dir', default='test_output', help='Output directory for test results')
+    parser = argparse.ArgumentParser(description="Test Canvas API data extraction")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Only test connection, skip full data fetch",
+    )
+    parser.add_argument(
+        "--output-dir", default="test_output", help="Output directory for test results"
+    )
     args = parser.parse_args()
 
     print("=" * 60)
@@ -208,9 +229,9 @@ def main():
     print()
 
     # Get environment variables
-    canvas_url = get_env_var('CANVAS_API_URL')
-    api_token = get_env_var('CANVAS_API_TOKEN')
-    course_id = get_env_var('CANVAS_COURSE_ID')
+    canvas_url = get_env_var("CANVAS_API_URL")
+    api_token = get_env_var("CANVAS_API_TOKEN")
+    course_id = get_env_var("CANVAS_COURSE_ID")
 
     if not all([canvas_url, api_token, course_id]):
         print_error("Missing required environment variables:")
@@ -256,5 +277,5 @@ def main():
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())
