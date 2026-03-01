@@ -1232,6 +1232,27 @@ async def get_groups(course_id: str) -> dict[str, Any]:
     return {"groups": groups, "total": len(groups)}
 
 
+@app.get("/api/canvas/assignment-groups/{course_id}")
+async def get_assignment_groups_endpoint(course_id: str) -> dict[str, Any]:
+    """Get Canvas assignment groups (syllabus categories) for a course.
+
+    Used by Settings UI to populate the late-day-eligible groups selector.
+    Returns all stored assignment groups for the given course.
+    """
+    try:
+        groups = db.get_assignment_groups(course_id)
+        return {"groups": groups, "count": len(groups)}
+    except Exception as e:
+        logger.error(
+            f"Error fetching assignment groups for course {course_id}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch assignment groups",
+        ) from e
+
+
 # Dashboard endpoints
 def classify_submission_status(submission: dict, assignment: dict) -> str:
     """Classify submission as on_time, late, or missing."""

@@ -984,6 +984,19 @@ def get_assignments(course_id: str) -> list[dict[str, Any]]:
         return [dict(row) for row in cursor.fetchall()]
 
 
+def get_assignment_groups(course_id: str) -> list[dict[str, Any]]:
+    """Get Canvas assignment groups (syllabus categories) for a course."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, name, position FROM assignment_groups "
+            "WHERE course_id = ? ORDER BY position ASC, name ASC",
+            (course_id,),
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
 def get_users(course_id: str, include_dropped: bool = False) -> list[dict[str, Any]]:
     """Get users for a course. Defaults to active students only."""
     with get_db_connection() as conn:
