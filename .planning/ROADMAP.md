@@ -1,22 +1,14 @@
-# Roadmap: Canvas TA Dashboard - Late Day Comment Posting
+# Roadmap: Canvas TA Dashboard
 
-## Overview
+## Milestones
 
-This roadmap delivers automated late day comment posting to Canvas submissions, replacing manual Jupyter notebook workflows. The journey progresses through three phases: first establishing safety infrastructure and template storage (Phase 1), then building Canvas API posting logic with rate limiting and error handling (Phase 2), and finally integrating the workflow into React UI components (Phase 3). Each phase delivers complete, verifiable capabilities that can be tested independently.
+- [x] **v1.0 Late Day Comment Posting** - Phases 1-3 (shipped 2026-02-21)
+- [ ] **v1.1 Unified Data Refresh** - Phase 4 (in progress)
 
 ## Phases
 
-**Phase Numbering:**
-- Integer phases (1, 2, 3): Planned milestone work
-- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
-
-Decimal phases appear between their surrounding integers in numeric order.
-
-- [x] **Phase 1: Foundation** - Database schema, template CRUD, and safety controls
-- [ ] **Phase 2: Posting Logic** - Canvas API integration, variable substitution, and bulk posting
-- [ ] **Phase 3: UI Integration** - React components for template management and posting workflow
-
-## Phase Details
+<details>
+<summary>v1.0 Late Day Comment Posting (Phases 1-3) - SHIPPED 2026-02-21</summary>
 
 ### Phase 1: Foundation
 **Goal**: Safety infrastructure and template storage exist before posting capability can be built
@@ -28,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Default templates are pre-populated in database on first run with penalty/non-penalty messages
   4. Test mode toggle can be enabled/disabled in Settings to prevent accidental production posting
   5. Duplicate detection infrastructure exists (posting history table with unique constraints)
-**Plans:** 2 plans
+**Plans**: 2 plans
 
 Plans:
 - [x] 01-01-PLAN.md — Database schema, template CRUD functions, history recording, default templates
@@ -45,11 +37,11 @@ Plans:
   4. Bulk posting endpoint processes multiple students sequentially with rate limiting (0.5-1s delays)
   5. Duplicate comments are prevented via posting history check before each post
   6. Posting errors are handled gracefully (exponential backoff on 429, detailed failure reports)
-**Plans:** 2 plans
+**Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Canvas posting function with retry, template rendering, preview endpoint, posting history endpoint
-- [ ] 02-02-PLAN.md — SSE bulk posting endpoint with progress streaming, rate limiting, duplicate prevention, dry run mode
+- [x] 02-01-PLAN.md — Canvas posting function with retry, template rendering, preview endpoint, posting history endpoint
+- [x] 02-02-PLAN.md — SSE bulk posting endpoint with progress streaming, rate limiting, duplicate prevention, dry run mode
 
 ### Phase 3: UI Integration
 **Goal**: TAs can manage templates and post comments through dashboard UI
@@ -63,18 +55,45 @@ Plans:
   5. Progress indicator appears during bulk posting showing "Posting X/Y comments..."
   6. Posting history table displays previously posted comments with timestamps and status
   7. Individual comments can be manually edited before posting for edge cases
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- TBD (plans created during /gsd:plan-phase)
+- [x] 03-01-PLAN.md — Template management UI in Settings page
+- [x] 03-02-PLAN.md — Comment posting panel, preview modal, confirmation dialog
+- [x] 03-03-PLAN.md — Posting history table, progress streaming integration
+- [x] 03-04-PLAN.md — Human verification of UI correctness and workflow UX
+
+</details>
+
+### v1.1 Unified Data Refresh (In Progress)
+
+**Milestone Goal:** Replace scattered, inconsistent refresh/sync controls with a single header-level "Refresh Data" button that propagates data reload to all pages automatically.
+
+#### Phase 4: Unified Refresh
+**Goal**: A single header button triggers Canvas sync and all dashboard pages reload their data automatically, with redundant controls removed
+**Depends on**: Phase 3
+**Requirements**: SYNC-01, SYNC-02, SYNC-03, CLEAN-01, CLEAN-02, CLEAN-03, CLEAN-04, CLEAN-05
+**Success Criteria** (what must be TRUE):
+  1. Clicking "Refresh Data" in the header triggers Canvas sync and shows a loading state for the duration
+  2. After sync completes, all open dashboard pages (EnhancedTADashboard, LateDaysTracking, EnrollmentTracking) reload their data without any additional user action
+  3. The header displays the last synced timestamp after every sync, visible from any page
+  4. The Settings page has only a "Save Settings" button — no sync trigger
+  5. No per-page Refresh buttons or page-level sync timestamps appear anywhere in the dashboard
+**Plans**: 3 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — App.jsx: refreshTrigger + lastSyncedAt state, header timestamp display, prop threading to dashboard routes
+- [ ] 04-02-PLAN.md — Settings.jsx: remove Sync Now and Save & Sync Now buttons and dead code
+- [ ] 04-03-PLAN.md — Dashboard pages: consume refreshTrigger in useEffect deps, remove per-page Refresh buttons and timestamps
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3
+Phases execute in numeric order: 1 → 2 → 3 → 4
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. Foundation | 2/2 | ✓ Complete | 2026-02-15 |
-| 2. Posting Logic | 0/2 | Not started | - |
-| 3. UI Integration | 0/? | Not started | - |
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1. Foundation | v1.0 | 2/2 | Complete | 2026-02-15 |
+| 2. Posting Logic | v1.0 | 2/2 | Complete | 2026-02-21 |
+| 3. UI Integration | v1.0 | 4/4 | Complete | 2026-02-21 |
+| 4. Unified Refresh | v1.1 | 0/3 | Not started | - |
