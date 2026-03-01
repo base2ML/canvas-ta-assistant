@@ -58,7 +58,7 @@
 **Goal**: Late day tracking correctly implements the semester bank model: students draw from a shared 10-day bank (sorted chronologically by due date), capped per assignment, with 25%/day penalty on uncovered days, and project deliverables (Canvas assignment groups) excluded from bank eligibility
 **Requirements**: LATE-DB-01, LATE-SYNC-01, LATE-API-GROUPS-01, LATE-ALGO-01, LATE-SETTINGS-01, LATE-TEMPLATE-01, LATE-POSTING-01, LATE-UI-01, LATE-UI-02
 **Depends on:** Phase 4
-**Plans:** 4 plans
+**Plans:** 3/4 plans executed
 
 Plans:
 - [x] 05-01-PLAN.md — DB schema: assignment_groups table, assignment_group_id migration, upsert/clear functions
@@ -74,4 +74,4 @@ Plans:
 | 2. Posting Logic | v1.0 | 2/2 | ✅ Complete | 2026-02-21 |
 | 3. UI Integration | v1.0 | 4/4 | ✅ Complete | 2026-02-21 |
 | 4. Unified Refresh | v1.1 | 3/3 | ✅ Complete | 2026-03-01 |
-| 5. Late Day Penalty Fix | v1.2 | 1/4 | In Progress | — |
+| 5. Late Day Penalty Fix | 3/4 | In Progress|  | — |

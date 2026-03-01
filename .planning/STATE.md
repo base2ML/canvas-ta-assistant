@@ -8,7 +8,7 @@ progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -22,11 +22,11 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 ## Current Position
 
-Phase: 05 — fix-late-day-penalty-calculation (Plan 3 of 4)
-Status: In progress — 05-01 and 05-02 complete, 05-03 and 05-04 remaining
-Last activity: 2026-03-01 — 05-02-PLAN.md complete (Canvas assignment groups sync + API endpoint)
+Phase: 05 — fix-late-day-penalty-calculation (Plan 4 of 4)
+Status: In progress — 05-01, 05-02, 05-03 complete, 05-04 remaining
+Last activity: 2026-03-01 — 05-03-PLAN.md complete (semester bank algorithm, settings, posting flow)
 
-Progress: [█████░░░░░] 50% (2/4 plans complete in phase 05)
+Progress: [███████░░░] 75% (3/4 plans complete in phase 05)
 
 ## Performance Metrics
 
@@ -48,6 +48,7 @@ Progress: [█████░░░░░] 50% (2/4 plans complete in phase 05)
 | Phase 04-unified-refresh P03 | 14 | 2 tasks | 3 files |
 | Phase 05 P01 (05-01) | 3 min | 2 tasks | 3 files |
 | Phase 05 P02 | 3 | 2 tasks | 5 files |
+| Phase 05 P03 | 7 min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -61,6 +62,8 @@ All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
 - Added conftest.py to tests/ (new directory) to support pytest backend module imports
 - [Phase 05]: Fetched Canvas assignment groups between assignments and users in sync_course_data(), called upsert_assignment_groups() before upsert_assignments() inside transaction
 - [Phase 05]: Added get_assignment_groups() to database.py ordering by position ASC, name ASC; endpoint returns {groups, count} with HTTP 500 on error
+- [Phase 05-03]: Preserved old calculate_late_days_for_user() without deleting; pre-compute bank_summaries before SSE generator for closure capture
+- [Phase 05-03]: Empty late_day_eligible_group_ids means all assignments eligible (backward compat); per_assignment_cap falls back to max_late_days_per_assignment if not in DB
 
 ### Pending Todos
 
@@ -93,5 +96,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 05-02-PLAN.md (assignment groups sync and API endpoint)
+Stopped at: Completed 05-03-PLAN.md (semester bank algorithm, settings, and posting flow)
 Resume file: None
