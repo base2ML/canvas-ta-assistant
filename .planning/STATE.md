@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-01T17:33:36.062Z"
+last_updated: "2026-03-01T17:47:25Z"
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -23,10 +23,10 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 ## Current Position
 
 Phase: 05 — fix-late-day-penalty-calculation (Plan 4 of 4)
-Status: In progress — 05-01, 05-02, 05-03 complete, 05-04 remaining
-Last activity: 2026-03-01 — 05-03-PLAN.md complete (semester bank algorithm, settings, posting flow)
+Status: Complete — all 4 plans executed; checkpoint:human-verify pending for 05-04 UI
+Last activity: 2026-03-01 — 05-04-PLAN.md complete (Late Day Policy UI, bank/penalty cell rendering)
 
-Progress: [███████░░░] 75% (3/4 plans complete in phase 05)
+Progress: [██████████] 100% (4/4 plans complete in phase 05)
 
 ## Performance Metrics
 
@@ -49,6 +49,7 @@ Progress: [███████░░░] 75% (3/4 plans complete in phase 05)
 | Phase 05 P01 (05-01) | 3 min | 2 tasks | 3 files |
 | Phase 05 P02 | 3 | 2 tasks | 5 files |
 | Phase 05 P03 | 7 min | 3 tasks | 4 files |
+| Phase 05 P04 | 2 min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,8 @@ All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
 - [Phase 05]: Added get_assignment_groups() to database.py ordering by position ASC, name ASC; endpoint returns {groups, count} with HTTP 500 on error
 - [Phase 05-03]: Preserved old calculate_late_days_for_user() without deleting; pre-compute bank_summaries before SSE generator for closure capture
 - [Phase 05-03]: Empty late_day_eligible_group_ids means all assignments eligible (backward compat); per_assignment_cap falls back to max_late_days_per_assignment if not in DB
+- [Phase 05-04]: Placed Late Day Policy section between Course Configuration and Comment Templates; stacked green/red split cell for mixed bank+penalty cases
+- [Phase 05-04]: Sort for assignment_ columns uses entry.days_late (not entry object) for numeric comparison
 
 ### Pending Todos
 
@@ -96,5 +99,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 05-03-PLAN.md (semester bank algorithm, settings, and posting flow)
+Stopped at: Completed 05-04-PLAN.md (Late Day Policy UI, bank/penalty cell rendering) — checkpoint:human-verify pending
 Resume file: None
