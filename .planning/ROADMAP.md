@@ -3,7 +3,7 @@
 ## Milestones
 
 - [x] **v1.0 Late Day Comment Posting** - Phases 1-3 (shipped 2026-02-21)
-- [ ] **v1.1 Unified Data Refresh** - Phase 4 (in progress)
+- [x] **v1.1 Unified Data Refresh** - Phase 4 (in progress) (completed 2026-03-01)
 
 ## Phases
 
@@ -96,4 +96,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Foundation | v1.0 | 2/2 | Complete | 2026-02-15 |
 | 2. Posting Logic | v1.0 | 2/2 | Complete | 2026-02-21 |
 | 3. UI Integration | v1.0 | 4/4 | Complete | 2026-02-21 |
-| 4. Unified Refresh | 1/3 | In Progress|  | - |
+| 4. Unified Refresh | 3/3 | Complete   | 2026-03-01 | - |
