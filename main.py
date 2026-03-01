@@ -984,8 +984,7 @@ async def preview_comments(
             ),
         )
 
-    # Get submissions and users
-    submissions = db.get_submissions(request.course_id, assignment_id)
+    # Get users and ALL submissions/assignments for semester-wide bank computation
     users = db.get_users(request.course_id)
     user_map = {u["id"]: u.get("name", f"User {u['id']}") for u in users}
 
@@ -994,9 +993,16 @@ async def preview_comments(
     if not request.override_comment:
         resolved_template = resolve_template(request.template_id, request.template_type)
 
-    # Get max_late_days setting
-    max_late_days_str = db.get_setting("max_late_days_per_assignment")
-    max_late_days = int(max_late_days_str) if max_late_days_str else 7
+    # Read bank settings once
+    total_bank = int(db.get_setting("total_late_day_bank") or 10)
+    per_cap = int(db.get_setting("per_assignment_cap") or 7)
+    penalty_rate = int(db.get_setting("penalty_rate_per_day") or 25)
+    eligible_str = db.get_setting("late_day_eligible_groups")
+    eligible_set: set[int] = set(json.loads(eligible_str)) if eligible_str else set()
+
+    # Fetch ALL submissions and assignments for semester-wide bank calculation
+    all_submissions = db.get_submissions(request.course_id)
+    all_assignments = db.get_assignments(request.course_id)
 
     resolved_template_id = resolved_template["id"] if resolved_template else None
     resolved_template_type = (
@@ -1009,13 +1015,29 @@ async def preview_comments(
     for user_id in request.user_ids:
         user_name = user_map.get(user_id, f"User {user_id}")
 
-        # Calculate late day variables
-        variable_data = calculate_late_days_for_user(
-            user_id=user_id,
-            assignment=assignment,
-            submissions=submissions,
-            max_late_days=max_late_days,
+        # Calculate late day variables using semester bank summary
+        user_summary = calculate_student_late_day_summary(
+            user_id,
+            all_assignments,
+            all_submissions,
+            total_bank,
+            per_cap,
+            penalty_rate,
+            eligible_set,
         )
+        entry = user_summary.get(assignment_id, {})
+        variable_data = {
+            "days_late": entry.get("days_late", 0),
+            "bank_days_used": entry.get("bank_days_used", 0),
+            "bank_remaining": entry.get("bank_remaining", total_bank),
+            "penalty_days": entry.get("penalty_days", 0),
+            "penalty_percent": entry.get("penalty_percent", 0),
+            "not_accepted": entry.get("not_accepted", False),
+            "total_bank": total_bank,
+            # Backward-compat aliases for existing templates
+            "days_remaining": entry.get("bank_remaining", total_bank),
+            "max_late_days": per_cap,
+        }
 
         # Render comment text
         if request.override_comment:
@@ -1116,15 +1138,33 @@ async def post_comments(
             ),
         )
 
-    # Get submissions (users not needed: events use user_id, frontend has user data)
+    # Get submissions for this assignment (used for submission existence check SAFE-06)
     submissions = db.get_submissions(request_body.course_id, assignment_id)
-
-    # Read max_late_days setting
-    max_late_days_str = db.get_setting("max_late_days_per_assignment")
-    max_late_days = int(max_late_days_str) if max_late_days_str else 7
 
     # Build set of user_ids that have submissions for quick lookup (SAFE-06)
     submission_user_ids = {s["user_id"] for s in submissions}
+
+    # Read bank settings
+    total_bank = int(db.get_setting("total_late_day_bank") or 10)
+    per_cap = int(db.get_setting("per_assignment_cap") or 7)
+    penalty_rate = int(db.get_setting("penalty_rate_per_day") or 25)
+    eligible_str = db.get_setting("late_day_eligible_groups")
+    eligible_set: set[int] = set(json.loads(eligible_str)) if eligible_str else set()
+
+    # Pre-compute bank summary for all requested users (semester-aware, chronological)
+    all_assignments = db.get_assignments(request_body.course_id)
+    all_submissions = db.get_submissions(request_body.course_id)
+    bank_summaries: dict[int, dict[int, dict[str, Any]]] = {}
+    for uid in request_body.user_ids:
+        bank_summaries[uid] = calculate_student_late_day_summary(
+            uid,
+            all_assignments,
+            all_submissions,
+            total_bank,
+            per_cap,
+            penalty_rate,
+            eligible_set,
+        )
 
     # Resolved template values for use inside generator
     resolved_template_id = resolved_template["id"] if resolved_template else None
@@ -1210,13 +1250,34 @@ async def post_comments(
                 }
                 continue
 
-            # Calculate late day variables
-            late_days_data = calculate_late_days_for_user(
-                user_id=user_id,
-                assignment=assignment,
-                submissions=submissions,
-                max_late_days=max_late_days,
-            )
+            # Look up pre-computed bank summary for this user + assignment
+            entry = bank_summaries.get(user_id, {}).get(assignment_id, {})
+            late_days_data = {
+                "days_late": entry.get("days_late", 0),
+                "bank_days_used": entry.get("bank_days_used", 0),
+                "bank_remaining": entry.get("bank_remaining", total_bank),
+                "penalty_days": entry.get("penalty_days", 0),
+                "penalty_percent": entry.get("penalty_percent", 0),
+                "not_accepted": entry.get("not_accepted", False),
+                "total_bank": total_bank,
+                # Backward-compat aliases
+                "days_remaining": entry.get("bank_remaining", total_bank),
+                "max_late_days": per_cap,
+            }
+
+            # Skip project deliverables marked Not Accepted
+            if late_days_data.get("not_accepted"):
+                logger.warning(
+                    f"Skipping comment for user {user_id} "
+                    f"on assignment {assignment_id}: "
+                    "project deliverable marked Not Accepted"
+                )
+                skipped.append({"user_id": user_id, "reason": "not_accepted"})
+                yield {
+                    "event": "skipped",
+                    "data": json.dumps({"user_id": user_id, "reason": "not_accepted"}),
+                }
+                continue
 
             # Render comment text
             if override_comment:
