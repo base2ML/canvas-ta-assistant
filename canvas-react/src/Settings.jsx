@@ -23,6 +23,8 @@ const Settings = () => {
     const [nonPenaltyTemplate, setNonPenaltyTemplate] = useState({ id: null, text: '' });
     const [templateSaving, setTemplateSaving] = useState(false);
     const [templateMessage, setTemplateMessage] = useState(null);
+    const [policySaving, setPolicySaving] = useState(false);
+    const [policyMessage, setPolicyMessage] = useState(null);
 
     // Late Day Policy state
     const [assignmentGroups, setAssignmentGroups] = useState([]);
@@ -105,6 +107,30 @@ const Settings = () => {
         }
     };
 
+    // Save only the Late Day Policy fields (independent of course/timezone settings)
+    const savePolicySettings = async () => {
+        setPolicySaving(true);
+        setPolicyMessage(null);
+        try {
+            await apiFetch('/api/settings', {
+                method: 'PUT',
+                body: JSON.stringify({
+                    total_late_day_bank: policySettings.total_late_day_bank,
+                    penalty_rate_per_day: policySettings.penalty_rate_per_day,
+                    per_assignment_cap: policySettings.per_assignment_cap,
+                    late_day_eligible_groups: policySettings.late_day_eligible_groups,
+                }),
+            });
+            setPolicyMessage({ type: 'success', text: 'Policy settings saved. Reload the Late Days Tracking page to see updated calculations.' });
+            loadSettings();
+        } catch (err) {
+            console.error('Error saving policy settings:', err);
+            setPolicyMessage({ type: 'error', text: err.message || 'Failed to save policy settings' });
+        } finally {
+            setPolicySaving(false);
+        }
+    };
+
     // Fetch comment templates
     const loadTemplates = useCallback(async () => {
         try {
@@ -181,6 +207,14 @@ const Settings = () => {
             return () => clearTimeout(timer);
         }
     }, [templateMessage]);
+
+    // Clear policy message after 5 seconds
+    useEffect(() => {
+        if (policyMessage) {
+            const timer = setTimeout(() => setPolicyMessage(null), 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [policyMessage]);
 
     if (loading) {
         return (
@@ -496,17 +530,22 @@ const Settings = () => {
                 </div>
 
                 {/* Assignment group eligibility checkbox list */}
-                <div>
+                <div className="mb-6">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                         Late Day Eligible Assignment Groups
                     </label>
                     <p className="text-xs text-gray-500 mb-3">
                         Assignments in these groups can use late days. Assignments in other groups are &quot;Not Accepted&quot; if submitted late.
+                        Leave all unchecked to allow late days on all assignments.
                     </p>
                     {assignmentGroups.length === 0 ? (
-                        <p className="text-sm text-gray-400 italic">
-                            {settings.course_id ? 'No assignment groups found. Sync course data first.' : 'Select a course to see assignment groups.'}
-                        </p>
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                            <p className="text-sm text-amber-800">
+                                {settings.course_id
+                                    ? 'No assignment groups found in local database. Sync course data to load groups — this reads from the local cache and does not contact Canvas.'
+                                    : 'Select a course in Course Configuration above, then sync course data to see assignment groups.'}
+                            </p>
+                        </div>
                     ) : (
                         <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-3 bg-gray-50">
                             {assignmentGroups.map(group => (
@@ -531,6 +570,37 @@ const Settings = () => {
                         </div>
                     )}
                 </div>
+
+                {/* Policy Message Banner */}
+                {policyMessage && (
+                    <div
+                        className={`mb-4 p-3 rounded-lg flex items-center gap-2 text-sm ${policyMessage.type === 'success'
+                                ? 'bg-green-50 text-green-800 border border-green-200'
+                                : 'bg-red-50 text-red-800 border border-red-200'
+                            }`}
+                    >
+                        {policyMessage.type === 'success' ? (
+                            <CheckCircle className="w-4 h-4 shrink-0" />
+                        ) : (
+                            <XCircle className="w-4 h-4 shrink-0" />
+                        )}
+                        {policyMessage.text}
+                    </div>
+                )}
+
+                {/* Save Policy Button */}
+                <button
+                    onClick={savePolicySettings}
+                    disabled={policySaving}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                    {policySaving ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                        <Save className="w-4 h-4" />
+                    )}
+                    Save Policy Settings
+                </button>
             </div>
 
             {/* Comment Templates */}
