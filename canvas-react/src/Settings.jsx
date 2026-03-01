@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Save, CheckCircle, XCircle, Clock, Settings as SettingsIcon } from 'lucide-react';
+import { RefreshCw, Save, CheckCircle, XCircle, Clock, Settings as SettingsIcon, User, Database } from 'lucide-react';
 import { apiFetch } from './api';
 import { formatDate, setTimezone } from './utils/dates';
 
@@ -18,6 +18,7 @@ const Settings = () => {
     const [message, setMessage] = useState(null);
     const [manualCourseId, setManualCourseId] = useState('');
     const [timezone, setTimezoneState] = useState('');
+    const [apiUser, setApiUser] = useState(null);
     const [penaltyTemplate, setPenaltyTemplate] = useState({ id: null, text: '' });
     const [nonPenaltyTemplate, setNonPenaltyTemplate] = useState({ id: null, text: '' });
     const [templateSaving, setTemplateSaving] = useState(false);
@@ -128,6 +129,9 @@ const Settings = () => {
         loadSettings();
         loadSyncStatus();
         loadTemplates();
+        apiFetch('/api/settings/api-user')
+            .then(data => setApiUser(data))
+            .catch(() => setApiUser(null));
     }, [loadSettings, loadSyncStatus, loadTemplates]);
 
     // Clear message after 5 seconds
@@ -180,6 +184,35 @@ const Settings = () => {
                     {message.text}
                 </div>
             )}
+
+            {/* Connection Info */}
+            <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Connection</h2>
+                <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                        <User className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+                        <div>
+                            <p className="text-sm font-medium text-gray-700">API Token Owner</p>
+                            {apiUser ? (
+                                <p className="text-sm text-gray-600">
+                                    {apiUser.name}{apiUser.login_id ? ` (${apiUser.login_id})` : ''}
+                                </p>
+                            ) : (
+                                <p className="text-sm text-gray-400 italic">Unable to fetch</p>
+                            )}
+                        </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                        <Database className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+                        <div>
+                            <p className="text-sm font-medium text-gray-700">Database Location</p>
+                            <p className="text-sm text-gray-600 font-mono break-all">
+                                {settings.data_path || '—'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             {/* Course Configuration */}
             <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
