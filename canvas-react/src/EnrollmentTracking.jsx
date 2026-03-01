@@ -3,12 +3,10 @@ import { RefreshCw, UserCheck, UserMinus, UserPlus, TrendingUp } from 'lucide-re
 import { apiFetch } from './api.js';
 import { formatDate as formatDateUtil, formatDateOnly } from './utils/dates';
 
-const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId }) => {
+const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId, refreshTrigger }) => {
   const [enrollmentData, setEnrollmentData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [loadTime, setLoadTime] = useState(null);
-  const [lastUpdated, setLastUpdated] = useState(null);
 
   // Use the configured active course, falling back to courses[0]
   const currentCourse = courses && courses.length > 0
@@ -27,19 +25,12 @@ const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId }) => {
   const loadCourseData = useCallback(async () => {
     if (!currentCourse) return;
 
-    const startTime = Date.now();
     setLoading(true);
     setError('');
-    setLoadTime(null);
 
     try {
       const data = await fetchEnrollmentData(currentCourse.id);
       setEnrollmentData(data);
-      setLastUpdated(new Date());
-
-      const endTime = Date.now();
-      const duration = (endTime - startTime) / 1000;
-      setLoadTime(duration);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -47,7 +38,8 @@ const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId }) => {
     }
   }, [currentCourse, fetchEnrollmentData]);
 
-  // Load data automatically when component mounts and currentCourse is available
+  // Load data automatically when component mounts and currentCourse is available.
+  // refreshTrigger is incremented by the global header on each successful sync, causing a reload.
   useEffect(() => {
     if (currentCourse) {
       loadCourseData();
@@ -55,7 +47,7 @@ const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId }) => {
       // If no courses are available, try to load them from the parent
       onLoadCourses();
     }
-  }, [currentCourse, loadCourseData, courses, onLoadCourses]);
+  }, [currentCourse, loadCourseData, courses, onLoadCourses, refreshTrigger]);
 
   const getEventIcon = (previousStatus, newStatus) => {
     if (previousStatus === 'new' && newStatus === 'active') {
@@ -94,23 +86,9 @@ const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId }) => {
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-2xl font-bold text-gray-900">Enrollment Tracking</h1>
-          <button
-            onClick={loadCourseData}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
         </div>
         <div className="flex items-center gap-4 text-sm text-gray-600">
           <span className="font-medium">{currentCourse.name || `Course ${currentCourse.id}`}</span>
-          {lastUpdated && (
-            <span>Last updated: {formatDateUtil(lastUpdated)}</span>
-          )}
-          {loadTime && (
-            <span className="text-gray-500">Load time: {loadTime.toFixed(2)}s</span>
-          )}
         </div>
       </div>
 

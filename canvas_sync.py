@@ -134,6 +134,16 @@ def post_submission_comment(
     raise RuntimeError("Unexpected exit from retry loop")  # pragma: no cover
 
 
+def fetch_current_user() -> dict[str, Any]:
+    """Fetch the Canvas API token owner's profile."""
+    canvas = get_canvas_client()
+    user = canvas.get_current_user()
+    return {
+        "name": getattr(user, "name", None),
+        "login_id": getattr(user, "login_id", None),
+    }
+
+
 def fetch_available_courses(
     api_url: str | None = None, api_token: str | None = None
 ) -> list[dict[str, Any]]:

@@ -11,8 +11,9 @@ services:
       - CANVAS_API_TOKEN=${CANVAS_API_TOKEN:?CANVAS_API_TOKEN is required}
       - CANVAS_COURSE_ID=${CANVAS_COURSE_ID:-}
       - ENVIRONMENT=local
+      - DATA_PATH=${DATA_PATH:-./data}
     volumes:
-      - ./data:/app/data
+      - ${DATA_PATH:-./data}:/app/data
       - ./logs:/app/logs
     restart: unless-stopped
     healthcheck:

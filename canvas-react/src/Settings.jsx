@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Save, CheckCircle, XCircle, Clock, Settings as SettingsIcon } from 'lucide-react';
+import { RefreshCw, Save, CheckCircle, XCircle, Clock, Settings as SettingsIcon, User, Database } from 'lucide-react';
 import { apiFetch } from './api';
 import { formatDate, setTimezone } from './utils/dates';
 
@@ -13,12 +13,12 @@ const Settings = () => {
     const [availableCourses, setAvailableCourses] = useState([]);
     const [syncHistory, setSyncHistory] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [syncing, setSyncing] = useState(false);
     const [saving, setSaving] = useState(false);
     const [loadingCourses, setLoadingCourses] = useState(false);
     const [message, setMessage] = useState(null);
     const [manualCourseId, setManualCourseId] = useState('');
     const [timezone, setTimezoneState] = useState('');
+    const [apiUser, setApiUser] = useState(null);
     const [penaltyTemplate, setPenaltyTemplate] = useState({ id: null, text: '' });
     const [nonPenaltyTemplate, setNonPenaltyTemplate] = useState({ id: null, text: '' });
     const [templateSaving, setTemplateSaving] = useState(false);
@@ -86,35 +86,6 @@ const Settings = () => {
         }
     };
 
-    // Trigger sync
-    const triggerSync = async () => {
-        setSyncing(true);
-        setMessage(null);
-        try {
-            const data = await apiFetch('/api/canvas/sync', {
-                method: 'POST',
-                body: JSON.stringify({ course_id: manualCourseId.trim() || null }),
-            });
-            setMessage({
-                type: 'success',
-                text: `Sync completed! ${data.stats?.assignments || 0} assignments, ${data.stats?.users || 0} users synced in ${data.duration_seconds}s`,
-            });
-            loadSettings();
-            loadSyncStatus();
-        } catch (err) {
-            console.error('Error triggering sync:', err);
-            setMessage({ type: 'error', text: err.message || 'Failed to trigger sync' });
-        } finally {
-            setSyncing(false);
-        }
-    };
-
-    // Save and sync
-    const saveAndSync = async () => {
-        await saveSettings();
-        await triggerSync();
-    };
-
     // Fetch comment templates
     const loadTemplates = useCallback(async () => {
         try {
@@ -158,6 +129,9 @@ const Settings = () => {
         loadSettings();
         loadSyncStatus();
         loadTemplates();
+        apiFetch('/api/settings/api-user')
+            .then(data => setApiUser(data))
+            .catch(() => setApiUser(null));
     }, [loadSettings, loadSyncStatus, loadTemplates]);
 
     // Clear message after 5 seconds
@@ -210,6 +184,35 @@ const Settings = () => {
                     {message.text}
                 </div>
             )}
+
+            {/* Connection Info */}
+            <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Connection</h2>
+                <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                        <User className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+                        <div>
+                            <p className="text-sm font-medium text-gray-700">API Token Owner</p>
+                            {apiUser ? (
+                                <p className="text-sm text-gray-600">
+                                    {apiUser.name}{apiUser.login_id ? ` (${apiUser.login_id})` : ''}
+                                </p>
+                            ) : (
+                                <p className="text-sm text-gray-400 italic">Unable to fetch</p>
+                            )}
+                        </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                        <Database className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+                        <div>
+                            <p className="text-sm font-medium text-gray-700">Database Location</p>
+                            <p className="text-sm text-gray-600 font-mono break-all">
+                                {settings.data_path || '—'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             {/* Course Configuration */}
             <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
@@ -321,37 +324,13 @@ const Settings = () => {
                         )}
                         Save Settings
                     </button>
-                    <button
-                        onClick={saveAndSync}
-                        disabled={syncing || saving || !manualCourseId.trim()}
-                        className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
-                    >
-                        {syncing ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                        ) : (
-                            <RefreshCw className="w-4 h-4" />
-                        )}
-                        Save & Sync Now
-                    </button>
                 </div>
             </div>
 
             {/* Sync Status */}
             <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
-                <div className="flex justify-between items-center mb-4">
+                <div className="mb-4">
                     <h2 className="text-lg font-semibold text-gray-900">Sync Status</h2>
-                    <button
-                        onClick={triggerSync}
-                        disabled={syncing || !settings.course_id}
-                        className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-                    >
-                        {syncing ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                        ) : (
-                            <RefreshCw className="w-4 h-4" />
-                        )}
-                        Sync Now
-                    </button>
                 </div>
 
                 {settings.last_sync ? (

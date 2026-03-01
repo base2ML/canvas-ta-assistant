@@ -1,19 +1,17 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { RefreshCw, Calendar, FileText, ChevronUp, ChevronDown, User, Filter, MessageSquare, Eye, AlertTriangle, X, Send } from 'lucide-react';
+import { RefreshCw, Calendar, ChevronUp, ChevronDown, User, Filter, MessageSquare, Eye, AlertTriangle, X, Send } from 'lucide-react';
 import { apiFetch } from './api.js';
 import { useSSEPost } from './hooks/useSSEPost.js';
-import { formatDate, formatDateOnly, formatTime } from './utils/dates';
+import { formatDate, formatDateOnly } from './utils/dates';
 
-const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId }) => {
+const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId, refreshTrigger }) => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [courseInfo, setCourseInfo] = useState(null);
-  const [loadTime, setLoadTime] = useState(null);
   const [lateDaysData, setLateDaysData] = useState([]);
   const [selectedTAGroup, setSelectedTAGroup] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'student_name', direction: 'asc' });
-  const [lastUpdated, setLastUpdated] = useState(null);
   const [selectedAssignments, setSelectedAssignments] = useState([]);
   const [showAssignmentFilter, setShowAssignmentFilter] = useState(false);
 
@@ -80,10 +78,8 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId }) => {
   const loadCourseData = useCallback(async () => {
     if (!currentCourse) return;
 
-    const startTime = Date.now();
     setLoading(true);
     setError('');
-    setLoadTime(null);
     setLateDaysData([]);
 
     try {
@@ -96,15 +92,6 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId }) => {
       setSelectedAssignments(assignmentList.map(a => a.id));
 
       setCourseInfo(data.course_info);
-
-      // Set last updated from API response timestamp
-      if (data.last_updated) {
-        setLastUpdated(new Date(data.last_updated));
-      }
-
-      const endTime = Date.now();
-      const duration = (endTime - startTime) / 1000;
-      setLoadTime(duration);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -115,7 +102,8 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId }) => {
   // Hook initialization
   const { startPosting, cancel: cancelPosting } = useSSEPost();
 
-  // Load data automatically when component mounts and currentCourse is available
+  // Load data automatically when component mounts and currentCourse is available.
+  // refreshTrigger is incremented by the global header on each successful sync, causing a reload.
   useEffect(() => {
     if (currentCourse) {
       loadCourseData();
@@ -123,7 +111,7 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId }) => {
       // If no courses are available, try to load them from the parent
       onLoadCourses();
     }
-  }, [currentCourse, loadCourseData, courses, onLoadCourses]);
+  }, [currentCourse, loadCourseData, courses, onLoadCourses, refreshTrigger]);
 
   // Settings fetch (for SAFE-04 production warning)
   useEffect(() => {
@@ -387,22 +375,6 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId }) => {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Late Days Tracking</h1>
               <p className="text-gray-600 mt-1">Monitor student late day usage across assignments</p>
-              {courseInfo && (
-                <div className="flex items-center mt-2 text-sm text-gray-500">
-                  <FileText className="h-4 w-4 mr-1" />
-                  {courseInfo ? `${courseInfo.name} (${courseInfo.course_code})` : currentCourse ? `${currentCourse.name}` : 'No Course Selected'}
-                </div>
-              )}
-              {loadTime && (
-                <div className="flex items-center mt-1 text-xs text-green-600">
-                  ⚡ Loaded in {loadTime.toFixed(1)}s
-                </div>
-              )}
-              {lastUpdated && (
-                <div className="flex items-center mt-1 text-xs text-gray-500">
-                  🕒 Cached: {formatTime(lastUpdated)}
-                </div>
-              )}
             </div>
             <div className="flex space-x-2">
               <button

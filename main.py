@@ -38,6 +38,7 @@ SANDBOX_COURSE_ID = "20960000000447574"
 ENVIRONMENT = os.getenv("ENVIRONMENT", "local")
 CANVAS_API_URL = os.getenv("CANVAS_API_URL", "")
 CANVAS_COURSE_ID = os.getenv("CANVAS_COURSE_ID", "")
+DATA_PATH = os.getenv("DATA_PATH", "./data")
 
 
 # Lifespan context manager for startup/shutdown
@@ -114,6 +115,7 @@ class SettingsResponse(BaseModel):
     max_late_days_per_assignment: int
     sandbox_course_id: str
     timezone: str | None
+    data_path: str
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -531,6 +533,7 @@ async def get_settings():
         max_late_days_per_assignment=max_late_days,
         sandbox_course_id=SANDBOX_COURSE_ID,
         timezone=timezone,
+        data_path=DATA_PATH,
     )
 
 
@@ -575,6 +578,19 @@ async def update_settings(settings: SettingsUpdateRequest) -> dict[str, Any]:
         "message": f"Settings updated: {', '.join(updated_fields)}",
         "updated_fields": updated_fields,
     }
+
+
+@app.get("/api/settings/api-user")
+async def get_api_user() -> dict[str, Any]:
+    """Get the Canvas user profile associated with the configured API token."""
+    try:
+        user = await asyncio.to_thread(canvas_sync.fetch_current_user)
+        return user
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not fetch Canvas user: {e}",
+        ) from e
 
 
 @app.get("/api/settings/courses")

@@ -308,6 +308,21 @@ def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS idx_posting_history_posted_at ON comment_posting_history(posted_at DESC)"  # noqa: E501
         )
 
+        # Clean up any sync records left in_progress from a previous session
+        # (happens when the container is stopped/restarted mid-sync)
+        cursor.execute(
+            """
+            UPDATE sync_history
+            SET status = 'interrupted', completed_at = ?
+            WHERE status = 'in_progress'
+            """,
+            (datetime.now(UTC),),
+        )
+        if cursor.rowcount > 0:
+            logger.info(
+                f"Marked {cursor.rowcount} interrupted sync record(s) as 'interrupted'"
+            )
+
         conn.commit()
         logger.info(f"Database initialized at {DB_PATH}")
 
