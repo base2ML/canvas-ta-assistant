@@ -260,11 +260,30 @@ def sync_course_data(
                     "points_possible": getattr(assignment, "points_possible", None),
                     "html_url": getattr(assignment, "html_url", None),
                     "has_peer_reviews": getattr(assignment, "peer_reviews", False),
+                    "assignment_group_id": getattr(
+                        assignment, "assignment_group_id", None
+                    ),
                 }
             )
 
         logger.info(
             f"Assignments fetched in {time.time() - assignments_start:.2f}s ({len(assignments)} assignments)"  # noqa: E501
+        )
+
+        # Fetch Canvas assignment groups (syllabus categories — NOT TA grading groups)
+        assignment_groups_start = time.time()
+        assignment_groups_data = []
+        for ag in course.get_assignment_groups():
+            assignment_groups_data.append(
+                {
+                    "id": ag.id,
+                    "name": getattr(ag, "name", f"Group {ag.id}"),
+                    "position": getattr(ag, "position", None),
+                }
+            )
+        logger.info(
+            f"Assignment groups fetched in {time.time() - assignment_groups_start:.2f}s "  # noqa: E501
+            f"({len(assignment_groups_data)} groups)"
         )
 
         # Fetch users
@@ -338,7 +357,8 @@ def sync_course_data(
             # Users and submissions are preserved
             db.clear_refreshable_data(course_id, conn)
 
-            # Step 3: Upsert data (assignments, users, groups)
+            # Step 3: Upsert data (assignment groups, assignments, users, groups)
+            db.upsert_assignment_groups(course_id, assignment_groups_data, conn)
             db.upsert_assignments(course_id, assignments, conn)
             db.upsert_users(course_id, users, conn)  # Sets enrollment_status='active'
             db.upsert_groups(course_id, groups, conn)
