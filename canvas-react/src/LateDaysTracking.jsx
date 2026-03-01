@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { RefreshCw, Calendar, FileText, ChevronUp, ChevronDown, User, Filter, MessageSquare, Eye, AlertTriangle, X, Send } from 'lucide-react';
+import { RefreshCw, Calendar, ChevronUp, ChevronDown, User, Filter, MessageSquare, Eye, AlertTriangle, X, Send } from 'lucide-react';
 import { apiFetch } from './api.js';
 import { useSSEPost } from './hooks/useSSEPost.js';
 import { formatDate, formatDateOnly } from './utils/dates';
@@ -375,12 +375,6 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId, refreshTrigg
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Late Days Tracking</h1>
               <p className="text-gray-600 mt-1">Monitor student late day usage across assignments</p>
-              {courseInfo && (
-                <div className="flex items-center mt-2 text-sm text-gray-500">
-                  <FileText className="h-4 w-4 mr-1" />
-                  {courseInfo ? `${courseInfo.name} (${courseInfo.course_code})` : currentCourse ? `${currentCourse.name}` : 'No Course Selected'}
-                </div>
-              )}
             </div>
             <div className="flex space-x-2">
               <button
