@@ -76,6 +76,31 @@ def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS idx_assignments_course ON assignments(course_id)"  # noqa: E501
         )
 
+        # Assignment groups table (Canvas assignment group categories)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS assignment_groups (
+                id INTEGER PRIMARY KEY,
+                course_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                position INTEGER,
+                synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_assignment_groups_course "
+            "ON assignment_groups(course_id)"
+        )
+
+        # Migration: Add assignment_group_id column for existing assignments tables
+        try:
+            cursor.execute(
+                "ALTER TABLE assignments ADD COLUMN assignment_group_id INTEGER"
+            )
+            logger.info("Added assignment_group_id column to assignments table")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
+
         # Users table (students)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
