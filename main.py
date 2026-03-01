@@ -275,11 +275,16 @@ class PreviewResponse(BaseModel):
 
 # Allowed template variables (from PROJECT.md requirements)
 ALLOWED_TEMPLATE_VARIABLES = {
+    # Existing (kept for backward compatibility with saved templates)
     "days_late",
-    "days_remaining",
+    "days_remaining",  # alias for bank_remaining
     "penalty_days",
     "penalty_percent",
-    "max_late_days",
+    "max_late_days",  # alias for per_assignment_cap
+    # New bank system variables
+    "bank_days_used",
+    "bank_remaining",
+    "total_bank",
 }
 
 
@@ -430,6 +435,128 @@ def calculate_late_days_for_user(
             f"assignment {assignment.get('id')}: {e}"
         )
         return default
+
+
+def _compute_days_late(
+    submission: dict[str, Any] | None,
+    due_at: str,
+) -> int:
+    """Return days late (ceiling), accounting for grace period.
+
+    Returns 0 if not late or no submission.
+    """
+    if not submission:
+        return 0
+    submitted_at = submission.get("submitted_at")
+    workflow_state = submission.get("workflow_state", "")
+    if not submitted_at or workflow_state in ("unsubmitted", "pending_review"):
+        return 0
+    try:
+        submitted_datetime = dateutil_parser.parse(submitted_at)
+        due_datetime = dateutil_parser.parse(due_at)
+        if submitted_datetime <= due_datetime:
+            return 0
+        time_diff = submitted_datetime - due_datetime
+        grace_seconds = LATE_SUBMISSION_GRACE_PERIOD_MINUTES * 60
+        total_seconds = time_diff.total_seconds() - grace_seconds
+        if total_seconds <= 0:
+            return 0
+        return math.ceil(total_seconds / 86400)
+    except Exception:
+        return 0
+
+
+def calculate_student_late_day_summary(
+    user_id: int,
+    assignments: list[dict[str, Any]],
+    submissions: list[dict[str, Any]],
+    total_late_day_bank: int,
+    per_assignment_cap: int,
+    penalty_rate_per_day: int,
+    late_day_eligible_group_ids: set[int],
+) -> dict[int, dict[str, Any]]:
+    """Calculate semester bank late day summary for one student across all assignments.
+
+    Pass 1: Sort assignments by due_at ascending. For each late assignment, draw
+    bank days (capped by per_assignment_cap and bank_remaining). Project deliverables
+    (ineligible assignment groups) are marked not_accepted with no bank deduction.
+
+    Returns {assignment_id: {days_late, bank_days_used, bank_remaining, penalty_days,
+    penalty_percent, not_accepted, total_bank}}.
+    """
+    # Build submission lookup for this user
+    sub_lookup: dict[int, dict[str, Any]] = {
+        s["assignment_id"]: s for s in submissions if s.get("user_id") == user_id
+    }
+
+    # Sort assignments chronologically by due_at; skip assignments with no due_at
+    sorted_assignments = sorted(
+        [a for a in assignments if a.get("due_at")],
+        key=lambda a: dateutil_parser.parse(a["due_at"]),
+    )
+
+    bank_remaining = total_late_day_bank
+    result: dict[int, dict[str, Any]] = {}
+
+    for assignment in sorted_assignments:
+        assignment_id = assignment["id"]
+        due_at = assignment["due_at"]
+        group_id = assignment.get("assignment_group_id")
+
+        # Eligibility: if no eligible groups configured, all eligible (backward compat)
+        if late_day_eligible_group_ids:
+            is_eligible = (
+                group_id is not None and group_id in late_day_eligible_group_ids
+            )
+        else:
+            is_eligible = True
+
+        sub = sub_lookup.get(assignment_id)
+        days_late = _compute_days_late(sub, due_at)
+
+        if days_late == 0:
+            result[assignment_id] = {
+                "days_late": 0,
+                "bank_days_used": 0,
+                "bank_remaining": bank_remaining,
+                "penalty_days": 0,
+                "penalty_percent": 0,
+                "not_accepted": False,
+                "total_bank": total_late_day_bank,
+            }
+            continue
+
+        if not is_eligible:
+            # Project deliverable submitted late: Not Accepted, no bank consumed
+            result[assignment_id] = {
+                "days_late": days_late,
+                "bank_days_used": 0,
+                "bank_remaining": bank_remaining,
+                "penalty_days": days_late,
+                "penalty_percent": 100,
+                "not_accepted": True,
+                "total_bank": total_late_day_bank,
+            }
+            continue
+
+        # Bank-eligible late submission
+        applicable_late_days = min(days_late, per_assignment_cap)
+        bank_days_used = min(applicable_late_days, bank_remaining)
+        penalty_days = days_late - bank_days_used
+        penalty_percent = min(penalty_days * penalty_rate_per_day, 100)
+        bank_remaining -= bank_days_used
+
+        result[assignment_id] = {
+            "days_late": days_late,
+            "bank_days_used": bank_days_used,
+            "bank_remaining": bank_remaining,
+            "penalty_days": penalty_days,
+            "penalty_percent": penalty_percent,
+            "not_accepted": False,
+            "total_bank": total_late_day_bank,
+        }
+
+    return result
 
 
 def resolve_template(
