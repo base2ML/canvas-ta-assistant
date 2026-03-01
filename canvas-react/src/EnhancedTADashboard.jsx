@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { RefreshCw } from 'lucide-react';
 import AssignmentStatusBreakdown from './components/AssignmentStatusBreakdown';
 import { apiFetch } from './api';
-import { formatDate } from './utils/dates';
 
-const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId }) => {
+const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId, refreshTrigger }) => {
   // Use courses from props, but keep local state for selection
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [assignments, setAssignments] = useState([]);
@@ -12,7 +10,6 @@ const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId }) =>
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [lastUpdated, setLastUpdated] = useState(null);
 
   // Expandable assignments state (for nested TA breakdown)
   const [expandedAssignments, setExpandedAssignments] = useState(new Set());
@@ -47,16 +44,6 @@ const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId }) =>
       setAssignments(assignmentsData.assignments || []);
       setSubmissions(submissionsData.submissions || []);
       setGroups(groupsData.groups || []);
-
-      // Fetch the actual last sync time from the backend (best-effort)
-      try {
-        const syncData = await apiFetch(`/api/canvas/sync/status?course_id=${courseId}`);
-        const completedAt = syncData?.last_sync?.completed_at;
-        setLastUpdated(completedAt ? new Date(completedAt) : new Date());
-      } catch (syncErr) {
-        console.warn('Could not fetch sync status, falling back to current time:', syncErr);
-        setLastUpdated(new Date());
-      }
     } catch (err) {
       console.error('Error loading course data:', err);
       setError(err.message);
@@ -65,18 +52,15 @@ const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId }) =>
     }
   }, []);
 
-  // Initialize or reset selected course when courses or activeCourseId changes.
-  // selectedCourse is intentionally excluded from deps — it is only used as a
-  // comparison guard to avoid redundant resets, not as a reactive input.
+  // Initialize or reset selected course when courses, activeCourseId, or refreshTrigger changes.
+  // refreshTrigger is incremented by the global header on each successful sync, causing a reload.
   useEffect(() => {
     if (courses && courses.length > 0) {
       const target = courses.find(c => String(c.id) === String(activeCourseId)) || courses[0];
-      if (!selectedCourse || String(selectedCourse.id) !== String(target.id)) {
-        setSelectedCourse(target);
-        loadCourseData(target.id);
-      }
+      setSelectedCourse(target);
+      loadCourseData(target.id);
     }
-  }, [courses, activeCourseId, loadCourseData]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [courses, activeCourseId, loadCourseData, refreshTrigger]);
 
   // Trigger parent to load courses if empty
   useEffect(() => {
@@ -206,30 +190,6 @@ const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId }) =>
     setExpandedAssignments(newExpanded);
   };
 
-  const refreshData = async () => {
-    setLoading(true);
-    setError('');
-
-    try {
-      // First, trigger Canvas data sync
-      const syncResult = await apiFetch('/api/canvas/sync', { method: 'POST' });
-      console.log('Sync completed:', syncResult);
-
-      // Reload data immediately since sync is synchronous now
-      if (selectedCourse) {
-        await loadCourseData(selectedCourse.id);
-      } else if (onLoadCourses) {
-        onLoadCourses();
-      }
-
-    } catch (err) {
-      console.error('Refresh error:', err);
-      setError(`Failed to refresh: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -237,21 +197,6 @@ const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId }) =>
         <div className="bg-white shadow-sm rounded-lg p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-3xl font-bold text-gray-900">TA Grading Dashboard</h1>
-            <div className="flex flex-col items-end space-y-2">
-              {lastUpdated && (
-                <div className="text-sm text-gray-500">
-                  Last Updated: {lastUpdated ? formatDate(lastUpdated) : 'Never'}
-                </div>
-              )}
-              <button
-                onClick={refreshData}
-                disabled={loading}
-                className="inline-flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                <span>Refresh</span>
-              </button>
-            </div>
           </div>
 
 
