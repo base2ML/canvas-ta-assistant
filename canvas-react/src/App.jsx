@@ -8,7 +8,7 @@ import Settings from './Settings';
 import Navigation from './components/Navigation';
 import { RefreshCw } from 'lucide-react';
 import { apiFetch, BACKEND_URL } from './api';
-import { setTimezone } from './utils/dates';
+import { setTimezone, formatDate } from './utils/dates';
 
 const AppContent = () => {
   const location = useLocation();
@@ -17,6 +17,8 @@ const AppContent = () => {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [previousPath, setPreviousPath] = useState(location.pathname);
 
   const loadSettings = useCallback(async () => {
@@ -28,6 +30,15 @@ const AppContent = () => {
         setConfiguredCourse(null);
       }
       setTimezone(data.timezone ?? null);
+      // Best-effort: initialize lastSyncedAt from last known sync time
+      try {
+        const syncData = await apiFetch('/api/canvas/sync/status');
+        if (syncData?.last_sync?.completed_at) {
+          setLastSyncedAt(new Date(syncData.last_sync.completed_at));
+        }
+      } catch {
+        // Silently fail — lastSyncedAt will remain null until first sync
+      }
     } catch (err) {
       console.error('Error loading settings:', err);
     }
@@ -57,6 +68,8 @@ const AppContent = () => {
       // Reload settings and courses after sync
       loadSettings();
       loadCourses();
+      setLastSyncedAt(new Date());
+      setRefreshTrigger(prev => prev + 1);
     } catch (err) {
       console.error('Sync failed:', err);
       setSyncMessage({
@@ -121,6 +134,11 @@ const AppContent = () => {
                 {syncMessage.text}
               </span>
             )}
+            {lastSyncedAt && !syncMessage && (
+              <span className="text-xs text-gray-500">
+                Synced: {formatDate(lastSyncedAt)}
+              </span>
+            )}
             <button
               onClick={handleRefreshData}
               disabled={syncing}
@@ -145,6 +163,7 @@ const AppContent = () => {
                 onLoadCourses={loadCourses}
                 loadingCourses={loading}
                 activeCourseId={activeCourseId}
+                refreshTrigger={refreshTrigger}
               />
             }
           />
@@ -155,6 +174,7 @@ const AppContent = () => {
                 courses={courses}
                 onLoadCourses={loadCourses}
                 activeCourseId={activeCourseId}
+                refreshTrigger={refreshTrigger}
               />
             }
           />
@@ -175,6 +195,7 @@ const AppContent = () => {
                 courses={courses}
                 onLoadCourses={loadCourses}
                 activeCourseId={activeCourseId}
+                refreshTrigger={refreshTrigger}
               />
             }
           />
