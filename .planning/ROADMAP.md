@@ -61,7 +61,7 @@
 **Plans:** 4 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — DB schema: assignment_groups table, assignment_group_id migration, upsert/clear functions
+- [x] 05-01-PLAN.md — DB schema: assignment_groups table, assignment_group_id migration, upsert/clear functions
 - [ ] 05-02-PLAN.md — Canvas sync: fetch assignment groups, annotate assignments; add /api/canvas/assignment-groups endpoint
 - [ ] 05-03-PLAN.md — Backend algorithm: calculate_student_late_day_summary(), settings models, get_late_days_data(), preview/posting flow
 - [ ] 05-04-PLAN.md — Frontend: Settings Late Day Policy section + LateDaysTracking bank/penalty/Not Accepted display
@@ -74,4 +74,4 @@ Plans:
 | 2. Posting Logic | v1.0 | 2/2 | ✅ Complete | 2026-02-21 |
 | 3. UI Integration | v1.0 | 4/4 | ✅ Complete | 2026-02-21 |
 | 4. Unified Refresh | v1.1 | 3/3 | ✅ Complete | 2026-03-01 |
-| 5. Late Day Penalty Fix | v1.2 | 0/4 | In Progress | — |
+| 5. Late Day Penalty Fix | v1.2 | 1/4 | In Progress | — |

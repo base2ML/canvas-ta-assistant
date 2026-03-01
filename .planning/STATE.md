@@ -1,14 +1,14 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.2
-milestone_name: TBD
-status: planning
-last_updated: "2026-03-01T03:30:00Z"
+milestone_name: Late Day Bank System
+status: in_progress
+last_updated: "2026-03-01T17:26:49Z"
 progress:
-  total_phases: 0
+  total_phases: 1
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 4
+  completed_plans: 1
 ---
 
 # Project State
@@ -18,15 +18,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** Safely and efficiently post accurate late day feedback to student submissions, preventing manual errors and saving TA time while ensuring students receive timely, consistent communication about their late day status.
-**Current focus:** Planning next milestone (v1.2)
+**Current focus:** Phase 05 — Fix late day penalty calculation (semester-aware bank system)
 
 ## Current Position
 
-Phase: — (between milestones)
-Status: v1.1 shipped ✅ — ready for next milestone
-Last activity: 2026-03-01 — v1.1 milestone archived (4 phases, 11 plans, 5 quick tasks)
+Phase: 05 — fix-late-day-penalty-calculation (Plan 2 of 4)
+Status: In progress — 05-01 complete, 05-02 through 05-04 remaining
+Last activity: 2026-03-01 — 05-01-PLAN.md complete (SQLite schema for assignment_groups)
 
-Progress: [██████████] 100% (v1.1 complete — archived)
+Progress: [███░░░░░░░] 25% (1/4 plans complete in phase 05)
 
 ## Performance Metrics
 
@@ -46,17 +46,32 @@ Progress: [██████████] 100% (v1.1 complete — archived)
 *Updated after each plan completion*
 | Phase 04-unified-refresh P02 | 5 | 1 tasks | 1 files |
 | Phase 04-unified-refresh P03 | 14 | 2 tasks | 3 files |
+| Phase 05 P01 (05-01) | 3 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
 ### Decisions
 
 All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
-Fresh decisions will be added here as next milestone progresses.
+
+**Phase 05 decisions (in progress):**
+- Used try/except sqlite3.OperationalError migration pattern (not contextlib.suppress) for assignment_group_id column, consistent with enrollment_status migration
+- Placed assignment_groups table CREATE immediately after assignments table in init_db() for logical organization
+- Added conftest.py to tests/ (new directory) to support pytest backend module imports
 
 ### Pending Todos
 
-None yet.
+6 todos captured (2026-03-01):
+1. **Fix late day penalty calculation logic** (bug — incorrect penalty math)
+2. Add grader identity tracking (foundation — build first)
+3. Add TA grading deadlines (depends on #2)
+4. Add grade distribution visualizations (depends on #2)
+5. Add student at-risk alerts
+6. Add exportable reports CSV and PDF (build last)
+
+### Roadmap Evolution
+
+- Phase 5 added: Fix late day penalty calculation — rewrite to semester-aware bank system with per-assignment caps, project deliverable exclusion via Canvas assignment groups, and 25% penalty rate
 
 ### Blockers/Concerns
 
@@ -75,5 +90,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: v1.1 milestone complete — archived, tagged, ready for v1.2 planning
+Stopped at: Completed 05-01-PLAN.md (SQLite schema for assignment_groups table and upsert functions)
 Resume file: None
