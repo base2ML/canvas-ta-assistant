@@ -13,7 +13,6 @@ const Settings = () => {
     const [availableCourses, setAvailableCourses] = useState([]);
     const [syncHistory, setSyncHistory] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [syncing, setSyncing] = useState(false);
     const [saving, setSaving] = useState(false);
     const [loadingCourses, setLoadingCourses] = useState(false);
     const [message, setMessage] = useState(null);
@@ -84,35 +83,6 @@ const Settings = () => {
         } finally {
             setSaving(false);
         }
-    };
-
-    // Trigger sync
-    const triggerSync = async () => {
-        setSyncing(true);
-        setMessage(null);
-        try {
-            const data = await apiFetch('/api/canvas/sync', {
-                method: 'POST',
-                body: JSON.stringify({ course_id: manualCourseId.trim() || null }),
-            });
-            setMessage({
-                type: 'success',
-                text: `Sync completed! ${data.stats?.assignments || 0} assignments, ${data.stats?.users || 0} users synced in ${data.duration_seconds}s`,
-            });
-            loadSettings();
-            loadSyncStatus();
-        } catch (err) {
-            console.error('Error triggering sync:', err);
-            setMessage({ type: 'error', text: err.message || 'Failed to trigger sync' });
-        } finally {
-            setSyncing(false);
-        }
-    };
-
-    // Save and sync
-    const saveAndSync = async () => {
-        await saveSettings();
-        await triggerSync();
     };
 
     // Fetch comment templates
@@ -321,37 +291,13 @@ const Settings = () => {
                         )}
                         Save Settings
                     </button>
-                    <button
-                        onClick={saveAndSync}
-                        disabled={syncing || saving || !manualCourseId.trim()}
-                        className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
-                    >
-                        {syncing ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                        ) : (
-                            <RefreshCw className="w-4 h-4" />
-                        )}
-                        Save & Sync Now
-                    </button>
                 </div>
             </div>
 
             {/* Sync Status */}
             <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
-                <div className="flex justify-between items-center mb-4">
+                <div className="mb-4">
                     <h2 className="text-lg font-semibold text-gray-900">Sync Status</h2>
-                    <button
-                        onClick={triggerSync}
-                        disabled={syncing || !settings.course_id}
-                        className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-                    >
-                        {syncing ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                        ) : (
-                            <RefreshCw className="w-4 h-4" />
-                        )}
-                        Sync Now
-                    </button>
                 </div>
 
                 {settings.last_sync ? (
