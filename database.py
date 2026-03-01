@@ -664,6 +664,7 @@ def clear_refreshable_data(course_id: str, conn: sqlite3.Connection) -> None:
     )
     cursor.execute("DELETE FROM groups WHERE course_id = ?", (course_id,))
     cursor.execute("DELETE FROM assignments WHERE course_id = ?", (course_id,))
+    cursor.execute("DELETE FROM assignment_groups WHERE course_id = ?", (course_id,))
     # Note: users are preserved (enrollment status tracked, not cleared)
     logger.info(f"Cleared refreshable data for course {course_id}")
 
@@ -696,6 +697,9 @@ def clear_course_data(course_id: str, conn: sqlite3.Connection | None = None) ->
         cursor.execute("DELETE FROM groups WHERE course_id = ?", (course_id,))
         cursor.execute("DELETE FROM users WHERE course_id = ?", (course_id,))
         cursor.execute("DELETE FROM assignments WHERE course_id = ?", (course_id,))
+        cursor.execute(
+            "DELETE FROM assignment_groups WHERE course_id = ?", (course_id,)
+        )
         if conn is None:
             db_conn.commit()
         logger.info(f"Cleared all data for course {course_id}")
@@ -726,6 +730,7 @@ def upsert_assignments(
                 assignment.get("due_at"),
                 assignment.get("points_possible"),
                 assignment.get("html_url"),
+                assignment.get("assignment_group_id"),
                 synced_at,
             )
             for assignment in assignments
@@ -734,15 +739,17 @@ def upsert_assignments(
         cursor.executemany(
             """
             INSERT INTO assignments (
-                id, course_id, name, due_at, points_possible, html_url, synced_at
+                id, course_id, name, due_at, points_possible, html_url,
+                assignment_group_id, synced_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 course_id = excluded.course_id,
                 name = excluded.name,
                 due_at = excluded.due_at,
                 points_possible = excluded.points_possible,
                 html_url = excluded.html_url,
+                assignment_group_id = excluded.assignment_group_id,
                 synced_at = excluded.synced_at
         """,
             data,
@@ -751,6 +758,43 @@ def upsert_assignments(
         if conn is None:
             db_conn.commit()
         return len(assignments)
+
+    if conn is not None:
+        return _upsert(conn)
+    else:
+        with get_db_connection() as db_conn:
+            return _upsert(db_conn)
+
+
+def upsert_assignment_groups(
+    course_id: str,
+    groups: list[dict[str, Any]],
+    conn: sqlite3.Connection | None = None,
+) -> int:
+    """Insert or update Canvas assignment groups for a course."""
+
+    def _upsert(db_conn: sqlite3.Connection) -> int:
+        cursor = db_conn.cursor()
+        synced_at = datetime.now(UTC)
+        data = [
+            (g["id"], course_id, g["name"], g.get("position"), synced_at)
+            for g in groups
+        ]
+        cursor.executemany(
+            """
+            INSERT INTO assignment_groups (id, course_id, name, position, synced_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                course_id = excluded.course_id,
+                name = excluded.name,
+                position = excluded.position,
+                synced_at = excluded.synced_at
+            """,
+            data,
+        )
+        if conn is None:
+            db_conn.commit()
+        return len(groups)
 
     if conn is not None:
         return _upsert(conn)
