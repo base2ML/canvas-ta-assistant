@@ -1,14 +1,14 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Late Day Bank System
-status: in_progress
-last_updated: "2026-03-01T17:26:49Z"
+milestone: v1.0
+milestone_name: milestone
+status: unknown
+last_updated: "2026-03-01T17:33:36.062Z"
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -22,11 +22,11 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 ## Current Position
 
-Phase: 05 — fix-late-day-penalty-calculation (Plan 2 of 4)
-Status: In progress — 05-01 complete, 05-02 through 05-04 remaining
-Last activity: 2026-03-01 — 05-01-PLAN.md complete (SQLite schema for assignment_groups)
+Phase: 05 — fix-late-day-penalty-calculation (Plan 3 of 4)
+Status: In progress — 05-01 and 05-02 complete, 05-03 and 05-04 remaining
+Last activity: 2026-03-01 — 05-02-PLAN.md complete (Canvas assignment groups sync + API endpoint)
 
-Progress: [███░░░░░░░] 25% (1/4 plans complete in phase 05)
+Progress: [█████░░░░░] 50% (2/4 plans complete in phase 05)
 
 ## Performance Metrics
 
@@ -47,6 +47,7 @@ Progress: [███░░░░░░░] 25% (1/4 plans complete in phase 05)
 | Phase 04-unified-refresh P02 | 5 | 1 tasks | 1 files |
 | Phase 04-unified-refresh P03 | 14 | 2 tasks | 3 files |
 | Phase 05 P01 (05-01) | 3 min | 2 tasks | 3 files |
+| Phase 05 P02 | 3 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -58,6 +59,8 @@ All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
 - Used try/except sqlite3.OperationalError migration pattern (not contextlib.suppress) for assignment_group_id column, consistent with enrollment_status migration
 - Placed assignment_groups table CREATE immediately after assignments table in init_db() for logical organization
 - Added conftest.py to tests/ (new directory) to support pytest backend module imports
+- [Phase 05]: Fetched Canvas assignment groups between assignments and users in sync_course_data(), called upsert_assignment_groups() before upsert_assignments() inside transaction
+- [Phase 05]: Added get_assignment_groups() to database.py ordering by position ASC, name ASC; endpoint returns {groups, count} with HTTP 500 on error
 
 ### Pending Todos
 
@@ -90,5 +93,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 05-01-PLAN.md (SQLite schema for assignment_groups table and upsert functions)
+Stopped at: Completed 05-02-PLAN.md (assignment groups sync and API endpoint)
 Resume file: None
