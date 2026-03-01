@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-01T17:47:25Z"
+last_updated: "2026-03-01T18:40:07.747Z"
 progress:
   total_phases: 1
   completed_phases: 1
@@ -67,6 +67,8 @@ All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
 - [Phase 05-03]: Empty late_day_eligible_group_ids means all assignments eligible (backward compat); per_assignment_cap falls back to max_late_days_per_assignment if not in DB
 - [Phase 05-04]: Placed Late Day Policy section between Course Configuration and Comment Templates; stacked green/red split cell for mixed bank+penalty cases
 - [Phase 05-04]: Sort for assignment_ columns uses entry.days_late (not entry object) for numeric comparison
+- [Phase 05]: Added dedicated Save Policy Settings button in Late Day Policy card to fix settings persistence UX confusion where users didn't realize Course Configuration save button applied to policy fields
+- [Phase 05]: DB schema migration: assignment_groups table and assignment_group_id column were missing from local DB — applied init_db() to migrate; groups will populate on next sync
 
 ### Pending Todos
 

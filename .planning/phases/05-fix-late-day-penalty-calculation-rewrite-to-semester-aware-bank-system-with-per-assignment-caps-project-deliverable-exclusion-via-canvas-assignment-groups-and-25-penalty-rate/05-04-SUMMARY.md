@@ -32,6 +32,8 @@ key-decisions:
   - "Placed Late Day Policy section between Course Configuration and Comment Templates for logical flow"
   - "Stacked green/red split cell for mixed bank+penalty days (bankDays > 0 and penaltyDays > 0)"
   - "Removed unused getLateDaysColor helper (Rule 1 auto-fix) since entry-object cells replaced flat-number cells"
+  - "Added dedicated Save Policy Settings button in Late Day Policy card (post-checkpoint fix) instead of relying on Course Configuration save button"
+  - "assignment_groups table was missing from DB — applied init_db() migration to create it and add assignment_group_id column"
 
 patterns-established:
   - "Assignment cell rendering: check entry object fields (not raw number) for bank/penalty/not_accepted state"
@@ -52,10 +54,10 @@ completed: 2026-03-01
 
 ## Performance
 
-- **Duration:** 2 min
+- **Duration:** ~15 min (including post-checkpoint debug and fixes)
 - **Started:** 2026-03-01T17:45:25Z
-- **Completed:** 2026-03-01T17:47:25Z
-- **Tasks:** 2 (plus checkpoint awaiting human verification)
+- **Completed:** 2026-03-01 (post-checkpoint fix session)
+- **Tasks:** 2 + post-checkpoint fixes
 - **Files modified:** 2
 
 ## Accomplishments
@@ -95,13 +97,24 @@ Each task was committed atomically:
 - **Verification:** ESLint passes, build succeeds
 - **Committed in:** d48ee83 (Task 2 commit)
 
+**2. [Post-checkpoint] Settings persistence UX fix and DB schema migration**
+- **Found during:** Human verification checkpoint — user reported settings not saving, groups not appearing
+- **Root cause A (UX):** The "Save Settings" button lives in the Course Configuration card (top of page). The Late Day Policy section is below Sync Status and Sync History. Users changed policy values and had no nearby save button.
+- **Fix A:** Added dedicated `savePolicySettings()` function and "Save Policy Settings" button inside the Late Day Policy card with inline success/error feedback. Also added note directing user to reload Late Days Tracking after saving.
+- **Root cause B (DB schema):** The `assignment_groups` table was missing from the SQLite database. `init_db()` adds it via `CREATE TABLE IF NOT EXISTS`, but it had not been run since the table was added in plan 05-01. The endpoint `/api/canvas/assignment-groups/{course_id}` was silently returning `{"groups": [], "count": 0}`.
+- **Fix B:** Ran `init_db()` programmatically to create `assignment_groups` table and migrate `assignment_group_id` column into `assignments`. Database confirmed correct after migration. Groups will populate on next Canvas sync (no full re-sync required — existing sync flow calls `upsert_assignment_groups()`).
+- **Root cause C (calculations):** Not a code bug — calculations update correctly once settings are saved (Fix A). The Late Days Tracking page requires a manual refresh after settings change, which is expected.
+- **Files modified:** canvas-react/src/Settings.jsx (fix A); database migrated in-place (fix B)
+- **Committed in:** 6d8ecec
+
 ---
 
-**Total deviations:** 1 auto-fixed (1 bug/lint)
-**Impact on plan:** Fix necessary for ESLint to pass. No scope creep.
+**Total deviations:** 1 auto-fixed (lint) + 2 post-checkpoint fixes (UX + DB schema)
+**Impact on plan:** UX fix necessary for correct operation; DB schema fix prerequisite for groups feature to work.
 
 ## Issues Encountered
-None.
+- Post-checkpoint: assignment_groups table missing from DB required manual init_db() migration
+- Post-checkpoint: Settings save UX confusion required dedicated Save button in Late Day Policy card
 
 ## User Setup Required
 None - no external service configuration required.
