@@ -112,10 +112,15 @@ class SettingsResponse(BaseModel):
     canvas_api_url: str
     last_sync: dict[str, Any] | None
     test_mode: bool
-    max_late_days_per_assignment: int
+    max_late_days_per_assignment: int  # kept for compat
     sandbox_course_id: str
     timezone: str | None
     data_path: str
+    # New late day policy fields
+    total_late_day_bank: int
+    penalty_rate_per_day: int
+    per_assignment_cap: int
+    late_day_eligible_groups: list[int]
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -123,6 +128,11 @@ class SettingsUpdateRequest(BaseModel):
     test_mode: bool | None = None
     max_late_days_per_assignment: int | None = None
     timezone: str | None = None
+    # New late day policy fields
+    total_late_day_bank: int | None = None
+    penalty_rate_per_day: int | None = None
+    per_assignment_cap: int | None = None
+    late_day_eligible_groups: list[int] | None = None
 
     @field_validator("max_late_days_per_assignment")
     @classmethod
@@ -651,6 +661,22 @@ async def get_settings():
 
     timezone = db.get_setting("timezone") or None
 
+    # New late day bank policy settings
+    total_bank_str = db.get_setting("total_late_day_bank")
+    total_late_day_bank = int(total_bank_str) if total_bank_str else 10
+
+    penalty_rate_str = db.get_setting("penalty_rate_per_day")
+    penalty_rate_per_day = int(penalty_rate_str) if penalty_rate_str else 25
+
+    per_cap_str = db.get_setting("per_assignment_cap")
+    # Migration fallback: use max_late_days_per_assignment if per_assignment_cap not set
+    per_assignment_cap = int(per_cap_str) if per_cap_str else max_late_days
+
+    eligible_str = db.get_setting("late_day_eligible_groups")
+    late_day_eligible_groups: list[int] = (
+        json.loads(eligible_str) if eligible_str else []
+    )
+
     return SettingsResponse(
         course_id=course_id or None,
         course_name=course_name,
@@ -661,6 +687,10 @@ async def get_settings():
         sandbox_course_id=SANDBOX_COURSE_ID,
         timezone=timezone,
         data_path=DATA_PATH,
+        total_late_day_bank=total_late_day_bank,
+        penalty_rate_per_day=penalty_rate_per_day,
+        per_assignment_cap=per_assignment_cap,
+        late_day_eligible_groups=late_day_eligible_groups,
     )
 
 
@@ -693,6 +723,30 @@ async def update_settings(settings: SettingsUpdateRequest) -> dict[str, Any]:
         db.set_setting("timezone", settings.timezone)
         updated_fields.append("timezone")
         logger.info(f"Timezone updated to: {settings.timezone!r}")
+
+    if settings.total_late_day_bank is not None:
+        db.set_setting("total_late_day_bank", str(settings.total_late_day_bank))
+        updated_fields.append("total_late_day_bank")
+        logger.info(f"Total late day bank updated to: {settings.total_late_day_bank}")
+
+    if settings.penalty_rate_per_day is not None:
+        db.set_setting("penalty_rate_per_day", str(settings.penalty_rate_per_day))
+        updated_fields.append("penalty_rate_per_day")
+        logger.info(f"Penalty rate updated to: {settings.penalty_rate_per_day}%/day")
+
+    if settings.per_assignment_cap is not None:
+        db.set_setting("per_assignment_cap", str(settings.per_assignment_cap))
+        updated_fields.append("per_assignment_cap")
+        logger.info(f"Per-assignment cap updated to: {settings.per_assignment_cap}")
+
+    if settings.late_day_eligible_groups is not None:
+        db.set_setting(
+            "late_day_eligible_groups", json.dumps(settings.late_day_eligible_groups)
+        )
+        updated_fields.append("late_day_eligible_groups")
+        logger.info(
+            f"Late day eligible groups updated: {settings.late_day_eligible_groups}"
+        )
 
     if not updated_fields:
         raise HTTPException(
@@ -1691,72 +1745,78 @@ async def get_ta_grading_data(course_id: str) -> dict[str, Any]:
 
 @app.get("/api/dashboard/late-days/{course_id}")
 async def get_late_days_data(course_id: str) -> dict[str, Any]:
-    """Calculate late days for all students in a course."""
+    """Calculate late days for all students in a course using semester bank system."""
     try:
         assignments = db.get_assignments(course_id)
         submissions = db.get_submissions(course_id)
         users = db.get_users(course_id)
         groups = db.get_groups(course_id)
 
-        # Create user to TA group mapping and submission lookup
+        # Create user to TA group mapping
         user_to_ta_group = _build_user_to_ta_group_map(groups)
-        submission_lookup = _build_submission_lookup(submissions)
 
-        # Calculate late days per student
+        # Read late day bank settings once (not per-student)
+        total_bank = int(db.get_setting("total_late_day_bank") or 10)
+        per_cap = int(db.get_setting("per_assignment_cap") or 7)
+        penalty_rate = int(db.get_setting("penalty_rate_per_day") or 25)
+        eligible_str = db.get_setting("late_day_eligible_groups")
+        eligible_set: set[int] = (
+            set(json.loads(eligible_str)) if eligible_str else set()
+        )
+
+        # Calculate late days per student using bank summary
         students_data = []
 
         for user in users:
             user_id = user.get("id")
+
+            summary = calculate_student_late_day_summary(
+                user_id,
+                assignments,
+                submissions,
+                total_bank,
+                per_cap,
+                penalty_rate,
+                eligible_set,
+            )
+
+            # Build per-assignment dict using summary values
+            assignments_data_for_student: dict[str, dict[str, Any]] = {}
+            total_late_days = 0
+            for assignment in assignments:
+                assignment_id = assignment.get("id")
+                if not assignment.get("due_at"):
+                    continue
+                entry = summary.get(assignment_id)
+                if entry and entry["days_late"] > 0:
+                    assignments_data_for_student[str(assignment_id)] = {
+                        "days_late": entry["days_late"],
+                        "bank_days_used": entry["bank_days_used"],
+                        "bank_remaining": entry["bank_remaining"],
+                        "penalty_days": entry["penalty_days"],
+                        "penalty_percent": entry["penalty_percent"],
+                        "not_accepted": entry["not_accepted"],
+                    }
+                    total_late_days += entry["days_late"]
+
+            # Final bank_remaining = min bank_remaining across all processed assignments
+            final_bank = total_bank
+            if summary:
+                final_bank = min(
+                    (e["bank_remaining"] for e in summary.values()),
+                    default=total_bank,
+                )
+
             student_data = {
                 "student_id": str(user_id),
                 "student_name": user.get("name", ""),
                 "student_email": user.get("email", ""),
                 "ta_group_name": user_to_ta_group.get(user_id, "Unassigned"),
-                "total_late_days": 0,
-                "assignments": {},
+                "total_late_days": total_late_days,
+                "bank_remaining": final_bank,
+                "total_bank": total_bank,
+                "assignments": assignments_data_for_student,
             }
-
-            for assignment in assignments:
-                assignment_id = assignment.get("id")
-                due_at = assignment.get("due_at")
-
-                if not due_at:
-                    continue
-
-                key = (user_id, assignment_id)
-                submission = submission_lookup.get(key)
-
-                if submission:
-                    submitted_at = submission.get("submitted_at")
-                    workflow_state = submission.get("workflow_state", "")
-
-                    if submitted_at and workflow_state not in [
-                        "unsubmitted",
-                        "pending_review",
-                    ]:
-                        try:
-                            submitted_datetime = dateutil_parser.parse(submitted_at)
-                            due_datetime = dateutil_parser.parse(due_at)
-
-                            if submitted_datetime > due_datetime:
-                                time_diff = submitted_datetime - due_datetime
-                                grace_seconds = (
-                                    LATE_SUBMISSION_GRACE_PERIOD_MINUTES * 60
-                                )
-                                total_seconds = (
-                                    time_diff.total_seconds() - grace_seconds
-                                )
-                                if total_seconds > 0:
-                                    days_late = math.ceil(total_seconds / 86400)
-                                    student_data["assignments"][str(assignment_id)] = (
-                                        days_late
-                                    )
-                                    student_data["total_late_days"] += days_late
-                        except Exception as e:
-                            logger.debug(
-                                f"Error parsing dates for user {user_id}, assignment {assignment_id}: {e}"  # noqa: E501
-                            )
-
             students_data.append(student_data)
 
         # Format assignments data
@@ -1775,9 +1835,13 @@ async def get_late_days_data(course_id: str) -> dict[str, Any]:
         )
         course_info = {"name": course_name, "course_code": course_id}
 
+        # Fetch assignment groups for the UI group selector
+        assignment_groups = db.get_assignment_groups(course_id)
+
         return {
             "students": students_data,
             "assignments": assignments_data,
+            "assignment_groups": assignment_groups,
             "course_info": course_info,
             "last_updated": datetime.now(UTC).isoformat(),
         }
