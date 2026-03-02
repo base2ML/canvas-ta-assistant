@@ -975,7 +975,8 @@ def get_assignments(course_id: str) -> list[dict[str, Any]]:
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT id, course_id, name, due_at, points_possible, html_url, synced_at
+            SELECT id, course_id, name, due_at, points_possible,
+                   html_url, assignment_group_id, synced_at
             FROM assignments WHERE course_id = ?
             ORDER BY due_at DESC NULLS LAST
         """,
