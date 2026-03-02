@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 ## Current Position
 
 Phase: 05 — fix-late-day-penalty-calculation (Plan 4 of 4)
-Status: Complete — all 4 plans executed; checkpoint:human-verify pending for 05-04 UI
-Last activity: 2026-03-01 — 05-04-PLAN.md complete (Late Day Policy UI, bank/penalty cell rendering)
+Status: Complete — all 4 plans executed; checkpoint:human-verify APPROVED; SQL SELECT bug fixed (80dc14a)
+Last activity: 2026-03-01 — 05-04 fully closed (Late Day Policy UI, bank/penalty cells, DB SELECT fix)
 
 Progress: [██████████] 100% (4/4 plans complete in phase 05)
 
@@ -69,6 +69,7 @@ All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
 - [Phase 05-04]: Sort for assignment_ columns uses entry.days_late (not entry object) for numeric comparison
 - [Phase 05]: Added dedicated Save Policy Settings button in Late Day Policy card to fix settings persistence UX confusion where users didn't realize Course Configuration save button applied to policy fields
 - [Phase 05]: DB schema migration: assignment_groups table and assignment_group_id column were missing from local DB — applied init_db() to migrate; groups will populate on next sync
+- [Phase 05-04]: get_assignments() SELECT omitted assignment_group_id — calculate_student_late_day_summary() received None and marked all assignments not_accepted; fixed in 80dc14a (all 70 tests pass)
 
 ### Pending Todos
 
@@ -101,5 +102,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 05-04-PLAN.md (Late Day Policy UI, bank/penalty cell rendering) — checkpoint:human-verify pending
+Stopped at: Completed 05-04-PLAN.md — checkpoint approved, SQL SELECT bug fixed (80dc14a), plan fully closed
 Resume file: None

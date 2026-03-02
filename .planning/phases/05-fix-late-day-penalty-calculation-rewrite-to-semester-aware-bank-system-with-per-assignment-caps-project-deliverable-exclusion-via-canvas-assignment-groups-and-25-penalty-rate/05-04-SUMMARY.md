@@ -34,6 +34,7 @@ key-decisions:
   - "Removed unused getLateDaysColor helper (Rule 1 auto-fix) since entry-object cells replaced flat-number cells"
   - "Added dedicated Save Policy Settings button in Late Day Policy card (post-checkpoint fix) instead of relying on Course Configuration save button"
   - "assignment_groups table was missing from DB — applied init_db() migration to create it and add assignment_group_id column"
+  - "get_assignments() SELECT was missing assignment_group_id column — calculate_student_late_day_summary() always received None and marked all assignments not_accepted when eligible groups configured"
 
 patterns-established:
   - "Assignment cell rendering: check entry object fields (not raw number) for bank/penalty/not_accepted state"
@@ -54,11 +55,11 @@ completed: 2026-03-01
 
 ## Performance
 
-- **Duration:** ~15 min (including post-checkpoint debug and fixes)
+- **Duration:** ~20 min (including post-checkpoint debug, DB schema fix, and SQL SELECT fix)
 - **Started:** 2026-03-01T17:45:25Z
-- **Completed:** 2026-03-01 (post-checkpoint fix session)
-- **Tasks:** 2 + post-checkpoint fixes
-- **Files modified:** 2
+- **Completed:** 2026-03-01 (post-checkpoint fix session complete, checkpoint approved)
+- **Tasks:** 2 + post-checkpoint fixes + final SQL column fix
+- **Files modified:** 3 (Settings.jsx, LateDaysTracking.jsx, database.py)
 
 ## Accomplishments
 - Added Late Day Policy section to Settings.jsx with three integer inputs (total bank, penalty rate %, per-assignment cap) and assignment group checkbox list with load from /api/canvas/assignment-groups/{course_id}
@@ -75,10 +76,13 @@ Each task was committed atomically:
 
 1. **Task 1: Add Late Day Policy section to Settings.jsx** - `f20236e` (feat)
 2. **Task 2: Update LateDaysTracking.jsx for bank/penalty distinction and Not Accepted badge** - `d48ee83` (feat)
+3. **Post-checkpoint UX + DB schema fix** - `6d8ecec` (fix)
+4. **Fix assignment_group_id missing from get_assignments() SELECT** - `80dc14a` (fix)
 
 ## Files Created/Modified
 - `canvas-react/src/Settings.jsx` - Added policySettings state, loadAssignmentGroups callback, Late Day Policy UI section, updated variable list
 - `canvas-react/src/LateDaysTracking.jsx` - Replaced flat lateDays reads with entry object, added NA/green/red/split cell rendering, bank_remaining display, color legend
+- `database.py` - Added `assignment_group_id` to `get_assignments()` SELECT statement
 
 ## Decisions Made
 - Placed Late Day Policy section between Course Configuration and Comment Templates for logical grouping
@@ -107,22 +111,41 @@ Each task was committed atomically:
 - **Files modified:** canvas-react/src/Settings.jsx (fix A); database migrated in-place (fix B)
 - **Committed in:** 6d8ecec
 
+**3. [Rule 1 - Bug] Fix missing assignment_group_id in get_assignments() SELECT**
+- **Found during:** Post-checkpoint verification — all assignments showed "NA" badge even when eligible groups were configured
+- **Issue:** `database.py` `get_assignments()` was building rows via `SELECT id, course_id, name, due_at, points_possible, html_url, synced_at` — `assignment_group_id` was omitted. As a result, `calculate_student_late_day_summary()` always received `None` for `assignment_group_id` and treated every assignment as ineligible when any eligible groups were configured.
+- **Fix:** Added `assignment_group_id` to the SELECT column list in `get_assignments()`.
+- **Files modified:** `database.py`
+- **Verification:** All 70 backend tests pass after fix.
+- **Committed in:** 80dc14a
+
 ---
 
-**Total deviations:** 1 auto-fixed (lint) + 2 post-checkpoint fixes (UX + DB schema)
-**Impact on plan:** UX fix necessary for correct operation; DB schema fix prerequisite for groups feature to work.
+**Total deviations:** 1 auto-fixed (lint) + 2 post-checkpoint fixes (UX + DB schema) + 1 SQL SELECT fix
+**Impact on plan:** SQL SELECT fix was critical — without it the not_accepted flag was always set incorrectly, making the entire bank eligibility feature non-functional.
 
 ## Issues Encountered
 - Post-checkpoint: assignment_groups table missing from DB required manual init_db() migration
 - Post-checkpoint: Settings save UX confusion required dedicated Save button in Late Day Policy card
+- Post-checkpoint: get_assignments() SELECT omitted assignment_group_id, causing all assignments to appear as not_accepted — fixed in 80dc14a
 
 ## User Setup Required
 None - no external service configuration required.
 
+## Checkpoint Outcome
+**Task 3: checkpoint:human-verify — APPROVED** by user on 2026-03-01.
+
 ## Next Phase Readiness
-- Phase 05 is complete — all four plans executed
-- Human verification checkpoint pending (Task 3 checkpoint:human-verify)
-- After verification, the full semester bank system is deployed end-to-end: algorithm (05-01/02), backend API (05-03), UI (05-04)
+- Phase 05 is complete — all four plans executed and human verification checkpoint approved
+- The full semester bank system is deployed end-to-end: algorithm (05-01/02), backend API (05-03), UI (05-04)
+- All 70 backend tests pass; ESLint clean; npm build succeeds
+
+## Self-Check: PASSED
+
+- [x] canvas-react/src/Settings.jsx — exists, modified in f20236e
+- [x] canvas-react/src/LateDaysTracking.jsx — exists, modified in d48ee83
+- [x] database.py — exists, modified in 80dc14a
+- [x] Commits f20236e, d48ee83, 6d8ecec, 80dc14a — all confirmed in git log
 
 ---
 *Phase: 05-fix-late-day-penalty-calculation*
