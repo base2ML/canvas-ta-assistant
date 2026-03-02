@@ -1043,10 +1043,20 @@ async def preview_comments(
         if request.override_comment:
             comment_text = request.override_comment
         else:
-            assert resolved_template is not None  # guarded above
+            # When template_type (not template_id) was requested, auto-select
+            # penalty vs non_penalty per user based on actual penalty_days so
+            # students covered entirely by the bank don't receive a penalty message.
+            if request.template_id is None and request.template_type is not None:
+                effective_type = (
+                    "penalty" if variable_data["penalty_days"] > 0 else "non_penalty"
+                )
+                per_user_template = resolve_template(None, effective_type)
+            else:
+                per_user_template = resolved_template
+            assert per_user_template is not None
             try:
                 comment_text = render_template(
-                    resolved_template["template_text"], variable_data
+                    per_user_template["template_text"], variable_data
                 )
             except ValueError as e:
                 raise HTTPException(
@@ -1283,11 +1293,23 @@ async def post_comments(
             if override_comment:
                 comment_text = override_comment
             else:
-                assert resolved_template_text is not None  # guarded above
+                # Auto-select penalty vs non_penalty per user when template_type
+                # (not template_id) was requested, so bank-covered students don't
+                # receive a penalty message.
+                use_type_routing = (
+                    request_body.template_id is None
+                    and request_body.template_type is not None
+                )
+                if use_type_routing:
+                    has_penalty = late_days_data["penalty_days"] > 0
+                    effective_type = "penalty" if has_penalty else "non_penalty"
+                    per_user_tmpl = resolve_template(None, effective_type)
+                    render_text = per_user_tmpl["template_text"]
+                else:
+                    assert resolved_template_text is not None  # guarded above
+                    render_text = resolved_template_text
                 try:
-                    comment_text = render_template(
-                        resolved_template_text, late_days_data
-                    )
+                    comment_text = render_template(render_text, late_days_data)
                 except ValueError as e:
                     failed.append({"user_id": user_id, "error": str(e)})
                     yield {
