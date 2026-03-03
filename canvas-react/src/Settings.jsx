@@ -34,6 +34,7 @@ const Settings = () => {
         per_assignment_cap: 7,
         late_day_eligible_groups: [],
     });
+    const [policySettingsLoaded, setPolicySettingsLoaded] = useState(false);
 
     // Fetch current settings
     const loadSettings = useCallback(async () => {
@@ -49,6 +50,7 @@ const Settings = () => {
                 per_assignment_cap: data.per_assignment_cap ?? 7,
                 late_day_eligible_groups: data.late_day_eligible_groups ?? [],
             });
+            setPolicySettingsLoaded(true);
         } catch (err) {
             console.error('Error loading settings:', err);
             setMessage({ type: 'error', text: 'Failed to load settings' });
@@ -177,19 +179,23 @@ const Settings = () => {
             const data = await apiFetch(`/api/canvas/assignment-groups/${settings.course_id}`);
             const groups = data.groups || [];
             setAssignmentGroups(groups);
-            if (groups.length > 0) {
-                setPolicySettings(prev =>
-                    prev.late_day_eligible_groups.length === 0
-                        ? { ...prev, late_day_eligible_groups: groups.map(g => g.id) }
-                        : prev
-                );
-            }
         } catch (err) {
             console.error('Error loading assignment groups:', err);
         }
     }, [settings.course_id]);
 
     useEffect(() => { loadAssignmentGroups(); }, [loadAssignmentGroups]);
+
+    // Auto-populate eligible groups ONLY when settings have loaded and confirmed empty
+    useEffect(() => {
+        if (policySettingsLoaded && assignmentGroups.length > 0) {
+            setPolicySettings(prev =>
+                prev.late_day_eligible_groups.length === 0
+                    ? { ...prev, late_day_eligible_groups: assignmentGroups.map(g => g.id) }
+                    : prev
+            );
+        }
+    }, [policySettingsLoaded, assignmentGroups]);
 
     useEffect(() => {
         loadSettings();
