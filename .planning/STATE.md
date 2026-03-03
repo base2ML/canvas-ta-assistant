@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 Phase: 05 — fix-late-day-penalty-calculation (Plan 4 of 4)
 Status: Complete — all 4 plans executed; checkpoint:human-verify APPROVED; SQL SELECT bug fixed (80dc14a)
-Last activity: 2026-03-01 — 05-04 fully closed (Late Day Policy UI, bank/penalty cells, DB SELECT fix)
+Last activity: 2026-03-03 — Quick-6: fix eligible groups auto-populate so unchecking a group excludes it from late day eligibility
 
 Progress: [██████████] 100% (4/4 plans complete in phase 05)
 
@@ -98,6 +98,7 @@ None yet.
 | 3 | Fix Last Updated timestamp to show actual Canvas sync time instead of browser clock | 2026-02-22 | 3736c35 | [3-the-last-updated-time-on-the-main-dashbo](./quick/3-the-last-updated-time-on-the-main-dashbo/) |
 | 4 | Filter enrollment timeline to changes-only and add SVG enrollment line chart | 2026-02-22 | 48ca026 | [4-filter-enrollment-sync-history-to-only-s](./quick/4-filter-enrollment-sync-history-to-only-s/) |
 | 5 | Remove duplicate course info subtitle from Late Days Tracking page header | 2026-03-01 | 9aaa308 | [5-remove-duplicate-course-info-subtitle-fr](./quick/5-remove-duplicate-course-info-subtitle-fr/) |
+| 6 | Fix assignment group eligibility not applying to Late Days calculations after settings change | 2026-03-03 | f3702ec | [6-fix-assignment-group-eligibility-not-app](./quick/6-fix-assignment-group-eligibility-not-app/) |
 
 ## Session Continuity
 
