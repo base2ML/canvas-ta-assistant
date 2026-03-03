@@ -175,7 +175,15 @@ const Settings = () => {
         if (!settings.course_id) return;
         try {
             const data = await apiFetch(`/api/canvas/assignment-groups/${settings.course_id}`);
-            setAssignmentGroups(data.groups || []);
+            const groups = data.groups || [];
+            setAssignmentGroups(groups);
+            if (groups.length > 0) {
+                setPolicySettings(prev =>
+                    prev.late_day_eligible_groups.length === 0
+                        ? { ...prev, late_day_eligible_groups: groups.map(g => g.id) }
+                        : prev
+                );
+            }
         } catch (err) {
             console.error('Error loading assignment groups:', err);
         }
