@@ -206,25 +206,23 @@ const Settings = () => {
             .catch(() => setApiUser(null));
     }, [loadSettings, loadSyncStatus, loadTemplates]);
 
-    // Clear message after 5 seconds
+    // Auto-dismiss success messages after 5 seconds; errors persist until user acts
     useEffect(() => {
-        if (message) {
+        if (message?.type === 'success') {
             const timer = setTimeout(() => setMessage(null), 5000);
             return () => clearTimeout(timer);
         }
     }, [message]);
 
-    // Clear template message after 5 seconds
     useEffect(() => {
-        if (templateMessage) {
+        if (templateMessage?.type === 'success') {
             const timer = setTimeout(() => setTemplateMessage(null), 5000);
             return () => clearTimeout(timer);
         }
     }, [templateMessage]);
 
-    // Clear policy message after 5 seconds
     useEffect(() => {
-        if (policyMessage) {
+        if (policyMessage?.type === 'success') {
             const timer = setTimeout(() => setPolicyMessage(null), 5000);
             return () => clearTimeout(timer);
         }
