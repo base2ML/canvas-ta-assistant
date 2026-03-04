@@ -342,8 +342,86 @@ def sync_course_data(
             f"Groups fetched in {time.time() - groups_start:.2f}s ({len(groups)} groups)"  # noqa: E501
         )
 
-        # Use transaction to write all data atomically
-        total_submissions = 0
+        # PHASE 1b: Fetch submissions (outside transaction — no DB lock during
+        # network I/O)
+        submissions_start = time.time()
+        all_submissions: list[dict[str, Any]] = []
+        for assignment_obj in assignment_objects:
+            for submission in assignment_obj.get_submissions(
+                include=["submission_history"]
+            ):
+                all_submissions.append(
+                    {
+                        "id": submission.id,
+                        "user_id": submission.user_id,
+                        "assignment_id": assignment_obj.id,
+                        "submitted_at": getattr(submission, "submitted_at", None),
+                        "workflow_state": submission.workflow_state,
+                        "late": getattr(submission, "late", False),
+                        "score": getattr(submission, "score", None),
+                    }
+                )
+        logger.info(
+            f"Submissions fetched in {time.time() - submissions_start:.2f}s "
+            f"({len(all_submissions)} submissions)"
+        )
+
+        # PHASE 1c: Fetch peer reviews (outside transaction — no DB lock during
+        # network I/O)
+        peer_reviews_start = time.time()
+        all_peer_reviews: list[dict[str, Any]] = []
+        all_peer_review_comments: list[dict[str, Any]] = []
+
+        peer_review_assignments = [
+            (obj, data)
+            for obj, data in zip(assignment_objects, assignments, strict=True)
+            if data.get("has_peer_reviews", False)
+        ]
+
+        if peer_review_assignments:
+            logger.info(
+                f"Found {len(peer_review_assignments)} assignments with peer reviews"
+            )
+            for assignment_obj, assignment_data in peer_review_assignments:
+                try:
+                    for pr in assignment_obj.get_peer_reviews():
+                        all_peer_reviews.append(
+                            {
+                                "id": pr.id,
+                                "assignment_id": assignment_obj.id,
+                                "user_id": pr.user_id,
+                                "assessor_id": pr.assessor_id,
+                                "asset_id": getattr(pr, "asset_id", None),
+                                "asset_type": getattr(pr, "asset_type", None),
+                                "workflow_state": getattr(pr, "workflow_state", None),
+                            }
+                        )
+                    for submission in assignment_obj.get_submissions(
+                        include=["submission_comments"]
+                    ):
+                        for comment in getattr(submission, "submission_comments", []):
+                            all_peer_review_comments.append(
+                                {
+                                    "id": comment.get("id"),
+                                    "submission_id": submission.id,
+                                    "author_id": comment.get("author_id"),
+                                    "comment": comment.get("comment"),
+                                    "created_at": comment.get("created_at"),
+                                }
+                            )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to fetch peer reviews for assignment {assignment_data['name']}: {e}"  # noqa: E501
+                    )
+                    continue
+
+        logger.info(
+            f"Peer reviews fetched in {time.time() - peer_reviews_start:.2f}s "
+            f"({len(all_peer_reviews)} reviews, "
+            f"{len(all_peer_review_comments)} comments)"
+        )
+
+        # PHASE 2: Write all fetched data atomically (DB lock held ~5–10 seconds)
         dropped_count = 0
         with db.get_db_transaction() as conn:
             # Capture enrollment state before sync modifies anything
@@ -363,106 +441,27 @@ def sync_course_data(
             db.upsert_users(course_id, users, conn)  # Sets enrollment_status='active'
             db.upsert_groups(course_id, groups, conn)
 
-            # Fetch and store submissions per-assignment to reduce memory usage
-            submissions_start = time.time()
-            for assignment_obj in assignment_objects:
-                assignment_submissions = []
-                for submission in assignment_obj.get_submissions(
-                    include=["submission_history"]
-                ):
-                    assignment_submissions.append(
-                        {
-                            "id": submission.id,
-                            "user_id": submission.user_id,
-                            "assignment_id": assignment_obj.id,
-                            "submitted_at": getattr(submission, "submitted_at", None),
-                            "workflow_state": submission.workflow_state,
-                            "late": getattr(submission, "late", False),
-                            "score": getattr(submission, "score", None),
-                        }
-                    )
+            # Write pre-fetched submissions (all Canvas API calls already done above)
+            if all_submissions:
+                db.upsert_submissions(course_id, all_submissions, conn)
+            total_submissions = len(all_submissions)
+            logger.info(f"Wrote {total_submissions} submissions to DB")
 
-                # Write submissions for this assignment
-                if assignment_submissions:
-                    db.upsert_submissions(course_id, assignment_submissions, conn)
-                    total_submissions += len(assignment_submissions)
-
-            logger.info(
-                f"Submissions fetched and stored in {time.time() - submissions_start:.2f}s ({total_submissions} submissions)"  # noqa: E501
-            )
-
-            # Fetch and store peer reviews for assignments that have them
-            peer_reviews_start = time.time()
+            # Write pre-fetched peer reviews
             total_peer_reviews = 0
             total_peer_review_comments = 0
-
-            peer_review_assignments = [
-                (obj, data)
-                for obj, data in zip(assignment_objects, assignments, strict=True)
-                if data.get("has_peer_reviews", False)
-            ]
-
-            if peer_review_assignments:
-                logger.info(
-                    f"Found {len(peer_review_assignments)} assignments "
-                    "with peer reviews"
+            if all_peer_reviews:
+                db.upsert_peer_reviews(course_id, all_peer_reviews, conn)
+                total_peer_reviews = len(all_peer_reviews)
+            if all_peer_review_comments:
+                db.upsert_peer_review_comments(  # noqa: E501
+                    course_id, all_peer_review_comments, conn
                 )
-
-                for assignment_obj, assignment_data in peer_review_assignments:
-                    try:
-                        # Fetch peer reviews
-                        peer_reviews = []
-                        for pr in assignment_obj.get_peer_reviews():
-                            peer_reviews.append(
-                                {
-                                    "id": pr.id,
-                                    "assignment_id": assignment_obj.id,
-                                    "user_id": pr.user_id,
-                                    "assessor_id": pr.assessor_id,
-                                    "asset_id": getattr(pr, "asset_id", None),
-                                    "asset_type": getattr(pr, "asset_type", None),
-                                    "workflow_state": getattr(
-                                        pr, "workflow_state", None
-                                    ),
-                                }
-                            )
-
-                        if peer_reviews:
-                            db.upsert_peer_reviews(course_id, peer_reviews, conn)
-                            total_peer_reviews += len(peer_reviews)
-
-                        # Fetch submission comments for peer reviews
-                        comments = []
-                        for submission in assignment_obj.get_submissions(
-                            include=["submission_comments"]
-                        ):
-                            submission_comments = getattr(
-                                submission, "submission_comments", []
-                            )
-                            for comment in submission_comments:
-                                comments.append(
-                                    {
-                                        "id": comment.get("id"),
-                                        "submission_id": submission.id,
-                                        "author_id": comment.get("author_id"),
-                                        "comment": comment.get("comment"),
-                                        "created_at": comment.get("created_at"),
-                                    }
-                                )
-
-                        if comments:
-                            db.upsert_peer_review_comments(course_id, comments, conn)
-                            total_peer_review_comments += len(comments)
-
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to fetch peer reviews for assignment {assignment_data['name']}: {e}"  # noqa: E501
-                        )
-                        continue
-
+                total_peer_review_comments = len(all_peer_review_comments)
+            if all_peer_reviews:
                 logger.info(
-                    f"Peer reviews fetched in {time.time() - peer_reviews_start:.2f}s "
-                    f"({total_peer_reviews} reviews, {total_peer_review_comments} comments)"  # noqa: E501
+                    f"Wrote {total_peer_reviews} peer reviews, "
+                    f"{total_peer_review_comments} comments to DB"
                 )
 
             # Step 6: Clean up orphaned submissions (assignments removed from Canvas)
