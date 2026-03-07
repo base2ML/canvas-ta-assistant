@@ -369,19 +369,19 @@ def populate_default_templates() -> None:
                 "template_text": (
                     "Late Day Update for this assignment:\n\n"
                     "Days late: {days_late}\n"
-                    "Late days used (this assignment): {penalty_days}\n"
-                    "Late days remaining: {days_remaining}\n"
+                    "Bank days used (cumulative): {bank_days_used}\n"
+                    "Bank days remaining: {bank_remaining}\n"
+                    "Penalty days: {penalty_days}\n"
                     "Penalty: {penalty_percent}%\n\n"
-                    "Maximum late days per assignment: {max_late_days}\n\n"
                     "Please review the course late day policy if you have questions."
                 ),
                 "template_variables": json.dumps(
                     [
                         "days_late",
+                        "bank_days_used",
+                        "bank_remaining",
                         "penalty_days",
-                        "days_remaining",
                         "penalty_percent",
-                        "max_late_days",
                     ]
                 ),
             },
@@ -390,13 +390,13 @@ def populate_default_templates() -> None:
                 "template_text": (
                     "Late Day Update for this assignment:\n\n"
                     "Days late: {days_late}\n"
-                    "Late days remaining: {days_remaining}\n\n"
+                    "Bank days used (cumulative): {bank_days_used}\n"
+                    "Bank days remaining: {bank_remaining}\n\n"
                     "No penalty has been applied.\n\n"
-                    "Maximum late days per assignment: {max_late_days}\n\n"
                     "Please review the course late day policy if you have questions."
                 ),
                 "template_variables": json.dumps(
-                    ["days_late", "days_remaining", "max_late_days"]
+                    ["days_late", "bank_days_used", "bank_remaining"]
                 ),
             },
         ]

@@ -643,7 +643,7 @@ const Settings = () => {
                 <div className="mb-6 p-3 bg-blue-50 rounded-md border border-blue-200">
                     <p className="text-sm font-medium text-blue-800 mb-1">Available Variables</p>
                     <div className="flex flex-wrap gap-2">
-                        {['{days_late}', '{bank_days_used}', '{bank_remaining}', '{total_bank}', '{penalty_days}', '{penalty_percent}', '{days_remaining}', '{max_late_days}'].map(v => (
+                        {['{days_late}', '{bank_days_used}', '{bank_remaining}', '{total_bank}', '{penalty_days}', '{penalty_percent}'].map(v => (
                             <code key={v} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">{v}</code>
                         ))}
                     </div>
