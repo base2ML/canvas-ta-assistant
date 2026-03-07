@@ -100,9 +100,10 @@ None yet.
 | 5 | Remove duplicate course info subtitle from Late Days Tracking page header | 2026-03-01 | 9aaa308 | [5-remove-duplicate-course-info-subtitle-fr](./quick/5-remove-duplicate-course-info-subtitle-fr/) |
 | 6 | Fix assignment group eligibility not applying to Late Days calculations after settings change | 2026-03-03 | f3702ec | [6-fix-assignment-group-eligibility-not-app](./quick/6-fix-assignment-group-eligibility-not-app/) |
 | 7 | Fix Settings page Late Day Eligible Assignment Groups race condition causing all-groups revert on refresh | 2026-03-03 | aa0ae6b | [7-fix-settings-page-late-day-eligible-assi](./quick/7-fix-settings-page-late-day-eligible-assi/) |
+| 8 | Fix bank_days_used to cumulative semantics, remove alias template variables (days_remaining, max_late_days), update default templates and Settings UI | 2026-03-06 | 1812a4f | [8-review-the-calculations-for-the-differen](./quick/8-review-the-calculations-for-the-differen/) |
 
 ## Session Continuity
 
-Last session: 2026-03-03
-Stopped at: Completed quick-7 — policySettingsLoaded race condition fix verified by user, PAUSE.md deleted
+Last session: 2026-03-06
+Stopped at: Completed quick-8 — bank_days_used cumulative fix and alias variable cleanup
 Resume file: None
