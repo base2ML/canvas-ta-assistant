@@ -20,14 +20,6 @@ class TestPostingFlowSourcePatterns:
         src = self._read_main()
         assert "bank_days_used" in src, "bank_days_used missing from template context"
 
-    def test_days_remaining_backward_compat_alias_present(self):
-        src = self._read_main()
-        assert "days_remaining" in src, "days_remaining backward-compat alias missing"
-
-    def test_max_late_days_backward_compat_alias_present(self):
-        src = self._read_main()
-        assert "max_late_days" in src, "max_late_days backward-compat alias missing"
-
     def test_old_function_still_exists_not_deleted(self):
         """calculate_late_days_for_user should still exist (not deleted in task 3)."""
         src = self._read_main()
@@ -64,5 +56,6 @@ class TestImportClean:
         assert "bank_days_used" in ALLOWED_TEMPLATE_VARIABLES
         assert "bank_remaining" in ALLOWED_TEMPLATE_VARIABLES
         assert "total_bank" in ALLOWED_TEMPLATE_VARIABLES
-        assert "days_remaining" in ALLOWED_TEMPLATE_VARIABLES
-        assert "max_late_days" in ALLOWED_TEMPLATE_VARIABLES
+        # Alias variables removed — only canonical names allowed
+        assert "days_remaining" not in ALLOWED_TEMPLATE_VARIABLES
+        assert "max_late_days" not in ALLOWED_TEMPLATE_VARIABLES

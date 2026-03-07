@@ -285,13 +285,9 @@ class PreviewResponse(BaseModel):
 
 # Allowed template variables (from PROJECT.md requirements)
 ALLOWED_TEMPLATE_VARIABLES = {
-    # Existing (kept for backward compatibility with saved templates)
     "days_late",
-    "days_remaining",  # alias for bank_remaining
     "penalty_days",
     "penalty_percent",
-    "max_late_days",  # alias for per_assignment_cap
-    # New bank system variables
     "bank_days_used",
     "bank_remaining",
     "total_bank",
@@ -527,7 +523,7 @@ def calculate_student_late_day_summary(
         if days_late == 0:
             result[assignment_id] = {
                 "days_late": 0,
-                "bank_days_used": 0,
+                "bank_days_used": total_late_day_bank - bank_remaining,
                 "bank_remaining": bank_remaining,
                 "penalty_days": 0,
                 "penalty_percent": 0,
@@ -540,7 +536,7 @@ def calculate_student_late_day_summary(
             # Project deliverable submitted late: Not Accepted, no bank consumed
             result[assignment_id] = {
                 "days_late": days_late,
-                "bank_days_used": 0,
+                "bank_days_used": total_late_day_bank - bank_remaining,
                 "bank_remaining": bank_remaining,
                 "penalty_days": days_late,
                 "penalty_percent": 100,
@@ -551,14 +547,14 @@ def calculate_student_late_day_summary(
 
         # Bank-eligible late submission
         applicable_late_days = min(days_late, per_assignment_cap)
-        bank_days_used = min(applicable_late_days, bank_remaining)
-        penalty_days = days_late - bank_days_used
+        draw = min(applicable_late_days, bank_remaining)
+        penalty_days = days_late - draw
         penalty_percent = min(penalty_days * penalty_rate_per_day, 100)
-        bank_remaining -= bank_days_used
+        bank_remaining -= draw
 
         result[assignment_id] = {
             "days_late": days_late,
-            "bank_days_used": bank_days_used,
+            "bank_days_used": total_late_day_bank - bank_remaining,
             "bank_remaining": bank_remaining,
             "penalty_days": penalty_days,
             "penalty_percent": penalty_percent,
@@ -1034,9 +1030,6 @@ async def preview_comments(
             "penalty_percent": entry.get("penalty_percent", 0),
             "not_accepted": entry.get("not_accepted", False),
             "total_bank": total_bank,
-            # Backward-compat aliases for existing templates
-            "days_remaining": entry.get("bank_remaining", total_bank),
-            "max_late_days": per_cap,
         }
 
         # Render comment text
@@ -1270,9 +1263,6 @@ async def post_comments(
                 "penalty_percent": entry.get("penalty_percent", 0),
                 "not_accepted": entry.get("not_accepted", False),
                 "total_bank": total_bank,
-                # Backward-compat aliases
-                "days_remaining": entry.get("bank_remaining", total_bank),
-                "max_late_days": per_cap,
             }
 
             # Skip project deliverables marked Not Accepted

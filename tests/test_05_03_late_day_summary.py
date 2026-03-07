@@ -240,12 +240,15 @@ class TestCalculateStudentLateDaySummary:
         )
 
         # Assignment 2 (earlier due date) should be processed first
+        # bank_days_used is cumulative (total drawn across all assignments so far)
         r2 = result[2]
-        assert r2["bank_days_used"] == 5
+        assert r2["bank_days_used"] == 5  # 5 drawn on assign2, cumulative = 5
         assert r2["bank_remaining"] == 1
 
         r1 = result[1]
-        assert r1["bank_days_used"] == 1
+        assert (
+            r1["bank_days_used"] == 6
+        )  # 5 from assign2 + 1 from assign1, cumulative = 6
         assert r1["bank_remaining"] == 0
         assert r1["penalty_days"] == 4
 
@@ -310,11 +313,12 @@ class TestAllowedTemplateVariables:
         assert "bank_remaining" in ALLOWED_TEMPLATE_VARIABLES
         assert "total_bank" in ALLOWED_TEMPLATE_VARIABLES
 
-    def test_backward_compat_variables_present(self):
+    def test_canonical_variables_present(self):
         from main import ALLOWED_TEMPLATE_VARIABLES
 
         assert "days_late" in ALLOWED_TEMPLATE_VARIABLES
-        assert "days_remaining" in ALLOWED_TEMPLATE_VARIABLES
         assert "penalty_days" in ALLOWED_TEMPLATE_VARIABLES
         assert "penalty_percent" in ALLOWED_TEMPLATE_VARIABLES
-        assert "max_late_days" in ALLOWED_TEMPLATE_VARIABLES
+        # Alias variables removed — only canonical names allowed
+        assert "days_remaining" not in ALLOWED_TEMPLATE_VARIABLES
+        assert "max_late_days" not in ALLOWED_TEMPLATE_VARIABLES
