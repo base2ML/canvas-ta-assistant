@@ -73,13 +73,14 @@ All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
 
 ### Pending Todos
 
-6 todos captured (2026-03-01):
-1. **Fix late day penalty calculation logic** (bug — incorrect penalty math)
+7 todos captured:
+1. **Fix late day penalty calculation logic** (bug — incorrect penalty math) ✓ Done (Phase 05)
 2. Add grader identity tracking (foundation — build first)
 3. Add TA grading deadlines (depends on #2)
 4. Add grade distribution visualizations (depends on #2)
 5. Add student at-risk alerts
 6. Add exportable reports CSV and PDF (build last)
+7. Add penalty summary view by assignment on Late Days Tracking page (2026-03-07) — filtered table of students with penalties on a specific assignment, ordered by grading TA, for screenshot sharing
 
 ### Roadmap Evolution
 
