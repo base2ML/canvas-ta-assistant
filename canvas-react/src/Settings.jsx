@@ -23,6 +23,18 @@ const Settings = () => {
     const [nonPenaltyTemplate, setNonPenaltyTemplate] = useState({ id: null, text: '' });
     const [templateSaving, setTemplateSaving] = useState(false);
     const [templateMessage, setTemplateMessage] = useState(null);
+    const [policySaving, setPolicySaving] = useState(false);
+    const [policyMessage, setPolicyMessage] = useState(null);
+
+    // Late Day Policy state
+    const [assignmentGroups, setAssignmentGroups] = useState([]);
+    const [policySettings, setPolicySettings] = useState({
+        total_late_day_bank: 10,
+        penalty_rate_per_day: 25,
+        per_assignment_cap: 7,
+        late_day_eligible_groups: [],
+    });
+    const [policySettingsLoaded, setPolicySettingsLoaded] = useState(false);
 
     // Fetch current settings
     const loadSettings = useCallback(async () => {
@@ -32,6 +44,13 @@ const Settings = () => {
             setManualCourseId(data.course_id || '');
             setTimezoneState(data.timezone || '');
             setTimezone(data.timezone || null);
+            setPolicySettings({
+                total_late_day_bank: data.total_late_day_bank ?? 10,
+                penalty_rate_per_day: data.penalty_rate_per_day ?? 25,
+                per_assignment_cap: data.per_assignment_cap ?? 7,
+                late_day_eligible_groups: data.late_day_eligible_groups ?? [],
+            });
+            setPolicySettingsLoaded(true);
         } catch (err) {
             console.error('Error loading settings:', err);
             setMessage({ type: 'error', text: 'Failed to load settings' });
@@ -72,6 +91,10 @@ const Settings = () => {
             if (manualCourseId.trim()) {
                 body.course_id = manualCourseId.trim();
             }
+            body.total_late_day_bank = policySettings.total_late_day_bank;
+            body.penalty_rate_per_day = policySettings.penalty_rate_per_day;
+            body.per_assignment_cap = policySettings.per_assignment_cap;
+            body.late_day_eligible_groups = policySettings.late_day_eligible_groups;
             await apiFetch('/api/settings', {
                 method: 'PUT',
                 body: JSON.stringify(body),
@@ -83,6 +106,30 @@ const Settings = () => {
             setMessage({ type: 'error', text: err.message || 'Failed to save settings' });
         } finally {
             setSaving(false);
+        }
+    };
+
+    // Save only the Late Day Policy fields (independent of course/timezone settings)
+    const savePolicySettings = async () => {
+        setPolicySaving(true);
+        setPolicyMessage(null);
+        try {
+            await apiFetch('/api/settings', {
+                method: 'PUT',
+                body: JSON.stringify({
+                    total_late_day_bank: policySettings.total_late_day_bank,
+                    penalty_rate_per_day: policySettings.penalty_rate_per_day,
+                    per_assignment_cap: policySettings.per_assignment_cap,
+                    late_day_eligible_groups: policySettings.late_day_eligible_groups,
+                }),
+            });
+            setPolicyMessage({ type: 'success', text: 'Policy settings saved. Reload the Late Days Tracking page to see updated calculations.' });
+            loadSettings();
+        } catch (err) {
+            console.error('Error saving policy settings:', err);
+            setPolicyMessage({ type: 'error', text: err.message || 'Failed to save policy settings' });
+        } finally {
+            setPolicySaving(false);
         }
     };
 
@@ -125,6 +172,31 @@ const Settings = () => {
         }
     };
 
+    // Load assignment groups for the Late Day Policy section
+    const loadAssignmentGroups = useCallback(async () => {
+        if (!settings.course_id) return;
+        try {
+            const data = await apiFetch(`/api/canvas/assignment-groups/${settings.course_id}`);
+            const groups = data.groups || [];
+            setAssignmentGroups(groups);
+        } catch (err) {
+            console.error('Error loading assignment groups:', err);
+        }
+    }, [settings.course_id]);
+
+    useEffect(() => { loadAssignmentGroups(); }, [loadAssignmentGroups]);
+
+    // Auto-populate eligible groups ONLY when settings have loaded and confirmed empty
+    useEffect(() => {
+        if (policySettingsLoaded && assignmentGroups.length > 0) {
+            setPolicySettings(prev =>
+                prev.late_day_eligible_groups.length === 0
+                    ? { ...prev, late_day_eligible_groups: assignmentGroups.map(g => g.id) }
+                    : prev
+            );
+        }
+    }, [policySettingsLoaded, assignmentGroups]);
+
     useEffect(() => {
         loadSettings();
         loadSyncStatus();
@@ -134,21 +206,27 @@ const Settings = () => {
             .catch(() => setApiUser(null));
     }, [loadSettings, loadSyncStatus, loadTemplates]);
 
-    // Clear message after 5 seconds
+    // Auto-dismiss success messages after 5 seconds; errors persist until user acts
     useEffect(() => {
-        if (message) {
+        if (message?.type === 'success') {
             const timer = setTimeout(() => setMessage(null), 5000);
             return () => clearTimeout(timer);
         }
     }, [message]);
 
-    // Clear template message after 5 seconds
     useEffect(() => {
-        if (templateMessage) {
+        if (templateMessage?.type === 'success') {
             const timer = setTimeout(() => setTemplateMessage(null), 5000);
             return () => clearTimeout(timer);
         }
     }, [templateMessage]);
+
+    useEffect(() => {
+        if (policyMessage?.type === 'success') {
+            const timer = setTimeout(() => setPolicyMessage(null), 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [policyMessage]);
 
     if (loading) {
         return (
@@ -416,6 +494,127 @@ const Settings = () => {
                 </div>
             )}
 
+            {/* Late Day Policy */}
+            <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Late Day Policy</h2>
+                <p className="text-sm text-gray-600 mb-6">
+                    Configure the semester bank system for late day tracking.
+                </p>
+
+                {/* Three integer fields in a grid */}
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Total Late Day Bank
+                        </label>
+                        <input
+                            type="number" min="0" max="365"
+                            className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            value={policySettings.total_late_day_bank}
+                            onChange={e => setPolicySettings(prev => ({ ...prev, total_late_day_bank: parseInt(e.target.value, 10) || 0 }))}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Days per student per semester</p>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Penalty Rate (% per day)
+                        </label>
+                        <input
+                            type="number" min="0" max="100"
+                            className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            value={policySettings.penalty_rate_per_day}
+                            onChange={e => setPolicySettings(prev => ({ ...prev, penalty_rate_per_day: parseInt(e.target.value, 10) || 0 }))}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Applied to days beyond bank</p>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Per-Assignment Cap
+                        </label>
+                        <input
+                            type="number" min="0" max="365"
+                            className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            value={policySettings.per_assignment_cap}
+                            onChange={e => setPolicySettings(prev => ({ ...prev, per_assignment_cap: parseInt(e.target.value, 10) || 0 }))}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Max bank days per assignment</p>
+                    </div>
+                </div>
+
+                {/* Assignment group eligibility checkbox list */}
+                <div className="mb-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Late Day Eligible Assignment Groups
+                    </label>
+                    <p className="text-xs text-gray-500 mb-3">
+                        Assignments in these groups can use late days. Assignments in other groups are &quot;Not Accepted&quot; if submitted late.
+                        Leave all unchecked to allow late days on all assignments.
+                    </p>
+                    {assignmentGroups.length === 0 ? (
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                            <p className="text-sm text-amber-800">
+                                {settings.course_id
+                                    ? 'No assignment groups found in local database. Sync course data to load groups — this reads from the local cache and does not contact Canvas.'
+                                    : 'Select a course in Course Configuration above, then sync course data to see assignment groups.'}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-3 bg-gray-50">
+                            {assignmentGroups.map(group => (
+                                <label key={group.id} className="flex items-center gap-2 cursor-pointer hover:bg-white rounded px-2 py-1">
+                                    <input
+                                        type="checkbox"
+                                        className="rounded border-gray-300 text-blue-600"
+                                        checked={policySettings.late_day_eligible_groups.includes(group.id)}
+                                        onChange={() => {
+                                            setPolicySettings(prev => {
+                                                const ids = prev.late_day_eligible_groups;
+                                                const updated = ids.includes(group.id)
+                                                    ? ids.filter(id => id !== group.id)
+                                                    : [...ids, group.id];
+                                                return { ...prev, late_day_eligible_groups: updated };
+                                            });
+                                        }}
+                                    />
+                                    <span className="text-sm text-gray-700">{group.name}</span>
+                                </label>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Policy Message Banner */}
+                {policyMessage && (
+                    <div
+                        className={`mb-4 p-3 rounded-lg flex items-center gap-2 text-sm ${policyMessage.type === 'success'
+                                ? 'bg-green-50 text-green-800 border border-green-200'
+                                : 'bg-red-50 text-red-800 border border-red-200'
+                            }`}
+                    >
+                        {policyMessage.type === 'success' ? (
+                            <CheckCircle className="w-4 h-4 shrink-0" />
+                        ) : (
+                            <XCircle className="w-4 h-4 shrink-0" />
+                        )}
+                        {policyMessage.text}
+                    </div>
+                )}
+
+                {/* Save Policy Button */}
+                <button
+                    onClick={savePolicySettings}
+                    disabled={policySaving}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                    {policySaving ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                        <Save className="w-4 h-4" />
+                    )}
+                    Save Policy Settings
+                </button>
+            </div>
+
             {/* Comment Templates */}
             <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Comment Templates</h2>
@@ -444,7 +643,7 @@ const Settings = () => {
                 <div className="mb-6 p-3 bg-blue-50 rounded-md border border-blue-200">
                     <p className="text-sm font-medium text-blue-800 mb-1">Available Variables</p>
                     <div className="flex flex-wrap gap-2">
-                        {['{days_late}', '{days_remaining}', '{penalty_days}', '{penalty_percent}', '{max_late_days}'].map(v => (
+                        {['{days_late}', '{bank_days_used}', '{bank_remaining}', '{total_bank}', '{penalty_days}', '{penalty_percent}'].map(v => (
                             <code key={v} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">{v}</code>
                         ))}
                     </div>

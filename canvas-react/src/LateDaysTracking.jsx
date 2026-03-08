@@ -301,8 +301,10 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId, refreshTrigg
         bValue = b.total_late_days || 0;
       } else if (sortConfig.key.startsWith('assignment_')) {
         const assignmentId = parseInt(sortConfig.key.replace('assignment_', ''));
-        aValue = a.assignments[assignmentId] || 0;
-        bValue = b.assignments[assignmentId] || 0;
+        const aEntry = a.assignments[assignmentId];
+        const bEntry = b.assignments[assignmentId];
+        aValue = aEntry ? (aEntry.days_late || 0) : 0;
+        bValue = bEntry ? (bEntry.days_late || 0) : 0;
       } else {
         return 0;
       }
@@ -349,14 +351,6 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId, refreshTrigg
   };
 
   // Helper functions for displaying late days data
-
-  // Helper function to get color coding for late days
-  const getLateDaysColor = (days) => {
-    if (days === 0) return 'text-green-700 bg-green-50 border-green-200';
-    if (days === 1) return 'text-yellow-700 bg-yellow-50 border-yellow-200';
-    if (days === 2) return 'text-orange-700 bg-orange-50 border-orange-200';
-    return 'text-red-700 bg-red-50 border-red-200';
-  };
 
   const getTotalLateDaysColor = (total) => {
     if (total === 0) return 'text-green-700 bg-green-50 border-green-200';
@@ -784,6 +778,21 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId, refreshTrigg
               </div>
             </div>
 
+            <div className="flex gap-4 text-xs text-gray-500 mb-2 items-center flex-wrap">
+              <span className="flex items-center gap-1">
+                <span className="inline-block w-4 h-4 rounded-full bg-green-100 border border-green-300"></span>
+                Bank days (no penalty)
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block w-4 h-4 rounded-full bg-red-100 border border-red-300"></span>
+                Penalty days
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-flex px-1 rounded bg-red-100 text-red-700 border border-red-300 font-bold">NA</span>
+                Not Accepted (project deliverable)
+              </span>
+            </div>
+
             <div className="overflow-x-auto border border-gray-200 rounded-lg">
               <table className="min-w-full bg-white">
                 <thead className="bg-gray-50">
@@ -847,19 +856,62 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId, refreshTrigg
                         </div>
                       </td>
                       {displayedAssignments.map(assignment => {
-                        const lateDays = student.assignments[assignment.id] || 0;
+                        const entry = student.assignments[assignment.id];
+                        const isOnTime = !entry || entry.days_late === 0;
+                        const isNotAccepted = entry && entry.not_accepted;
+                        const bankDays = entry ? entry.bank_days_used : 0;
+                        const penaltyDays = entry ? entry.penalty_days : 0;
+                        const daysLate = entry ? entry.days_late : 0;
                         return (
                           <td key={assignment.id} className="px-4 py-4 text-center">
-                            <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold border ${getLateDaysColor(lateDays)}`}>
-                              {lateDays === 0 ? '—' : lateDays}
-                            </span>
+                            {isOnTime ? (
+                              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold border border-gray-200 text-gray-400 bg-white">
+                                —
+                              </span>
+                            ) : isNotAccepted ? (
+                              <span
+                                className="inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700 border border-red-300"
+                                title={`Not Accepted — submitted ${daysLate} day${daysLate !== 1 ? 's' : ''} late (project deliverable)`}
+                              >
+                                NA
+                              </span>
+                            ) : penaltyDays > 0 && bankDays > 0 ? (
+                              <span
+                                className="inline-flex flex-col items-center justify-center w-8 rounded text-xs font-bold border border-red-300 overflow-hidden"
+                                title={`${daysLate} days late: ${bankDays} bank, ${penaltyDays} penalty (${entry.penalty_percent}% deduction)`}
+                              >
+                                <span className="w-full text-center bg-green-100 text-green-700 py-0.5">{bankDays}</span>
+                                <span className="w-full text-center bg-red-100 text-red-700 py-0.5">{penaltyDays}</span>
+                              </span>
+                            ) : penaltyDays > 0 ? (
+                              <span
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold border bg-red-100 text-red-700 border-red-300"
+                                title={`${daysLate} days late: ${bankDays} bank, ${penaltyDays} penalty (${entry.penalty_percent}% deduction)`}
+                              >
+                                {daysLate}
+                              </span>
+                            ) : (
+                              <span
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold border bg-green-100 text-green-700 border-green-300"
+                                title={`${bankDays} bank day${bankDays !== 1 ? 's' : ''} used (no penalty)`}
+                              >
+                                {bankDays}
+                              </span>
+                            )}
                           </td>
                         );
                       })}
                       <td className="px-6 py-4 text-center bg-gray-50 border-l-2 border-gray-300">
-                        <span className={`inline-flex items-center justify-center px-4 py-2 rounded-full font-bold text-sm border ${getTotalLateDaysColor(student.total_late_days)}`}>
-                          {student.total_late_days}
-                        </span>
+                        <div className="text-center">
+                          <span className={`inline-flex items-center justify-center px-4 py-2 rounded-full font-bold text-sm border ${getTotalLateDaysColor(student.total_late_days)}`}>
+                            {student.total_late_days}
+                          </span>
+                          {student.bank_remaining !== undefined && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              {student.bank_remaining}/{student.total_bank} bank left
+                            </div>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

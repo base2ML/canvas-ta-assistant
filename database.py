@@ -24,7 +24,7 @@ DB_PATH = DATA_DIR / "canvas.db"
 def get_db_connection():
     """Context manager for database connections."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode=WAL")
@@ -75,6 +75,31 @@ def init_db() -> None:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_assignments_course ON assignments(course_id)"  # noqa: E501
         )
+
+        # Assignment groups table (Canvas assignment group categories)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS assignment_groups (
+                id INTEGER PRIMARY KEY,
+                course_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                position INTEGER,
+                synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_assignment_groups_course "
+            "ON assignment_groups(course_id)"
+        )
+
+        # Migration: Add assignment_group_id column for existing assignments tables
+        try:
+            cursor.execute(
+                "ALTER TABLE assignments ADD COLUMN assignment_group_id INTEGER"
+            )
+            logger.info("Added assignment_group_id column to assignments table")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
 
         # Users table (students)
         cursor.execute("""
@@ -344,19 +369,19 @@ def populate_default_templates() -> None:
                 "template_text": (
                     "Late Day Update for this assignment:\n\n"
                     "Days late: {days_late}\n"
-                    "Late days used (this assignment): {penalty_days}\n"
-                    "Late days remaining: {days_remaining}\n"
+                    "Bank days used (cumulative): {bank_days_used}\n"
+                    "Bank days remaining: {bank_remaining}\n"
+                    "Penalty days: {penalty_days}\n"
                     "Penalty: {penalty_percent}%\n\n"
-                    "Maximum late days per assignment: {max_late_days}\n\n"
                     "Please review the course late day policy if you have questions."
                 ),
                 "template_variables": json.dumps(
                     [
                         "days_late",
+                        "bank_days_used",
+                        "bank_remaining",
                         "penalty_days",
-                        "days_remaining",
                         "penalty_percent",
-                        "max_late_days",
                     ]
                 ),
             },
@@ -365,13 +390,13 @@ def populate_default_templates() -> None:
                 "template_text": (
                     "Late Day Update for this assignment:\n\n"
                     "Days late: {days_late}\n"
-                    "Late days remaining: {days_remaining}\n\n"
+                    "Bank days used (cumulative): {bank_days_used}\n"
+                    "Bank days remaining: {bank_remaining}\n\n"
                     "No penalty has been applied.\n\n"
-                    "Maximum late days per assignment: {max_late_days}\n\n"
                     "Please review the course late day policy if you have questions."
                 ),
                 "template_variables": json.dumps(
-                    ["days_late", "days_remaining", "max_late_days"]
+                    ["days_late", "bank_days_used", "bank_remaining"]
                 ),
             },
         ]
@@ -639,6 +664,7 @@ def clear_refreshable_data(course_id: str, conn: sqlite3.Connection) -> None:
     )
     cursor.execute("DELETE FROM groups WHERE course_id = ?", (course_id,))
     cursor.execute("DELETE FROM assignments WHERE course_id = ?", (course_id,))
+    cursor.execute("DELETE FROM assignment_groups WHERE course_id = ?", (course_id,))
     # Note: users are preserved (enrollment status tracked, not cleared)
     logger.info(f"Cleared refreshable data for course {course_id}")
 
@@ -671,6 +697,9 @@ def clear_course_data(course_id: str, conn: sqlite3.Connection | None = None) ->
         cursor.execute("DELETE FROM groups WHERE course_id = ?", (course_id,))
         cursor.execute("DELETE FROM users WHERE course_id = ?", (course_id,))
         cursor.execute("DELETE FROM assignments WHERE course_id = ?", (course_id,))
+        cursor.execute(
+            "DELETE FROM assignment_groups WHERE course_id = ?", (course_id,)
+        )
         if conn is None:
             db_conn.commit()
         logger.info(f"Cleared all data for course {course_id}")
@@ -701,6 +730,7 @@ def upsert_assignments(
                 assignment.get("due_at"),
                 assignment.get("points_possible"),
                 assignment.get("html_url"),
+                assignment.get("assignment_group_id"),
                 synced_at,
             )
             for assignment in assignments
@@ -709,15 +739,17 @@ def upsert_assignments(
         cursor.executemany(
             """
             INSERT INTO assignments (
-                id, course_id, name, due_at, points_possible, html_url, synced_at
+                id, course_id, name, due_at, points_possible, html_url,
+                assignment_group_id, synced_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 course_id = excluded.course_id,
                 name = excluded.name,
                 due_at = excluded.due_at,
                 points_possible = excluded.points_possible,
                 html_url = excluded.html_url,
+                assignment_group_id = excluded.assignment_group_id,
                 synced_at = excluded.synced_at
         """,
             data,
@@ -726,6 +758,43 @@ def upsert_assignments(
         if conn is None:
             db_conn.commit()
         return len(assignments)
+
+    if conn is not None:
+        return _upsert(conn)
+    else:
+        with get_db_connection() as db_conn:
+            return _upsert(db_conn)
+
+
+def upsert_assignment_groups(
+    course_id: str,
+    groups: list[dict[str, Any]],
+    conn: sqlite3.Connection | None = None,
+) -> int:
+    """Insert or update Canvas assignment groups for a course."""
+
+    def _upsert(db_conn: sqlite3.Connection) -> int:
+        cursor = db_conn.cursor()
+        synced_at = datetime.now(UTC)
+        data = [
+            (g["id"], course_id, g["name"], g.get("position"), synced_at)
+            for g in groups
+        ]
+        cursor.executemany(
+            """
+            INSERT INTO assignment_groups (id, course_id, name, position, synced_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                course_id = excluded.course_id,
+                name = excluded.name,
+                position = excluded.position,
+                synced_at = excluded.synced_at
+            """,
+            data,
+        )
+        if conn is None:
+            db_conn.commit()
+        return len(groups)
 
     if conn is not None:
         return _upsert(conn)
@@ -906,13 +975,27 @@ def get_assignments(course_id: str) -> list[dict[str, Any]]:
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT id, course_id, name, due_at, points_possible, html_url, synced_at
+            SELECT id, course_id, name, due_at, points_possible,
+                   html_url, assignment_group_id, synced_at
             FROM assignments WHERE course_id = ?
             ORDER BY due_at DESC NULLS LAST
         """,
             (course_id,),
         )
         return [dict(row) for row in cursor.fetchall()]
+
+
+def get_assignment_groups(course_id: str) -> list[dict[str, Any]]:
+    """Get Canvas assignment groups (syllabus categories) for a course."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, name, position FROM assignment_groups "
+            "WHERE course_id = ? ORDER BY position ASC, name ASC",
+            (course_id,),
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
 
 
 def get_users(course_id: str, include_dropped: bool = False) -> list[dict[str, Any]]:

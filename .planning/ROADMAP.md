@@ -53,9 +53,18 @@
 
 </details>
 
-### 📋 v1.2 (Planned)
+### Phase 5: Fix late day penalty calculation — rewrite to semester-aware bank system with per-assignment caps, project deliverable exclusion via Canvas assignment groups, and 25% penalty rate
 
-*Next milestone — TBD after `/gsd:new-milestone`*
+**Goal**: Late day tracking correctly implements the semester bank model: students draw from a shared 10-day bank (sorted chronologically by due date), capped per assignment, with 25%/day penalty on uncovered days, and project deliverables (Canvas assignment groups) excluded from bank eligibility
+**Requirements**: LATE-DB-01, LATE-SYNC-01, LATE-API-GROUPS-01, LATE-ALGO-01, LATE-SETTINGS-01, LATE-TEMPLATE-01, LATE-POSTING-01, LATE-UI-01, LATE-UI-02
+**Depends on:** Phase 4
+**Plans:** 4/4 plans complete
+
+Plans:
+- [x] 05-01-PLAN.md — DB schema: assignment_groups table, assignment_group_id migration, upsert/clear functions
+- [x] 05-02-PLAN.md — Canvas sync: fetch assignment groups, annotate assignments; add /api/canvas/assignment-groups endpoint
+- [x] 05-03-PLAN.md — Backend algorithm: calculate_student_late_day_summary(), settings models, get_late_days_data(), preview/posting flow
+- [x] 05-04-PLAN.md — Frontend: Settings Late Day Policy section + LateDaysTracking bank/penalty/Not Accepted display
 
 ## Progress
 
@@ -65,3 +74,4 @@
 | 2. Posting Logic | v1.0 | 2/2 | ✅ Complete | 2026-02-21 |
 | 3. UI Integration | v1.0 | 4/4 | ✅ Complete | 2026-02-21 |
 | 4. Unified Refresh | v1.1 | 3/3 | ✅ Complete | 2026-03-01 |
+| 5. Late Day Penalty Fix | 4/4 | Complete   | 2026-03-02 | 2026-03-01 |
