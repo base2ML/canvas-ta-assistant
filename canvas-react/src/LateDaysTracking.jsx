@@ -859,7 +859,7 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId, refreshTrigg
                         const entry = student.assignments[assignment.id];
                         const isOnTime = !entry || entry.days_late === 0;
                         const isNotAccepted = entry && entry.not_accepted;
-                        const bankDays = entry ? entry.bank_days_used : 0;
+                        const bankDays = entry ? (entry.days_late - entry.penalty_days) : 0;
                         const penaltyDays = entry ? entry.penalty_days : 0;
                         const daysLate = entry ? entry.days_late : 0;
                         return (
