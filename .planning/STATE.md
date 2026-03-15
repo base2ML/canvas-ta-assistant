@@ -2,13 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-02T03:52:30.914Z"
+status: verifying
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-03-15T02:54:35.581Z"
+last_activity: "2026-03-03 — Quick-7: fix Settings page race condition where eligible groups checkbox reverted to all-checked on refresh"
 progress:
-  total_phases: 1
+  total_phases: 6
   completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 8
+  completed_plans: 5
+  percent: 100
 ---
 
 # Project State
@@ -50,6 +53,7 @@ Progress: [██████████] 100% (4/4 plans complete in phase 05)
 | Phase 05 P02 | 3 | 2 tasks | 5 files |
 | Phase 05 P03 | 7 min | 3 tasks | 4 files |
 | Phase 05 P04 | 2 min | 2 tasks | 2 files |
+| Phase 06 P01 | 3 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -70,6 +74,10 @@ All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
 - [Phase 05]: Added dedicated Save Policy Settings button in Late Day Policy card to fix settings persistence UX confusion where users didn't realize Course Configuration save button applied to policy fields
 - [Phase 05]: DB schema migration: assignment_groups table and assignment_group_id column were missing from local DB — applied init_db() to migrate; groups will populate on next sync
 - [Phase 05-04]: get_assignments() SELECT omitted assignment_group_id — calculate_student_late_day_summary() received None and marked all assignments not_accepted; fixed in 80dc14a (all 70 tests pass)
+- [Phase 06]: Placed ta_users table and migrations after submissions table in init_db() for logical proximity
+- [Phase 06]: [06-01]: Used try/except sqlite3.OperationalError pattern for grader_id/graded_at migrations, consistent with assignment_group_id migration
+- [Phase 06]: [06-01]: upsert_ta_users() uses optional conn parameter + inner _upsert() pattern identical to upsert_users() for transaction-aware usage
+- [Phase 06]: [06-01]: clear_refreshable_data() clears ta_users per course_id since TA roster may change between syncs
 
 ### Pending Todos
 
@@ -85,6 +93,7 @@ All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
 ### Roadmap Evolution
 
 - Phase 5 added: Fix late day penalty calculation — rewrite to semester-aware bank system with per-assignment caps, project deliverable exclusion via Canvas assignment groups, and 25% penalty rate
+- Phase 6 added: Grader identity tracking: sync grader_id/graded_at from Canvas, sync TA/instructor users, ta_breakdown_mode setting, update EnhancedTADashboard TA breakdown table
 
 ### Blockers/Concerns
 
@@ -105,6 +114,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06
-Stopped at: Completed quick-8 — bank_days_used cumulative fix and alias variable cleanup
+Last session: 2026-03-15T02:54:35.579Z
+Stopped at: Completed 06-01-PLAN.md
 Resume file: None

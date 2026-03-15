@@ -81,7 +81,7 @@ Plans:
 **Goal:** Actual grader data from Canvas (grader_id) is stored and optionally used in the TA grading breakdown table, giving TAs visibility into who actually graded each submission vs who was group-assigned
 **Requirements**: GRADER-DB-01, GRADER-SYNC-01, GRADER-API-01, GRADER-SETTINGS-01, GRADER-UI-01, GRADER-SETTINGS-UI-01
 **Depends on:** Phase 5
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 
 Plans:
 - [ ] 06-01-PLAN.md — DB schema: ta_users table, submissions grader_id/graded_at migration, upsert_ta_users(), clear_refreshable_data update
