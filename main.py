@@ -8,7 +8,7 @@ import json
 import math
 import os
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from dateutil import parser as dateutil_parser
@@ -209,6 +209,29 @@ class PeerReviewAnalysis(BaseModel):
     summary: PeerReviewSummary
     events: list[PeerReviewEvent]
     penalized_reviewers: list[PenalizedReviewer]
+
+
+class GradingDeadlineItem(BaseModel):
+    assignment_id: int
+    assignment_name: str
+    due_at: str | None
+    deadline_at: str | None
+    turnaround_days: int | None
+    is_override: bool
+    is_overdue: bool
+    pending_submissions: int
+
+
+class GradingDeadlinesResponse(BaseModel):
+    course_id: str
+    assignments: list[GradingDeadlineItem]
+    default_turnaround_days: int
+
+
+class DeadlineUpdateRequest(BaseModel):
+    deadline_date: str  # ISO date string "YYYY-MM-DD"
+    is_override: bool = True
+    note: str | None = None
 
 
 class CommentTemplateCreate(BaseModel):
@@ -1555,6 +1578,17 @@ async def get_assignment_groups_endpoint(course_id: str) -> dict[str, Any]:
         ) from e
 
 
+def is_overdue(deadline_at_str: str | None, pending_count: int) -> bool:
+    """Return True if the deadline has passed and submissions are still pending."""
+    if not deadline_at_str or pending_count == 0:
+        return False
+    try:
+        deadline = dateutil_parser.parse(deadline_at_str)
+        return datetime.now(UTC) > deadline
+    except Exception:
+        return False
+
+
 # Dashboard endpoints
 def classify_submission_status(submission: dict, assignment: dict) -> str:
     """Classify submission as on_time, late, or missing."""
@@ -1862,6 +1896,108 @@ async def get_ta_grading_data(course_id: str) -> dict[str, Any]:
         "total_ungraded": len(ungraded_submissions),
         "last_updated": datetime.now(UTC).isoformat(),
     }
+
+
+@app.get(
+    "/api/dashboard/grading-deadlines/{course_id}",
+    response_model=GradingDeadlinesResponse,
+)
+async def get_grading_deadlines(course_id: str) -> GradingDeadlinesResponse:
+    """Return assignments with grading deadlines and overdue status."""
+    turnaround_str = db.get_setting("default_grading_turnaround_days")
+    default_turnaround = int(turnaround_str) if turnaround_str else 7
+
+    assignments = db.get_assignments(course_id)
+    deadlines = {d["assignment_id"]: d for d in db.get_grading_deadlines(course_id)}
+    submissions = db.get_submissions(course_id)
+
+    # Count pending (submitted but not graded) per assignment
+    pending_per_assignment: dict[int, int] = {}
+    for sub in submissions:
+        aid = sub["assignment_id"]
+        state = sub.get("workflow_state", "")
+        if state in ("submitted", "pending_review"):
+            pending_per_assignment[aid] = pending_per_assignment.get(aid, 0) + 1
+
+    items = []
+    for a in assignments:
+        aid = a["id"]
+        dl = deadlines.get(aid)
+        deadline_at = dl["deadline_at"] if dl else None
+        pending = pending_per_assignment.get(aid, 0)
+        items.append(
+            GradingDeadlineItem(
+                assignment_id=aid,
+                assignment_name=a["name"],
+                due_at=a.get("due_at"),
+                deadline_at=deadline_at,
+                turnaround_days=dl["turnaround_days"] if dl else None,
+                is_override=bool(dl["is_override"]) if dl else False,
+                is_overdue=is_overdue(deadline_at, pending),
+                pending_submissions=pending,
+            )
+        )
+
+    return GradingDeadlinesResponse(
+        course_id=course_id,
+        assignments=items,
+        default_turnaround_days=default_turnaround,
+    )
+
+
+@app.put("/api/dashboard/grading-deadlines/{course_id}/{assignment_id}")
+async def update_grading_deadline(
+    course_id: str,
+    assignment_id: int,
+    body: DeadlineUpdateRequest,
+) -> dict[str, Any]:
+    """Set or override a grading deadline for one assignment."""
+    try:
+        deadline_dt = dateutil_parser.parse(body.deadline_date)
+        if deadline_dt.tzinfo is None:
+            deadline_dt = deadline_dt.replace(tzinfo=UTC)
+        turnaround_str = db.get_setting("default_grading_turnaround_days")
+        turnaround = int(turnaround_str) if turnaround_str else 7
+        db.upsert_grading_deadline(
+            course_id,
+            assignment_id,
+            deadline_dt,
+            turnaround,
+            is_override=body.is_override,
+            note=body.note,
+        )
+        return {"success": True, "assignment_id": assignment_id}
+    except Exception as e:
+        logger.error(f"Error updating deadline for {assignment_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/dashboard/grading-deadlines/{course_id}/propagate-defaults")
+async def propagate_default_deadlines(course_id: str) -> dict[str, Any]:
+    """Populate grading_deadlines for assignments missing a deadline.
+
+    Uses due_at + default_grading_turnaround_days. Skips NULL due_at.
+    Does NOT overwrite is_override=1 rows.
+    """
+    turnaround_str = db.get_setting("default_grading_turnaround_days")
+    turnaround_days = int(turnaround_str) if turnaround_str else 7
+    assignments = db.get_assignments(course_id)
+    created = 0
+    for a in assignments:
+        if not a.get("due_at"):
+            continue
+        try:
+            due = dateutil_parser.parse(a["due_at"])
+            if due.tzinfo is None:
+                due = due.replace(tzinfo=UTC)
+            deadline = due + timedelta(days=turnaround_days)
+            db.upsert_grading_deadline_if_not_override(
+                course_id, a["id"], deadline, turnaround_days
+            )
+            created += 1
+        except Exception as e:
+            logger.warning(f"Could not compute deadline for assignment {a['id']}: {e}")
+    return {"propagated": created, "turnaround_days": turnaround_days}
 
 
 @app.get("/api/dashboard/late-days/{course_id}")
