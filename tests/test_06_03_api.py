@@ -250,7 +250,8 @@ class TestTABreakdownModeSetting:
 
     def test_default_ta_breakdown_mode_is_group(self, fresh_db):  # noqa: ARG002
         """When ta_breakdown_mode is not set in DB, default value is 'group'."""
-        import anyio
+        import asyncio
+
         from httpx import ASGITransport, AsyncClient
 
         from main import app
@@ -262,7 +263,7 @@ class TestTABreakdownModeSetting:
                 resp = await ac.get("/api/settings")
             return resp
 
-        resp = anyio.from_thread.run_sync(lambda: anyio.run(run))
+        resp = asyncio.run(run())
         assert resp.status_code == 200
         data = resp.json()
         assert "ta_breakdown_mode" in data, (
@@ -274,7 +275,8 @@ class TestTABreakdownModeSetting:
 
     def test_put_settings_stores_actual(self, fresh_db):  # noqa: ARG002
         """PUT /api/settings with ta_breakdown_mode='actual' persists it."""
-        import anyio
+        import asyncio
+
         from httpx import ASGITransport, AsyncClient
 
         from main import app
@@ -289,7 +291,7 @@ class TestTABreakdownModeSetting:
                 get_resp = await ac.get("/api/settings")
             return put_resp, get_resp
 
-        put_resp, get_resp = anyio.from_thread.run_sync(lambda: anyio.run(run))
+        put_resp, get_resp = asyncio.run(run())
         assert put_resp.status_code == 200
         assert get_resp.status_code == 200
         data = get_resp.json()
@@ -299,7 +301,8 @@ class TestTABreakdownModeSetting:
 
     def test_put_settings_stores_group(self, fresh_db):  # noqa: ARG002
         """PUT /api/settings with ta_breakdown_mode='group' persists it."""
-        import anyio
+        import asyncio
+
         from httpx import ASGITransport, AsyncClient
 
         from main import app
@@ -316,14 +319,15 @@ class TestTABreakdownModeSetting:
                 get_resp = await ac.get("/api/settings")
             return put_resp, get_resp
 
-        put_resp, get_resp = anyio.from_thread.run_sync(lambda: anyio.run(run))
+        put_resp, get_resp = asyncio.run(run())
         assert put_resp.status_code == 200
         data = get_resp.json()
         assert data["ta_breakdown_mode"] == "group"
 
     def test_put_settings_rejects_invalid(self, fresh_db):  # noqa: ARG002
         """PUT /api/settings with ta_breakdown_mode='invalid' returns 400."""
-        import anyio
+        import asyncio
+
         from httpx import ASGITransport, AsyncClient
 
         from main import app
@@ -337,5 +341,5 @@ class TestTABreakdownModeSetting:
                 )
             return resp
 
-        resp = anyio.from_thread.run_sync(lambda: anyio.run(run))
+        resp = asyncio.run(run())
         assert resp.status_code == 400, f"Expected 400, got {resp.status_code}"

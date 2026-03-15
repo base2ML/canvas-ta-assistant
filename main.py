@@ -121,6 +121,7 @@ class SettingsResponse(BaseModel):
     penalty_rate_per_day: int
     per_assignment_cap: int
     late_day_eligible_groups: list[int]
+    ta_breakdown_mode: str = "group"
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -133,6 +134,7 @@ class SettingsUpdateRequest(BaseModel):
     penalty_rate_per_day: int | None = None
     per_assignment_cap: int | None = None
     late_day_eligible_groups: list[int] | None = None
+    ta_breakdown_mode: str | None = None
 
     @field_validator("max_late_days_per_assignment")
     @classmethod
@@ -673,6 +675,13 @@ async def get_settings():
         json.loads(eligible_str) if eligible_str else []
     )
 
+    ta_breakdown_mode_str = db.get_setting("ta_breakdown_mode")
+    ta_breakdown_mode = (
+        ta_breakdown_mode_str
+        if ta_breakdown_mode_str in ("group", "actual")
+        else "group"
+    )
+
     return SettingsResponse(
         course_id=course_id or None,
         course_name=course_name,
@@ -687,6 +696,7 @@ async def get_settings():
         penalty_rate_per_day=penalty_rate_per_day,
         per_assignment_cap=per_assignment_cap,
         late_day_eligible_groups=late_day_eligible_groups,
+        ta_breakdown_mode=ta_breakdown_mode,
     )
 
 
@@ -743,6 +753,16 @@ async def update_settings(settings: SettingsUpdateRequest) -> dict[str, Any]:
         logger.info(
             f"Late day eligible groups updated: {settings.late_day_eligible_groups}"
         )
+
+    if settings.ta_breakdown_mode is not None:
+        if settings.ta_breakdown_mode not in ("group", "actual"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ta_breakdown_mode must be 'group' or 'actual'",
+            )
+        db.set_setting("ta_breakdown_mode", settings.ta_breakdown_mode)
+        updated_fields.append("ta_breakdown_mode")
+        logger.info(f"TA breakdown mode updated to: {settings.ta_breakdown_mode!r}")
 
     if not updated_fields:
         raise HTTPException(

@@ -896,6 +896,8 @@ def upsert_submissions(
                 submission.get("workflow_state"),
                 1 if submission.get("late") else 0,
                 submission.get("score"),
+                submission.get("grader_id"),
+                submission.get("graded_at"),
                 synced_at,
             )
             for submission in submissions
@@ -905,9 +907,9 @@ def upsert_submissions(
             """
             INSERT INTO submissions (
                 id, course_id, user_id, assignment_id, submitted_at,
-                workflow_state, late, score, synced_at
+                workflow_state, late, score, grader_id, graded_at, synced_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 course_id = excluded.course_id,
                 user_id = excluded.user_id,
@@ -916,6 +918,8 @@ def upsert_submissions(
                 workflow_state = excluded.workflow_state,
                 late = excluded.late,
                 score = excluded.score,
+                grader_id = excluded.grader_id,
+                graded_at = excluded.graded_at,
                 synced_at = excluded.synced_at
         """,
             data,
@@ -1111,18 +1115,28 @@ def get_submissions(
         if assignment_id:
             cursor.execute(
                 """
-                SELECT id, course_id, user_id, assignment_id, submitted_at,
-                       workflow_state, late, score, synced_at
-                FROM submissions WHERE course_id = ? AND assignment_id = ?
+                SELECT s.id, s.course_id, s.user_id, s.assignment_id,
+                       s.submitted_at, s.workflow_state, s.late, s.score,
+                       s.grader_id, s.graded_at, s.synced_at,
+                       t.name AS grader_name
+                FROM submissions s
+                LEFT JOIN ta_users t
+                  ON s.grader_id = t.id AND t.course_id = s.course_id
+                WHERE s.course_id = ? AND s.assignment_id = ?
             """,
                 (course_id, assignment_id),
             )
         else:
             cursor.execute(
                 """
-                SELECT id, course_id, user_id, assignment_id, submitted_at,
-                       workflow_state, late, score, synced_at
-                FROM submissions WHERE course_id = ?
+                SELECT s.id, s.course_id, s.user_id, s.assignment_id,
+                       s.submitted_at, s.workflow_state, s.late, s.score,
+                       s.grader_id, s.graded_at, s.synced_at,
+                       t.name AS grader_name
+                FROM submissions s
+                LEFT JOIN ta_users t
+                  ON s.grader_id = t.id AND t.course_id = s.course_id
+                WHERE s.course_id = ?
             """,
                 (course_id,),
             )
