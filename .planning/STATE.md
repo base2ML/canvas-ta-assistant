@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-03-15T03:00:56.955Z"
+stopped_at: Completed 06-04-PLAN.md
+last_updated: "2026-03-15T18:53:39.481Z"
 last_activity: "2026-03-03 — Quick-7: fix Settings page race condition where eligible groups checkbox reverted to all-checked on refresh"
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
   percent: 100
 ---
 
@@ -56,6 +56,7 @@ Progress: [██████████] 100% (4/4 plans complete in phase 05)
 | Phase 06 P01 | 3 | 2 tasks | 2 files |
 | Phase 06 P03 | 5 | 2 tasks | 3 files |
 | Phase 06 P02 | 4 min | 2 tasks | 3 files |
+| Phase 06 P04 | 15 | 5 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,7 @@ All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
 - [Phase 06]: [06-01]: clear_refreshable_data() clears ta_users per course_id since TA roster may change between syncs
 - [Phase 06]: [06-03]: upsert_submissions() extended to persist grader_id/graded_at; asyncio.run() used for async httpx tests; ta_breakdown_mode defaults to 'group' at model level and in get_settings()
 - [Phase 06]: [06-02]: Two-pass TA fetch with seen_ids: ta enrollment first, teacher second; upsert_submissions extended to 11 columns with grader_id/graded_at
+- [Phase 06]: match grader_id against ta_users.id for actual-mode count (not grader_name); fallback to name string match; new /api/canvas/ta-users endpoint
 
 ### Pending Todos
 
@@ -118,6 +120,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T03:00:56.952Z
-Stopped at: Completed 06-02-PLAN.md
+Last session: 2026-03-15T18:53:39.480Z
+Stopped at: Completed 06-04-PLAN.md
 Resume file: None
