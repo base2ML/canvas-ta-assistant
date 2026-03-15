@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Save, CheckCircle, XCircle, Clock, Settings as SettingsIcon, User, Database } from 'lucide-react';
+import { RefreshCw, Save, CheckCircle, XCircle, Clock, Settings as SettingsIcon, User, Database, Users } from 'lucide-react';
 import { apiFetch } from './api';
 import { formatDate, setTimezone } from './utils/dates';
 
@@ -25,6 +25,9 @@ const Settings = () => {
     const [templateMessage, setTemplateMessage] = useState(null);
     const [policySaving, setPolicySaving] = useState(false);
     const [policyMessage, setPolicyMessage] = useState(null);
+    const [taBreakdownMode, setTaBreakdownMode] = useState('group');
+    const [taDashboardSaving, setTaDashboardSaving] = useState(false);
+    const [taDashboardMessage, setTaDashboardMessage] = useState(null);
 
     // Late Day Policy state
     const [assignmentGroups, setAssignmentGroups] = useState([]);
@@ -51,6 +54,7 @@ const Settings = () => {
                 late_day_eligible_groups: data.late_day_eligible_groups ?? [],
             });
             setPolicySettingsLoaded(true);
+            setTaBreakdownMode(data.ta_breakdown_mode ?? 'group');
         } catch (err) {
             console.error('Error loading settings:', err);
             setMessage({ type: 'error', text: 'Failed to load settings' });
@@ -130,6 +134,24 @@ const Settings = () => {
             setPolicyMessage({ type: 'error', text: err.message || 'Failed to save policy settings' });
         } finally {
             setPolicySaving(false);
+        }
+    };
+
+    // Save TA Dashboard settings
+    const saveTaSettings = async () => {
+        setTaDashboardSaving(true);
+        setTaDashboardMessage(null);
+        try {
+            await apiFetch('/api/settings', {
+                method: 'PUT',
+                body: JSON.stringify({ ta_breakdown_mode: taBreakdownMode }),
+            });
+            setTaDashboardMessage({ type: 'success', text: 'TA Dashboard settings saved. Reload the TA Dashboard to apply.' });
+            loadSettings();
+        } catch (err) {
+            setTaDashboardMessage({ type: 'error', text: err.message || 'Failed to save TA Dashboard settings' });
+        } finally {
+            setTaDashboardSaving(false);
         }
     };
 
@@ -493,6 +515,53 @@ const Settings = () => {
                     </div>
                 </div>
             )}
+
+            {/* TA Dashboard */}
+            <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+                <div className="flex items-center gap-2 mb-4">
+                    <Users className="w-5 h-5 text-blue-600" />
+                    <h2 className="text-lg font-semibold text-gray-900">TA Dashboard</h2>
+                </div>
+                <p className="text-sm text-gray-600 mb-6">
+                    Configure how the TA grading breakdown is computed.
+                </p>
+                <div className="flex items-start gap-4">
+                    <div className="flex-1">
+                        <label className="flex items-center gap-3 cursor-pointer">
+                            <div className="relative">
+                                <input
+                                    type="checkbox"
+                                    className="sr-only"
+                                    checked={taBreakdownMode === 'actual'}
+                                    onChange={e => setTaBreakdownMode(e.target.checked ? 'actual' : 'group')}
+                                />
+                                <div className={`w-10 h-6 rounded-full transition-colors ${taBreakdownMode === 'actual' ? 'bg-blue-600' : 'bg-gray-300'}`}></div>
+                                <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${taBreakdownMode === 'actual' ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                            </div>
+                            <span className="text-sm font-medium text-gray-900">Use actual grader from Canvas (grader_id)</span>
+                        </label>
+                        <p className="text-xs text-gray-500 mt-1 ml-13">
+                            When enabled, the graded count in the TA breakdown table reflects who actually pressed grade in Canvas (grader_id) instead of group assignment.
+                        </p>
+                    </div>
+                </div>
+                <div className="mt-4">
+                    <button
+                        onClick={saveTaSettings}
+                        disabled={taDashboardSaving}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                    >
+                        <Save className="w-4 h-4" />
+                        {taDashboardSaving ? 'Saving...' : 'Save TA Settings'}
+                    </button>
+                    {taDashboardMessage && (
+                        <div className={`mt-2 flex items-center gap-2 text-sm ${taDashboardMessage.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                            {taDashboardMessage.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                            {taDashboardMessage.text}
+                        </div>
+                    )}
+                </div>
+            </div>
 
             {/* Late Day Policy */}
             <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
