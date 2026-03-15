@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import AssignmentStatusBreakdown from './components/AssignmentStatusBreakdown';
 import { apiFetch } from './api';
 
-const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId, refreshTrigger }) => {
+const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId, refreshTrigger, taBreakdownMode = 'group' }) => {
   // Use courses from props, but keep local state for selection
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [assignments, setAssignments] = useState([]);
@@ -123,8 +123,17 @@ const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId, refr
         );
 
         const totalAssigned = taSubmissions.length;
-        // Only count as graded if actually submitted AND graded (excludes missing submissions graded as 0)
-        const graded = taSubmissions.filter(s => s.workflow_state === 'graded' && s.submitted_at).length;
+        // Branch graded count based on taBreakdownMode
+        let graded;
+        if (taBreakdownMode === 'actual') {
+          // Count submissions (any student) where grader_name matches this TA's name
+          graded = assignmentSubmissions.filter(
+            s => s.grader_name === taName && s.submitted_at
+          ).length;
+        } else {
+          // Group assignment mode (default): only count as graded if actually submitted AND graded
+          graded = taSubmissions.filter(s => s.workflow_state === 'graded' && s.submitted_at).length;
+        }
 
         // Count submission statuses for this TA
         const taSubmittedOnTime = taSubmissions.filter(s => {
@@ -177,7 +186,7 @@ const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId, refr
         ta_grading_breakdown: taGradingBreakdown
       };
     });
-  }, [assignments, submissions, groups, buildTAAssignments]);
+  }, [assignments, submissions, groups, buildTAAssignments, taBreakdownMode]);
 
   // Toggle assignment expanded state
   const toggleAssignmentExpanded = (assignmentId) => {
