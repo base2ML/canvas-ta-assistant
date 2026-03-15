@@ -157,6 +157,37 @@ def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS idx_submissions_user_assignment ON submissions(user_id, assignment_id)"  # noqa: E501
         )
 
+        # TA users table (TAs and instructors for grader identity resolution)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ta_users (
+                id INTEGER PRIMARY KEY,
+                course_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                email TEXT,
+                enrollment_type TEXT NOT NULL,
+                synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ta_users_course ON ta_users(course_id)"
+        )
+
+        # Migration: Add grader_id column to submissions for grader identity tracking
+        try:
+            cursor.execute("ALTER TABLE submissions ADD COLUMN grader_id INTEGER")
+            logger.info("Added grader_id column to submissions table")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
+
+        # Migration: Add graded_at column to submissions for grader identity tracking
+        try:
+            cursor.execute("ALTER TABLE submissions ADD COLUMN graded_at TIMESTAMP")
+            logger.info("Added graded_at column to submissions table")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
+
         # Groups table (TA groups)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS groups (
@@ -645,6 +676,7 @@ def clear_refreshable_data(course_id: str, conn: sqlite3.Connection) -> None:
     - Peer review comments and peer reviews
     - Groups and group members
     - Assignments
+    - TA users (ta_users table)
 
     Users and submissions are preserved:
     - Users have enrollment status tracking (active/dropped)
@@ -665,6 +697,7 @@ def clear_refreshable_data(course_id: str, conn: sqlite3.Connection) -> None:
     cursor.execute("DELETE FROM groups WHERE course_id = ?", (course_id,))
     cursor.execute("DELETE FROM assignments WHERE course_id = ?", (course_id,))
     cursor.execute("DELETE FROM assignment_groups WHERE course_id = ?", (course_id,))
+    cursor.execute("DELETE FROM ta_users WHERE course_id = ?", (course_id,))
     # Note: users are preserved (enrollment status tracked, not cleared)
     logger.info(f"Cleared refreshable data for course {course_id}")
 
@@ -891,6 +924,55 @@ def upsert_submissions(
         if conn is None:
             db_conn.commit()
         return len(submissions)
+
+    if conn is not None:
+        return _upsert(conn)
+    else:
+        with get_db_connection() as db_conn:
+            return _upsert(db_conn)
+
+
+def upsert_ta_users(
+    course_id: str,
+    ta_users: list[dict[str, Any]],
+    conn: sqlite3.Connection | None = None,
+) -> int:
+    """Insert or update TA and instructor users for grader identity resolution."""
+
+    def _upsert(db_conn: sqlite3.Connection) -> int:
+        cursor = db_conn.cursor()
+        synced_at = datetime.now(UTC)
+
+        data = [
+            (
+                user["id"],
+                course_id,
+                user["name"],
+                user.get("email"),
+                user["enrollment_type"],
+                synced_at,
+            )
+            for user in ta_users
+        ]
+
+        cursor.executemany(
+            """
+            INSERT INTO ta_users
+                (id, course_id, name, email, enrollment_type, synced_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                course_id = excluded.course_id,
+                name = excluded.name,
+                email = excluded.email,
+                enrollment_type = excluded.enrollment_type,
+                synced_at = excluded.synced_at
+            """,
+            data,
+        )
+
+        if conn is None:
+            db_conn.commit()
+        return len(ta_users)
 
     if conn is not None:
         return _upsert(conn)
