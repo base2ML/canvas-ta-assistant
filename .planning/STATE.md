@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 07-02-PLAN.md
-last_updated: "2026-03-15T22:39:00.136Z"
+stopped_at: Completed 07-03-PLAN.md
+last_updated: "2026-03-15T22:44:24.006Z"
 last_activity: "2026-03-03 — Quick-7: fix Settings page race condition where eligible groups checkbox reverted to all-checked on refresh"
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 13
-  completed_plans: 10
+  completed_plans: 11
   percent: 100
 ---
 
@@ -59,6 +59,7 @@ Progress: [██████████] 100% (4/4 plans complete in phase 05)
 | Phase 06 P04 | 15 | 5 tasks | 7 files |
 | Phase 07 P01 | 6 | 2 tasks | 5 files |
 | Phase 07 P02 | 5 | 1 tasks | 2 files |
+| Phase 07 P03 | 8 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,9 @@ All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
 - [Phase 07]: [07-01]: test_07_01_schema.py uses DATA_DIR monkeypatch; test_07_02_api.py uses DB_PATH monkeypatch (consistent with phase 06 patterns)
 - [Phase 07]: [07-01]: GradingScheduleSummary.test.jsx excludes 'renders TA group names' test — GradingDeadlineItem has no ta_groups field
 - [Phase 07]: grading_deadlines table placed after ta_users block in init_db(); clear_refreshable_data() does NOT touch grading_deadlines (overrides survive sync); upsert_grading_deadline_if_not_override uses CASE WHEN SQL in ON CONFLICT DO UPDATE for atomic override-safe upsert
+- [Phase 07]: is_overdue() named without underscore prefix so tests can import directly from main module
+- [Phase 07]: GradingDeadlineItem uses deadline_at field name to match test_07_02_api.py assertions
+- [Phase 07]: [07-03]: raise from e in update_grading_deadline except clause to satisfy Ruff B904
 
 ### Pending Todos
 
@@ -127,6 +131,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T22:39:00.134Z
-Stopped at: Completed 07-02-PLAN.md
+Last session: 2026-03-15T22:44:24.004Z
+Stopped at: Completed 07-03-PLAN.md
 Resume file: None
