@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 06-04-PLAN.md
-last_updated: "2026-03-15T18:53:39.481Z"
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-03-15T22:33:41.572Z"
 last_activity: "2026-03-03 — Quick-7: fix Settings page race condition where eligible groups checkbox reverted to all-checked on refresh"
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 2
-  total_plans: 8
-  completed_plans: 8
+  total_plans: 13
+  completed_plans: 9
   percent: 100
 ---
 
@@ -57,6 +57,7 @@ Progress: [██████████] 100% (4/4 plans complete in phase 05)
 | Phase 06 P03 | 5 | 2 tasks | 3 files |
 | Phase 06 P02 | 4 min | 2 tasks | 3 files |
 | Phase 06 P04 | 15 | 5 tasks | 7 files |
+| Phase 07 P01 | 6 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,9 @@ All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
 - [Phase 06]: [06-03]: upsert_submissions() extended to persist grader_id/graded_at; asyncio.run() used for async httpx tests; ta_breakdown_mode defaults to 'group' at model level and in get_settings()
 - [Phase 06]: [06-02]: Two-pass TA fetch with seen_ids: ta enrollment first, teacher second; upsert_submissions extended to 11 columns with grader_id/graded_at
 - [Phase 06]: match grader_id against ta_users.id for actual-mode count (not grader_name); fallback to name string match; new /api/canvas/ta-users endpoint
+- [Phase 07]: Wave 0: test scaffolds written before implementation — all 23 pytest + 8 Vitest tests RED by design
+- [Phase 07]: [07-01]: test_07_01_schema.py uses DATA_DIR monkeypatch; test_07_02_api.py uses DB_PATH monkeypatch (consistent with phase 06 patterns)
+- [Phase 07]: [07-01]: GradingScheduleSummary.test.jsx excludes 'renders TA group names' test — GradingDeadlineItem has no ta_groups field
 
 ### Pending Todos
 
@@ -100,6 +104,7 @@ All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
 
 - Phase 5 added: Fix late day penalty calculation — rewrite to semester-aware bank system with per-assignment caps, project deliverable exclusion via Canvas assignment groups, and 25% penalty rate
 - Phase 6 added: Grader identity tracking: sync grader_id/graded_at from Canvas, sync TA/instructor users, ta_breakdown_mode setting, update EnhancedTADashboard TA breakdown table
+- Phase 7 added: Add TA grading deadlines: grading_deadlines table, default_grading_turnaround_days setting, REST endpoints for deadline CRUD, overdue status per TA, Settings UI, inline deadline editing on Dashboard, overdue badges, and shareable Grading Schedule Summary view
 
 ### Blockers/Concerns
 
@@ -120,6 +125,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T18:53:39.480Z
-Stopped at: Completed 06-04-PLAN.md
+Last session: 2026-03-15T22:33:41.569Z
+Stopped at: Completed 07-01-PLAN.md
 Resume file: None
