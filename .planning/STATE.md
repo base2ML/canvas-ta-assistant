@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-03-15T02:54:35.581Z"
+stopped_at: Completed 06-03-PLAN.md
+last_updated: "2026-03-15T03:00:47.089Z"
 last_activity: "2026-03-03 — Quick-7: fix Settings page race condition where eligible groups checkbox reverted to all-checked on refresh"
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 8
-  completed_plans: 5
+  completed_plans: 7
   percent: 100
 ---
 
@@ -54,6 +54,7 @@ Progress: [██████████] 100% (4/4 plans complete in phase 05)
 | Phase 05 P03 | 7 min | 3 tasks | 4 files |
 | Phase 05 P04 | 2 min | 2 tasks | 2 files |
 | Phase 06 P01 | 3 | 2 tasks | 2 files |
+| Phase 06 P03 | 5 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,7 @@ All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
 - [Phase 06]: [06-01]: Used try/except sqlite3.OperationalError pattern for grader_id/graded_at migrations, consistent with assignment_group_id migration
 - [Phase 06]: [06-01]: upsert_ta_users() uses optional conn parameter + inner _upsert() pattern identical to upsert_users() for transaction-aware usage
 - [Phase 06]: [06-01]: clear_refreshable_data() clears ta_users per course_id since TA roster may change between syncs
+- [Phase 06]: [06-03]: upsert_submissions() extended to persist grader_id/graded_at; asyncio.run() used for async httpx tests; ta_breakdown_mode defaults to 'group' at model level and in get_settings()
 
 ### Pending Todos
 
@@ -114,6 +116,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T02:54:35.579Z
-Stopped at: Completed 06-01-PLAN.md
+Last session: 2026-03-15T03:00:39.931Z
+Stopped at: Completed 06-03-PLAN.md
 Resume file: None
