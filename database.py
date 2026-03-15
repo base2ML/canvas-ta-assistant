@@ -172,6 +172,26 @@ def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS idx_ta_users_course ON ta_users(course_id)"
         )
 
+        # Grading deadlines table (manual overrides survive sync)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS grading_deadlines (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_id TEXT NOT NULL,
+                assignment_id INTEGER NOT NULL,
+                deadline_at TIMESTAMP NOT NULL,
+                turnaround_days INTEGER NOT NULL,
+                is_override INTEGER DEFAULT 0,
+                note TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(course_id, assignment_id)
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_grading_deadlines_course "
+            "ON grading_deadlines(course_id)"
+        )
+
         # Migration: Add grader_id column to submissions for grader identity tracking
         try:
             cursor.execute("ALTER TABLE submissions ADD COLUMN grader_id INTEGER")
@@ -1917,3 +1937,118 @@ def get_enrollment_events(course_id: str, limit: int = 50) -> list[dict[str, Any
             (course_id, limit),
         )
         return [dict(row) for row in cursor.fetchall()]
+
+
+# ---------------------------------------------------------------------------
+# Grading deadlines CRUD
+# ---------------------------------------------------------------------------
+
+
+def upsert_grading_deadline(
+    course_id: str,
+    assignment_id: int,
+    deadline_at: datetime,
+    turnaround_days: int,
+    is_override: bool = False,
+    note: str | None = None,
+    conn: sqlite3.Connection | None = None,
+) -> None:
+    """Insert or update a grading deadline for one assignment."""
+
+    def _upsert(c: sqlite3.Connection) -> None:
+        now = datetime.now(UTC)
+        c.execute(
+            """
+            INSERT INTO grading_deadlines
+                (course_id, assignment_id, deadline_at, turnaround_days,
+                 is_override, note, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(course_id, assignment_id) DO UPDATE SET
+                deadline_at     = excluded.deadline_at,
+                turnaround_days = excluded.turnaround_days,
+                is_override     = excluded.is_override,
+                note            = excluded.note,
+                updated_at      = excluded.updated_at
+            """,
+            (
+                course_id,
+                assignment_id,
+                deadline_at.isoformat(),
+                turnaround_days,
+                1 if is_override else 0,
+                note,
+                now.isoformat(),
+                now.isoformat(),
+            ),
+        )
+
+    if conn is not None:
+        _upsert(conn)
+    else:
+        with get_db_connection() as c:
+            _upsert(c)
+            c.commit()
+
+
+def upsert_grading_deadline_if_not_override(
+    course_id: str,
+    assignment_id: int,
+    deadline_at: datetime,
+    turnaround_days: int,
+    conn: sqlite3.Connection | None = None,
+) -> None:
+    """Insert or update a grading deadline ONLY if not manually overridden.
+
+    If a row with is_override=1 exists, this call is a no-op for that row.
+    """
+
+    def _upsert(c: sqlite3.Connection) -> None:
+        now = datetime.now(UTC)
+        c.execute(
+            """
+            INSERT INTO grading_deadlines
+                (course_id, assignment_id, deadline_at, turnaround_days,
+                 is_override, note, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 0, NULL, ?, ?)
+            ON CONFLICT(course_id, assignment_id) DO UPDATE SET
+                deadline_at     = CASE WHEN is_override = 1 THEN deadline_at
+                                       ELSE excluded.deadline_at END,
+                turnaround_days = CASE WHEN is_override = 1 THEN turnaround_days
+                                       ELSE excluded.turnaround_days END,
+                updated_at      = CASE WHEN is_override = 1 THEN updated_at
+                                       ELSE excluded.updated_at END
+            """,
+            (
+                course_id,
+                assignment_id,
+                deadline_at.isoformat(),
+                turnaround_days,
+                now.isoformat(),
+                now.isoformat(),
+            ),
+        )
+
+    if conn is not None:
+        _upsert(conn)
+    else:
+        with get_db_connection() as c:
+            _upsert(c)
+            c.commit()
+
+
+def get_grading_deadlines(course_id: str) -> list[dict]:
+    """Return all grading deadline rows for a course, ordered by assignment_id."""
+    with get_db_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, course_id, assignment_id, deadline_at, turnaround_days,
+                   is_override, note, created_at, updated_at
+            FROM grading_deadlines
+            WHERE course_id = ?
+            ORDER BY assignment_id
+            """,
+            (course_id,),
+        )
+        return [dict(row) for row in cur.fetchall()]

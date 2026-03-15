@@ -137,7 +137,7 @@ class TestUpsertGradingDeadline:
         with db.get_db_connection() as conn:
             cur = conn.cursor()
             cur.execute(
-                "SELECT updated_at, deadline_at FROM grading_deadlines"
+                "SELECT updated_at, deadline_at, turnaround_days FROM grading_deadlines"
                 " WHERE course_id='c1' AND assignment_id=1"
             )
             row2 = cur.fetchone()
