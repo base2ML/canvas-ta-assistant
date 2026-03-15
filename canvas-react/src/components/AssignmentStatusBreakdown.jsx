@@ -1,8 +1,34 @@
-import React from 'react';
-import { CheckCircle, Clock, XCircle, ChevronDown, ChevronRight, Calendar, AlertTriangle, Eye, AlertCircleIcon } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { CheckCircle, Clock, ChevronDown, ChevronRight, Calendar, AlertTriangle, Eye, AlertCircleIcon, Edit } from 'lucide-react';
 import { formatDate as formatDateUtil } from '../utils/dates';
 
-const AssignmentStatusBreakdown = ({ assignmentStats, expandedAssignments, onToggleExpanded }) => {
+const AssignmentStatusBreakdown = ({ assignmentStats, expandedAssignments, onToggleExpanded, deadlines = [], courseId, onDeadlineSaved }) => {
+  const [editingDeadlineId, setEditingDeadlineId] = useState(null);
+  const [editingDeadlineValue, setEditingDeadlineValue] = useState('');
+  const [savingDeadline, setSavingDeadline] = useState(false);
+
+  const deadlineMap = useMemo(
+    () => Object.fromEntries(deadlines.map(d => [d.assignment_id, d])),
+    [deadlines]
+  );
+
+  const handleSaveDeadline = async (assignmentId) => {
+    setSavingDeadline(true);
+    try {
+      await fetch(`/api/dashboard/grading-deadlines/${courseId}/${assignmentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deadline_date: editingDeadlineValue, is_override: true }),
+      });
+      setEditingDeadlineId(null);
+      onDeadlineSaved?.();
+    } catch (err) {
+      console.error('Error saving deadline:', err);
+    } finally {
+      setSavingDeadline(false);
+    }
+  };
+
   if (!assignmentStats || assignmentStats.length === 0) return null;
 
   return (
@@ -25,6 +51,9 @@ const AssignmentStatusBreakdown = ({ assignmentStats, expandedAssignments, onTog
             // Use the backend-provided TA grading breakdown directly
             let taBreakdown = assignment.ta_grading_breakdown || [];
             const hasBreakdown = taBreakdown && taBreakdown.length > 0;
+
+            // Deadline data for this assignment
+            const dl = deadlineMap[assignment.assignment_id];
 
             return (
               <div
@@ -148,8 +177,63 @@ const AssignmentStatusBreakdown = ({ assignmentStats, expandedAssignments, onTog
                               {assignment.not_submitted} Missing
                             </div>
                           )}
+                          {dl?.is_overdue && assignment.pending_submissions > 0 && (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                              <AlertTriangle className="h-3 w-3" />
+                              Overdue
+                            </span>
+                          )}
                         </div>
                       )}
+
+                      {/* Deadline display + inline editor */}
+                      <div className="mt-2" onClick={e => e.stopPropagation()}>
+                        {editingDeadlineId === assignment.assignment_id ? (
+                          <div className="flex items-center gap-1 justify-end">
+                            <input
+                              type="date"
+                              className="text-xs border border-gray-300 rounded px-1 py-0.5"
+                              value={editingDeadlineValue}
+                              onChange={e => setEditingDeadlineValue(e.target.value)}
+                            />
+                            <button
+                              onClick={() => handleSaveDeadline(assignment.assignment_id)}
+                              disabled={savingDeadline}
+                              className="text-xs text-blue-600 hover:underline disabled:opacity-50"
+                            >
+                              {savingDeadline ? 'Saving...' : 'Save'}
+                            </button>
+                            <button
+                              onClick={() => setEditingDeadlineId(null)}
+                              className="text-xs text-gray-500 hover:underline"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 justify-end">
+                            <span className="text-xs text-gray-600">
+                              {dl?.grading_deadline
+                                ? new Date(dl.grading_deadline).toLocaleDateString()
+                                : 'No deadline'}
+                            </span>
+                            <button
+                              aria-label="Edit deadline"
+                              onClick={() => {
+                                setEditingDeadlineId(assignment.assignment_id);
+                                const dateStr = dl?.grading_deadline
+                                  ? new Date(dl.grading_deadline).toISOString().split('T')[0]
+                                  : '';
+                                setEditingDeadlineValue(dateStr);
+                              }}
+                              className="text-gray-400 hover:text-blue-600"
+                            >
+                              <Edit className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
                       {assignment.html_url && (
                         <a
                           href={assignment.html_url}
