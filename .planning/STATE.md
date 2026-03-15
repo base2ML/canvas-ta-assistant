@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-03-15T22:33:41.572Z"
+stopped_at: Completed 07-02-PLAN.md
+last_updated: "2026-03-15T22:39:00.136Z"
 last_activity: "2026-03-03 — Quick-7: fix Settings page race condition where eligible groups checkbox reverted to all-checked on refresh"
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 13
-  completed_plans: 9
+  completed_plans: 10
   percent: 100
 ---
 
@@ -58,6 +58,7 @@ Progress: [██████████] 100% (4/4 plans complete in phase 05)
 | Phase 06 P02 | 4 min | 2 tasks | 3 files |
 | Phase 06 P04 | 15 | 5 tasks | 7 files |
 | Phase 07 P01 | 6 | 2 tasks | 5 files |
+| Phase 07 P02 | 5 | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,7 @@ All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
 - [Phase 07]: Wave 0: test scaffolds written before implementation — all 23 pytest + 8 Vitest tests RED by design
 - [Phase 07]: [07-01]: test_07_01_schema.py uses DATA_DIR monkeypatch; test_07_02_api.py uses DB_PATH monkeypatch (consistent with phase 06 patterns)
 - [Phase 07]: [07-01]: GradingScheduleSummary.test.jsx excludes 'renders TA group names' test — GradingDeadlineItem has no ta_groups field
+- [Phase 07]: grading_deadlines table placed after ta_users block in init_db(); clear_refreshable_data() does NOT touch grading_deadlines (overrides survive sync); upsert_grading_deadline_if_not_override uses CASE WHEN SQL in ON CONFLICT DO UPDATE for atomic override-safe upsert
 
 ### Pending Todos
 
@@ -125,6 +127,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T22:33:41.569Z
-Stopped at: Completed 07-01-PLAN.md
+Last session: 2026-03-15T22:39:00.134Z
+Stopped at: Completed 07-02-PLAN.md
 Resume file: None
