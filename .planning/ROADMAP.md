@@ -75,3 +75,16 @@ Plans:
 | 3. UI Integration | v1.0 | 4/4 | ✅ Complete | 2026-02-21 |
 | 4. Unified Refresh | v1.1 | 3/3 | ✅ Complete | 2026-03-01 |
 | 5. Late Day Penalty Fix | 4/4 | Complete   | 2026-03-02 | 2026-03-01 |
+
+### Phase 6: Grader identity tracking: sync grader_id/graded_at from Canvas, sync TA/instructor users, ta_breakdown_mode setting, update EnhancedTADashboard TA breakdown table
+
+**Goal:** Actual grader data from Canvas (grader_id) is stored and optionally used in the TA grading breakdown table, giving TAs visibility into who actually graded each submission vs who was group-assigned
+**Requirements**: GRADER-DB-01, GRADER-SYNC-01, GRADER-API-01, GRADER-SETTINGS-01, GRADER-UI-01, GRADER-SETTINGS-UI-01
+**Depends on:** Phase 5
+**Plans:** 4 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — DB schema: ta_users table, submissions grader_id/graded_at migration, upsert_ta_users(), clear_refreshable_data update
+- [ ] 06-02-PLAN.md — Canvas sync: fetch TA/instructor users, capture grader_id/graded_at on submissions, extend upsert_submissions()
+- [ ] 06-03-PLAN.md — Backend API: get_submissions() LEFT JOIN ta_users for grader_name, settings models + endpoints for ta_breakdown_mode
+- [ ] 06-04-PLAN.md — Frontend: App.jsx threads ta_breakdown_mode, Settings.jsx TA Dashboard card, EnhancedTADashboard mode branch
