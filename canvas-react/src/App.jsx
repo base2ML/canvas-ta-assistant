@@ -6,6 +6,7 @@ import PeerReviewTracking from './PeerReviewTracking';
 import EnrollmentTracking from './EnrollmentTracking';
 import Settings from './Settings';
 import Navigation from './components/Navigation';
+import GradingScheduleSummary from './components/GradingScheduleSummary';
 import { RefreshCw } from 'lucide-react';
 import { apiFetch, BACKEND_URL } from './api';
 import { setTimezone, formatDate } from './utils/dates';
@@ -197,6 +198,15 @@ const AppContent = () => {
               <EnrollmentTracking
                 courses={courses}
                 onLoadCourses={loadCourses}
+                activeCourseId={activeCourseId}
+                refreshTrigger={refreshTrigger}
+              />
+            }
+          />
+          <Route
+            path="/grading-schedule"
+            element={
+              <GradingScheduleSummary
                 activeCourseId={activeCourseId}
                 refreshTrigger={refreshTrigger}
               />
