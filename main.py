@@ -122,6 +122,7 @@ class SettingsResponse(BaseModel):
     per_assignment_cap: int
     late_day_eligible_groups: list[int]
     ta_breakdown_mode: str = "group"
+    default_grading_turnaround_days: int = 7
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -135,6 +136,7 @@ class SettingsUpdateRequest(BaseModel):
     per_assignment_cap: int | None = None
     late_day_eligible_groups: list[int] | None = None
     ta_breakdown_mode: str | None = None
+    default_grading_turnaround_days: int | None = None
 
     @field_validator("max_late_days_per_assignment")
     @classmethod
@@ -682,6 +684,9 @@ async def get_settings():
         else "group"
     )
 
+    turnaround_str = db.get_setting("default_grading_turnaround_days")
+    default_grading_turnaround_days = int(turnaround_str) if turnaround_str else 7
+
     return SettingsResponse(
         course_id=course_id or None,
         course_name=course_name,
@@ -697,6 +702,7 @@ async def get_settings():
         per_assignment_cap=per_assignment_cap,
         late_day_eligible_groups=late_day_eligible_groups,
         ta_breakdown_mode=ta_breakdown_mode,
+        default_grading_turnaround_days=default_grading_turnaround_days,
     )
 
 
@@ -763,6 +769,17 @@ async def update_settings(settings: SettingsUpdateRequest) -> dict[str, Any]:
         db.set_setting("ta_breakdown_mode", settings.ta_breakdown_mode)
         updated_fields.append("ta_breakdown_mode")
         logger.info(f"TA breakdown mode updated to: {settings.ta_breakdown_mode!r}")
+
+    if settings.default_grading_turnaround_days is not None:
+        db.set_setting(
+            "default_grading_turnaround_days",
+            str(settings.default_grading_turnaround_days),
+        )
+        updated_fields.append("default_grading_turnaround_days")
+        logger.info(
+            f"Default grading turnaround days updated to: "
+            f"{settings.default_grading_turnaround_days}"
+        )
 
     if not updated_fields:
         raise HTTPException(
