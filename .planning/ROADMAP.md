@@ -88,3 +88,17 @@ Plans:
 - [ ] 06-02-PLAN.md — Canvas sync: fetch TA/instructor users, capture grader_id/graded_at on submissions, extend upsert_submissions()
 - [ ] 06-03-PLAN.md — Backend API: get_submissions() LEFT JOIN ta_users for grader_name, settings models + endpoints for ta_breakdown_mode
 - [ ] 06-04-PLAN.md — Frontend: App.jsx threads ta_breakdown_mode, Settings.jsx TA Dashboard card, EnhancedTADashboard mode branch
+
+### Phase 7: Add TA grading deadlines: grading_deadlines table, default_grading_turnaround_days setting, REST endpoints for deadline CRUD, overdue status per TA, Settings UI, inline deadline editing on Dashboard, overdue badges, and shareable Grading Schedule Summary view
+
+**Goal:** TAs can see and manage grading deadlines per assignment: a configurable default turnaround produces deadlines from due dates, inline editing allows per-assignment overrides, overdue badges flag stalled grading work, and a shareable /grading-schedule view provides a read-only snapshot of the grading schedule
+**Requirements**: DEADLINE-DB-01, DEADLINE-DB-02, DEADLINE-SETTINGS-01, DEADLINE-API-01, DEADLINE-API-02, DEADLINE-API-03, DEADLINE-OVERDUE-01, DEADLINE-UI-01, DEADLINE-UI-02, DEADLINE-SUMMARY-01
+**Depends on:** Phase 6
+**Plans:** 5 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — Wave 0: test scaffolds for all phase 7 requirements (pytest + Vitest, RED state)
+- [ ] 07-02-PLAN.md — database.py: grading_deadlines table, upsert_grading_deadline, upsert_grading_deadline_if_not_override, get_grading_deadlines
+- [ ] 07-03-PLAN.md — main.py: default_grading_turnaround_days settings extension, 3 deadline endpoints, _is_overdue() helper
+- [ ] 07-04-PLAN.md — Frontend: Settings.jsx turnaround field + propagate button, EnhancedTADashboard deadline fetch, AssignmentStatusBreakdown inline editing + overdue badges
+- [ ] 07-05-PLAN.md — Frontend: GradingScheduleSummary.jsx new component + /grading-schedule route in App.jsx
