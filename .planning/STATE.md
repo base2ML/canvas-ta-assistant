@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 07-03-PLAN.md
-last_updated: "2026-03-15T22:44:24.006Z"
+stopped_at: Completed 07-04-PLAN.md
+last_updated: "2026-03-15T22:49:51.654Z"
 last_activity: "2026-03-03 — Quick-7: fix Settings page race condition where eligible groups checkbox reverted to all-checked on refresh"
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 13
-  completed_plans: 11
+  completed_plans: 12
   percent: 100
 ---
 
@@ -60,6 +60,7 @@ Progress: [██████████] 100% (4/4 plans complete in phase 05)
 | Phase 07 P01 | 6 | 2 tasks | 5 files |
 | Phase 07 P02 | 5 | 1 tasks | 2 files |
 | Phase 07 P03 | 8 | 2 tasks | 1 files |
+| Phase 07 P04 | 3 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -94,6 +95,7 @@ All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
 - [Phase 07]: is_overdue() named without underscore prefix so tests can import directly from main module
 - [Phase 07]: GradingDeadlineItem uses deadline_at field name to match test_07_02_api.py assertions
 - [Phase 07]: [07-03]: raise from e in update_grading_deadline except clause to satisfy Ruff B904
+- [Phase 07]: [07-04]: Used settings.course_id inside Settings.jsx for propagate-defaults call; deadline fetch in Promise.all with fallback; renamed taUsers to _taUsers for ESLint compliance
 
 ### Pending Todos
 
@@ -131,6 +133,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T22:44:24.004Z
-Stopped at: Completed 07-03-PLAN.md
+Last session: 2026-03-15T22:49:51.652Z
+Stopped at: Completed 07-04-PLAN.md
 Resume file: None

@@ -94,7 +94,7 @@ Plans:
 **Goal:** TAs can see and manage grading deadlines per assignment: a configurable default turnaround produces deadlines from due dates, inline editing allows per-assignment overrides, overdue badges flag stalled grading work, and a shareable /grading-schedule view provides a read-only snapshot of the grading schedule
 **Requirements**: DEADLINE-DB-01, DEADLINE-DB-02, DEADLINE-SETTINGS-01, DEADLINE-API-01, DEADLINE-API-02, DEADLINE-API-03, DEADLINE-OVERDUE-01, DEADLINE-UI-01, DEADLINE-UI-02, DEADLINE-SUMMARY-01
 **Depends on:** Phase 6
-**Plans:** 2/5 plans executed
+**Plans:** 4/5 plans executed
 
 Plans:
 - [ ] 07-01-PLAN.md — Wave 0: test scaffolds for all phase 7 requirements (pytest + Vitest, RED state)
