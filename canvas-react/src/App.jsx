@@ -20,6 +20,7 @@ const AppContent = () => {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [previousPath, setPreviousPath] = useState(location.pathname);
+  const [taBreakdownMode, setTaBreakdownMode] = useState('group');
 
   const loadSettings = useCallback(async () => {
     try {
@@ -30,6 +31,7 @@ const AppContent = () => {
         setConfiguredCourse(null);
       }
       setTimezone(data.timezone ?? null);
+      setTaBreakdownMode(data.ta_breakdown_mode ?? 'group');
       // Best-effort: initialize lastSyncedAt from last known sync time
       try {
         const syncData = await apiFetch('/api/canvas/sync/status');
@@ -164,6 +166,7 @@ const AppContent = () => {
                 loadingCourses={loading}
                 activeCourseId={activeCourseId}
                 refreshTrigger={refreshTrigger}
+                taBreakdownMode={taBreakdownMode}
               />
             }
           />
