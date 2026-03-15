@@ -301,6 +301,37 @@ def sync_course_data(
             f"Users fetched in {time.time() - users_start:.2f}s ({len(users)} users)"
         )
 
+        # Fetch TA and instructor users (for grader name resolution)
+        ta_users_start = time.time()
+        ta_users_list: list[dict[str, Any]] = []
+        seen_ta_ids: set[int] = set()
+        for user in course.get_users(enrollment_type=["ta"]):
+            if user.id not in seen_ta_ids:
+                seen_ta_ids.add(user.id)
+                ta_users_list.append(
+                    {
+                        "id": user.id,
+                        "name": user.name,
+                        "email": getattr(user, "email", None),
+                        "enrollment_type": "ta",
+                    }
+                )
+        for user in course.get_users(enrollment_type=["teacher"]):
+            if user.id not in seen_ta_ids:
+                seen_ta_ids.add(user.id)
+                ta_users_list.append(
+                    {
+                        "id": user.id,
+                        "name": user.name,
+                        "email": getattr(user, "email", None),
+                        "enrollment_type": "teacher",
+                    }
+                )
+        logger.info(
+            f"TA/instructor users fetched in {time.time() - ta_users_start:.2f}s "
+            f"({len(ta_users_list)} users)"
+        )
+
         # Fetch groups
         groups_start = time.time()
         groups = []
@@ -359,6 +390,8 @@ def sync_course_data(
                         "workflow_state": submission.workflow_state,
                         "late": getattr(submission, "late", False),
                         "score": getattr(submission, "score", None),
+                        "grader_id": getattr(submission, "grader_id", None),
+                        "graded_at": getattr(submission, "graded_at", None),
                     }
                 )
         logger.info(
@@ -439,6 +472,7 @@ def sync_course_data(
             db.upsert_assignment_groups(course_id, assignment_groups_data, conn)
             db.upsert_assignments(course_id, assignments, conn)
             db.upsert_users(course_id, users, conn)  # Sets enrollment_status='active'
+            db.upsert_ta_users(course_id, ta_users_list, conn)
             db.upsert_groups(course_id, groups, conn)
 
             # Write pre-fetched submissions (all Canvas API calls already done above)
@@ -527,6 +561,7 @@ def sync_course_data(
                 "assignments": len(assignments),
                 "submissions": total_submissions,
                 "users": len(users),
+                "ta_users": len(ta_users_list),
                 "groups": len(groups),
                 "peer_reviews": total_peer_reviews,
                 "peer_review_comments": total_peer_review_comments,
