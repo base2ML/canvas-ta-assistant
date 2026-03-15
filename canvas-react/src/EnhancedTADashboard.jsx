@@ -8,6 +8,7 @@ const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId, refr
   const [assignments, setAssignments] = useState([]);
   const [submissions, setSubmissions] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [taUsers, setTaUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -35,15 +36,17 @@ const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId, refr
     setError('');
     try {
       // Fetch all data from local API
-      const [assignmentsData, submissionsData, groupsData] = await Promise.all([
+      const [assignmentsData, submissionsData, groupsData, taUsersData] = await Promise.all([
         apiFetch(`/api/canvas/assignments/${courseId}`),
         apiFetch(`/api/canvas/submissions/${courseId}`),
-        apiFetch(`/api/canvas/groups/${courseId}`)
+        apiFetch(`/api/canvas/groups/${courseId}`),
+        apiFetch(`/api/canvas/ta-users/${courseId}`).catch(() => ({ ta_users: [] })),
       ]);
 
       setAssignments(assignmentsData.assignments || []);
       setSubmissions(submissionsData.submissions || []);
       setGroups(groupsData.groups || []);
+      setTaUsers(taUsersData.ta_users || []);
     } catch (err) {
       console.error('Error loading course data:', err);
       setError(err.message);
@@ -69,6 +72,27 @@ const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId, refr
     }
   }, [courses, onLoadCourses]);
 
+
+  // Build a map from group name → TA user ID for actual-grader mode.
+  // Canvas groups are named after the TA (e.g. "Smith, Jane"). We find the
+  // ta_users entry whose name matches the group name (exact, then case-insensitive)
+  // and store their Canvas user id so we can match against grader_id on submissions.
+  const groupNameToTaUserId = useMemo(() => {
+    const map = {};
+    groups.forEach(group => {
+      const groupName = group.name;
+      // Exact match first
+      let match = taUsers.find(u => u.name === groupName);
+      // Case-insensitive fallback
+      if (!match) {
+        match = taUsers.find(u => u.name.toLowerCase() === groupName.toLowerCase());
+      }
+      if (match) {
+        map[groupName] = match.id;
+      }
+    });
+    return map;
+  }, [groups, taUsers]);
 
   // Compute assignment statistics with TA breakdown from loaded data
   const assignmentStats = useMemo(() => {
@@ -126,10 +150,20 @@ const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId, refr
         // Branch graded count based on taBreakdownMode
         let graded;
         if (taBreakdownMode === 'actual') {
-          // Count submissions (any student) where grader_name matches this TA's name
-          graded = assignmentSubmissions.filter(
-            s => s.grader_name === taName && s.submitted_at
-          ).length;
+          // Count submissions graded by this TA using grader_id (most reliable).
+          // groupNameToTaUserId maps group name → ta_users.id (Canvas user id).
+          // Fall back to grader_name match if no id mapping exists for this group.
+          const taUserId = groupNameToTaUserId[taName];
+          if (taUserId !== undefined) {
+            graded = assignmentSubmissions.filter(
+              s => s.grader_id === taUserId && s.submitted_at
+            ).length;
+          } else {
+            // Fallback: try name match (works when group name equals TA's Canvas name)
+            graded = assignmentSubmissions.filter(
+              s => s.grader_name === taName && s.submitted_at
+            ).length;
+          }
         } else {
           // Group assignment mode (default): only count as graded if actually submitted AND graded
           graded = taSubmissions.filter(s => s.workflow_state === 'graded' && s.submitted_at).length;
@@ -186,7 +220,7 @@ const EnhancedTADashboard = ({ courses = [], onLoadCourses, activeCourseId, refr
         ta_grading_breakdown: taGradingBreakdown
       };
     });
-  }, [assignments, submissions, groups, buildTAAssignments, taBreakdownMode]);
+  }, [assignments, submissions, groups, buildTAAssignments, taBreakdownMode, groupNameToTaUserId]);
 
   // Toggle assignment expanded state
   const toggleAssignmentExpanded = (assignmentId) => {

@@ -1186,6 +1186,22 @@ def get_groups(course_id: str) -> list[dict[str, Any]]:
         return list(groups_dict.values())
 
 
+def get_ta_users(course_id: str) -> list[dict[str, Any]]:
+    """Get TA and instructor users for a course (for grader identity resolution)."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, course_id, name, email, enrollment_type, synced_at
+            FROM ta_users
+            WHERE course_id = ?
+            ORDER BY name
+            """,
+            (course_id,),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+
 def get_courses() -> list[str]:
     """Get list of unique course IDs that have been synced."""
     with get_db_connection() as conn:

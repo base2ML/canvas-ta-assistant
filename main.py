@@ -1506,6 +1506,17 @@ async def get_groups(course_id: str) -> dict[str, Any]:
     return {"groups": groups, "total": len(groups)}
 
 
+@app.get("/api/canvas/ta-users/{course_id}")
+async def get_ta_users(course_id: str) -> dict[str, Any]:
+    """Get TA and instructor users for a course.
+
+    Used by the frontend to resolve grader_id on submissions to a TA name,
+    enabling actual-grader mode in the TA breakdown table.
+    """
+    ta_users = db.get_ta_users(course_id)
+    return {"ta_users": ta_users, "total": len(ta_users)}
+
+
 @app.get("/api/canvas/assignment-groups/{course_id}")
 async def get_assignment_groups_endpoint(course_id: str) -> dict[str, Any]:
     """Get Canvas assignment groups (syllabus categories) for a course.
