@@ -29,6 +29,11 @@ const Settings = () => {
     const [taDashboardSaving, setTaDashboardSaving] = useState(false);
     const [taDashboardMessage, setTaDashboardMessage] = useState(null);
 
+    // Grading Deadlines state
+    const [defaultTurnaroundDays, setDefaultTurnaroundDays] = useState(7);
+    const [propagatingDefaults, setPropagatingDefaults] = useState(false);
+    const [propagateResult, setPropagateResult] = useState(null);
+
     // Late Day Policy state
     const [assignmentGroups, setAssignmentGroups] = useState([]);
     const [policySettings, setPolicySettings] = useState({
@@ -55,6 +60,7 @@ const Settings = () => {
             });
             setPolicySettingsLoaded(true);
             setTaBreakdownMode(data.ta_breakdown_mode ?? 'group');
+            setDefaultTurnaroundDays(data.default_grading_turnaround_days ?? 7);
         } catch (err) {
             console.error('Error loading settings:', err);
             setMessage({ type: 'error', text: 'Failed to load settings' });
@@ -152,6 +158,37 @@ const Settings = () => {
             setTaDashboardMessage({ type: 'error', text: err.message || 'Failed to save TA Dashboard settings' });
         } finally {
             setTaDashboardSaving(false);
+        }
+    };
+
+    // Save Grading Deadline Settings
+    const handleSaveGradingDeadlineSettings = async () => {
+        try {
+            await apiFetch('/api/settings', {
+                method: 'PUT',
+                body: JSON.stringify({ default_grading_turnaround_days: defaultTurnaroundDays }),
+            });
+        } catch (err) {
+            console.error('Error saving grading deadline settings:', err);
+        }
+    };
+
+    // Propagate default deadlines for the active course
+    const handlePropagateDefaults = async () => {
+        const activeCourseId = settings.course_id;
+        if (!activeCourseId) return;
+        setPropagatingDefaults(true);
+        setPropagateResult(null);
+        try {
+            const result = await apiFetch(
+                `/api/dashboard/grading-deadlines/${activeCourseId}/propagate-defaults`,
+                { method: 'POST' }
+            );
+            setPropagateResult(result);
+        } catch (err) {
+            console.error('Error propagating defaults:', err);
+        } finally {
+            setPropagatingDefaults(false);
         }
     };
 
@@ -560,6 +597,49 @@ const Settings = () => {
                             {taDashboardMessage.text}
                         </div>
                     )}
+                </div>
+            </div>
+
+            {/* Grading Deadlines */}
+            <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Grading Deadlines</h2>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Default Turnaround Days
+                        </label>
+                        <p className="text-xs text-gray-500 mb-2">
+                            Number of days after assignment due date to set as grading deadline.
+                        </p>
+                        <input
+                            type="number"
+                            min="1"
+                            max="30"
+                            value={defaultTurnaroundDays}
+                            onChange={e => setDefaultTurnaroundDays(Number(e.target.value))}
+                            className="w-24 border border-gray-300 rounded px-2 py-1 text-sm"
+                        />
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={handleSaveGradingDeadlineSettings}
+                            className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                        >
+                            Save Deadline Settings
+                        </button>
+                        <button
+                            onClick={handlePropagateDefaults}
+                            disabled={propagatingDefaults || !settings.course_id}
+                            className="px-4 py-2 bg-gray-600 text-white text-sm rounded hover:bg-gray-700 disabled:opacity-50"
+                        >
+                            {propagatingDefaults ? 'Propagating...' : 'Propagate Default Deadlines'}
+                        </button>
+                        {propagateResult && (
+                            <span className="text-xs text-green-700">
+                                {propagateResult.propagated} deadlines set ({propagateResult.turnaround_days} days)
+                            </span>
+                        )}
+                    </div>
                 </div>
             </div>
 
