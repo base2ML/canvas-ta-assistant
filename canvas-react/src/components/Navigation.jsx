@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Clock, Users, UserCheck, Settings, CalendarCheck } from 'lucide-react';
+import { LayoutDashboard, Clock, Users, UserCheck, Settings, CalendarCheck, BarChart2 } from 'lucide-react';
 
 const Navigation = () => {
     const location = useLocation();
@@ -63,6 +63,17 @@ const Navigation = () => {
                             >
                                 <CalendarCheck className="w-4 h-4 mr-2" />
                                 Grading Schedule
+                            </Link>
+
+                            <Link
+                                to="/grade-analysis"
+                                className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${location.pathname === '/grade-analysis'
+                                        ? 'border-blue-500 text-gray-900'
+                                        : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                                    }`}
+                            >
+                                <BarChart2 className="w-4 h-4 mr-2" />
+                                Grade Analysis
                             </Link>
 
                             <Link
