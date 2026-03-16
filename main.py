@@ -2080,6 +2080,161 @@ async def propagate_default_deadlines(course_id: str) -> dict[str, Any]:
     return {"propagated": created, "turnaround_days": turnaround_days}
 
 
+@app.get(
+    "/api/dashboard/grade-distribution/{course_id}",
+    response_model=GradeDistributionIndexResponse,
+)
+async def get_grade_distribution_index(
+    course_id: str,
+) -> GradeDistributionIndexResponse:
+    """Return list of assignments with graded submission counts."""
+    try:
+        assignments = db.get_assignments(course_id)
+        submissions = db.get_submissions(course_id)
+
+        # Index graded submissions per assignment
+        graded_per_assignment: dict[int, list[float]] = {}
+        for s in submissions:
+            if s.get("workflow_state") == "graded" and s.get("score") is not None:
+                try:
+                    score = float(s["score"])
+                except (TypeError, ValueError):
+                    continue
+                if not math.isfinite(score):
+                    continue
+                aid = s["assignment_id"]
+                graded_per_assignment.setdefault(aid, []).append(score)
+
+        result = []
+        for a in assignments:
+            aid = a["id"]
+            graded_count = len(graded_per_assignment.get(aid, []))
+            result.append(
+                AssignmentGradeSummary(
+                    assignment_id=aid,
+                    assignment_name=a["name"],
+                    points_possible=a.get("points_possible"),
+                    graded_count=graded_count,
+                )
+            )
+
+        # Sort by graded_count DESC for most-useful UX
+        result.sort(key=lambda x: x.graded_count, reverse=True)
+        return GradeDistributionIndexResponse(assignments=result)
+
+    except Exception as e:
+        logger.error(
+            f"Error building grade distribution index for {course_id}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch grade distribution index",
+        ) from e
+
+
+@app.get(
+    "/api/dashboard/grade-distribution/{course_id}/{assignment_id}",
+    response_model=GradeDistributionResponse,
+)
+async def get_grade_distribution_detail(
+    course_id: str,
+    assignment_id: int,
+) -> GradeDistributionResponse:
+    """Return full grade stats, histogram, and per-TA breakdown for one assignment."""
+    try:
+        import statistics as _stats
+
+        assignments = db.get_assignments(course_id)
+        assignment = next((a for a in assignments if a["id"] == assignment_id), None)
+        if assignment is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Assignment {assignment_id} not found in course {course_id}",
+            )
+
+        points_possible = assignment.get("points_possible")
+
+        submissions = db.get_submissions(course_id)
+        graded = []
+        for s in submissions:
+            if (
+                s.get("assignment_id") == assignment_id
+                and s.get("workflow_state") == "graded"
+                and s.get("score") is not None
+            ):
+                try:
+                    score = float(s["score"])
+                except (TypeError, ValueError):
+                    continue
+                if not math.isfinite(score):
+                    continue
+                graded.append(s | {"_score": score})
+
+        scores = [s["_score"] for s in graded]
+        n = len(scores)
+
+        # Build GradeStats
+        grade_stats = GradeStats(
+            n=n,
+            small_sample=(n < 5),
+            mean=_stats.mean(scores) if n >= 1 else None,
+            median=_stats.median(scores) if n >= 1 else None,
+            min=min(scores) if n >= 1 else None,
+            max=max(scores) if n >= 1 else None,
+            stdev=_stats.stdev(scores) if n >= 2 else None,
+            q1=_stats.quantiles(scores, n=4)[0] if n >= 2 else None,
+            q3=_stats.quantiles(scores, n=4)[2] if n >= 2 else None,
+        )
+
+        # Build histogram
+        histogram_dicts = (
+            compute_histogram_bins(scores, points_possible)
+            if points_possible is not None and n > 0
+            else []
+        )
+        histogram = [HistogramBin(**b) for b in histogram_dicts]
+
+        # Build per-TA stats
+        ta_groups: dict[str, list[float]] = {}
+        for s in graded:
+            grader_name = s.get("grader_name") or "Unknown / Pre-Phase 6"
+            ta_groups.setdefault(grader_name, []).append(s["_score"])
+
+        per_ta = []
+        for grader_name, ta_scores in ta_groups.items():
+            ta_n = len(ta_scores)
+            per_ta.append(
+                TaGradeStats(
+                    grader_name=grader_name,
+                    n=ta_n,
+                    mean=_stats.mean(ta_scores) if ta_n >= 1 else None,
+                )
+            )
+        per_ta.sort(key=lambda x: x.n, reverse=True)
+
+        return GradeDistributionResponse(
+            assignment_id=assignment_id,
+            assignment_name=assignment["name"],
+            points_possible=points_possible,
+            stats=grade_stats,
+            histogram=histogram,
+            per_ta=per_ta,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Error computing grade distribution for {course_id}/{assignment_id}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to compute grade distribution",
+        ) from e
+
+
 @app.get("/api/dashboard/late-days/{course_id}")
 async def get_late_days_data(course_id: str) -> dict[str, Any]:
     """Calculate late days for all students in a course using semester bank system."""
