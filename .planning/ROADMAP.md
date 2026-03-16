@@ -108,7 +108,7 @@ Plans:
 **Goal:** Grade distribution data from Canvas submissions is surfaced through a Grade Analysis page, giving TAs visibility into score distributions per assignment (histogram, box plot, summary stats) and per-TA grading patterns, with small-sample warnings when n < 5
 **Requirements**: GRADE-DB-01, GRADE-API-01, GRADE-API-02, GRADE-STATS-01, GRADE-STATS-02, GRADE-HIST-01, GRADE-TA-01, GRADE-UI-01, GRADE-UI-02, GRADE-UI-03, GRADE-UI-04, GRADE-NAV-01
 **Depends on:** Phase 7
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 - [ ] 08-01-PLAN.md — Wave 0: test scaffolds (pytest + Vitest RED state) for all 12 requirements
