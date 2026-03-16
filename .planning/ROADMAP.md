@@ -102,3 +102,16 @@ Plans:
 - [ ] 07-03-PLAN.md — main.py: default_grading_turnaround_days settings extension, 3 deadline endpoints, _is_overdue() helper
 - [ ] 07-04-PLAN.md — Frontend: Settings.jsx turnaround field + propagate button, EnhancedTADashboard deadline fetch, AssignmentStatusBreakdown inline editing + overdue badges
 - [ ] 07-05-PLAN.md — Frontend: GradingScheduleSummary.jsx new component + /grading-schedule route in App.jsx
+
+### Phase 8: Add grade distribution visualizations: grade-distribution endpoint with per-assignment stats and per-TA stats, Grade Analysis page with histograms and box plots, assignment selector, summary stats, and small-sample warnings
+
+**Goal:** Grade distribution data from Canvas submissions is surfaced through a Grade Analysis page, giving TAs visibility into score distributions per assignment (histogram, box plot, summary stats) and per-TA grading patterns, with small-sample warnings when n < 5
+**Requirements**: GRADE-DB-01, GRADE-API-01, GRADE-API-02, GRADE-STATS-01, GRADE-STATS-02, GRADE-HIST-01, GRADE-TA-01, GRADE-UI-01, GRADE-UI-02, GRADE-UI-03, GRADE-UI-04, GRADE-NAV-01
+**Depends on:** Phase 7
+**Plans:** 4 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Wave 0: test scaffolds (pytest + Vitest RED state) for all 12 requirements
+- [ ] 08-02-PLAN.md — main.py: grade-distribution index + detail endpoints, Pydantic models, compute_histogram_bins helper
+- [ ] 08-03-PLAN.md — Frontend SVG components: GradeHistogram.jsx + GradeBoxPlot.jsx (pure SVG, no recharts)
+- [ ] 08-04-PLAN.md — Frontend page + wiring: GradeAnalysis.jsx, /grade-analysis route in App.jsx, Navigation.jsx link
