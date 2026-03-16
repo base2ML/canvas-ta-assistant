@@ -228,6 +228,51 @@ class GradingDeadlinesResponse(BaseModel):
     default_turnaround_days: int
 
 
+class HistogramBin(BaseModel):
+    bin_start: float
+    bin_end: float
+    count: int
+    label: str
+
+
+class GradeStats(BaseModel):
+    n: int
+    small_sample: bool
+    mean: float | None = None
+    median: float | None = None
+    stdev: float | None = None
+    q1: float | None = None
+    q3: float | None = None
+    min: float | None = None
+    max: float | None = None
+
+
+class TaGradeStats(BaseModel):
+    grader_name: str
+    n: int
+    mean: float | None = None
+
+
+class GradeDistributionResponse(BaseModel):
+    assignment_id: int | None
+    assignment_name: str | None
+    points_possible: float | None
+    stats: GradeStats
+    histogram: list[HistogramBin]
+    per_ta: list[TaGradeStats]
+
+
+class AssignmentGradeSummary(BaseModel):
+    assignment_id: int
+    assignment_name: str
+    points_possible: float | None
+    graded_count: int
+
+
+class GradeDistributionIndexResponse(BaseModel):
+    assignments: list[AssignmentGradeSummary]
+
+
 class DeadlineUpdateRequest(BaseModel):
     deadline_date: str  # ISO date string "YYYY-MM-DD"
     is_override: bool = True
@@ -380,6 +425,41 @@ def validate_posting_safety(course_id: str) -> tuple[bool, str]:
             logger.warning(f"Production mode but posting to sandbox course {course_id}")
 
     return True, ""
+
+
+def compute_histogram_bins(
+    scores: list[float],
+    points_possible: float,
+    num_bins: int = 10,
+) -> list[dict]:
+    """Compute histogram bins for a list of scores.
+
+    Returns a list of num_bins dicts with bin_start, bin_end, count, label.
+    Returns [] when scores is empty or points_possible <= 0.
+    The last bin uses a closed-right interval to catch score == points_possible.
+    """
+    if not scores or points_possible <= 0:
+        return []
+
+    bin_width = points_possible / num_bins
+    bins = []
+    for i in range(num_bins):
+        lo = i * bin_width
+        hi = (i + 1) * bin_width
+        if i == num_bins - 1:
+            # Last bin: closed on right side to catch score == points_possible
+            count = sum(1 for s in scores if lo <= s <= hi)
+        else:
+            count = sum(1 for s in scores if lo <= s < hi)
+        bins.append(
+            {
+                "bin_start": lo,
+                "bin_end": hi,
+                "count": count,
+                "label": f"{lo:.0f}–{hi:.0f}",
+            }
+        )
+    return bins
 
 
 def render_template(template_text: str, submission_data: dict[str, Any]) -> str:
