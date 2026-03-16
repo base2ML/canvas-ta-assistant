@@ -300,3 +300,24 @@ This application accesses protected student data under FERPA:
 - Docker frontend uses Nginx proxy - API calls go to `backend:8000` internally
 - SQLite database is in `./data/` - mount as volume in Docker
 - Canvas API token expires - check `.env` if sync fails with 401
+- Docker frontend must be rebuilt after code changes: `docker-compose up -d --build` (running container serves old bundle)
+- After Docker rebuild, use `browser_wait_for` before `browser_snapshot` — page loads async
+- Always cross-check API response field names against component prop reads when debugging "always shows X" UI bugs (e.g. `deadline_at` vs `grading_deadline`)
+
+## Playwright Validation
+
+Playwright MCP is available for full autonomous feature validation. Use it after Docker rebuild to verify new UI features end-to-end without manual browser testing.
+
+```
+# 1. Rebuild with latest code
+docker-compose up -d --build
+
+# 2. Use MCP tools to validate
+mcp__playwright__browser_navigate   → go to page
+mcp__playwright__browser_wait_for   → wait for content (not screenshot)
+mcp__playwright__browser_snapshot   → inspect DOM for assertions
+mcp__playwright__browser_click      → interact with buttons/links
+```
+
+**Validation flow:** navigate → wait_for key text → snapshot to assert state → click interactions → snapshot to assert result.
+App runs at `http://localhost:3000` (Docker) or `http://localhost:5173` (dev server).
