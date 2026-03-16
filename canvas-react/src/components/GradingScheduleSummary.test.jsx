@@ -10,7 +10,7 @@ describe('GradingScheduleSummary', () => {
       {
         assignment_id: 1,
         assignment_name: 'HW 1',
-        grading_deadline: '2026-04-01T00:00:00Z',
+        deadline_at: '2026-04-01T00:00:00Z',
         is_overdue: false,
         pending_submissions: 2,
       },

@@ -10,7 +10,7 @@ describe('Inline deadline editor', () => {
   const mockAssignment = {
     assignment_id: 1,
     assignment_name: 'HW 1',
-    grading_deadline: '2026-04-01T00:00:00Z',
+    deadline_at: '2026-04-01T00:00:00Z',
     is_overdue: false,
     pending_submissions: 2,
     percentage_graded: 50,
@@ -93,7 +93,7 @@ describe('Overdue badge', () => {
   const baseMockAssignment = {
     assignment_id: 1,
     assignment_name: 'HW 1',
-    grading_deadline: '2026-01-01T00:00:00Z',
+    deadline_at: '2026-01-01T00:00:00Z',
     is_overdue: false,
     pending_submissions: 0,
     percentage_graded: 100,

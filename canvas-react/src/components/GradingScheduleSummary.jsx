@@ -116,8 +116,8 @@ export default function GradingScheduleSummary({ activeCourseId, refreshTrigger,
                     {a.due_at ? new Date(a.due_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '—'}
                   </td>
                   <td className="px-4 py-3 text-gray-600">
-                    {a.grading_deadline
-                      ? new Date(a.grading_deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+                    {a.deadline_at
+                      ? new Date(a.deadline_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
                       : <span className="text-gray-400">No deadline</span>}
                     {a.is_override && (
                       <span className="ml-1 text-xs text-purple-600">(override)</span>

@@ -213,16 +213,16 @@ const AssignmentStatusBreakdown = ({ assignmentStats, expandedAssignments, onTog
                         ) : (
                           <div className="flex items-center gap-1 justify-end">
                             <span className="text-xs text-gray-600">
-                              {dl?.grading_deadline
-                                ? new Date(dl.grading_deadline).toLocaleDateString()
+                              {dl?.deadline_at
+                                ? new Date(dl.deadline_at).toLocaleDateString()
                                 : 'No deadline'}
                             </span>
                             <button
                               aria-label="Edit deadline"
                               onClick={() => {
                                 setEditingDeadlineId(assignment.assignment_id);
-                                const dateStr = dl?.grading_deadline
-                                  ? new Date(dl.grading_deadline).toISOString().split('T')[0]
+                                const dateStr = dl?.deadline_at
+                                  ? new Date(dl.deadline_at).toISOString().split('T')[0]
                                   : '';
                                 setEditingDeadlineValue(dateStr);
                               }}
