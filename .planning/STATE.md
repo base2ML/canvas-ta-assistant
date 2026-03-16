@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 07-04-PLAN.md
-last_updated: "2026-03-15T22:49:51.654Z"
+stopped_at: Completed 08-01-PLAN.md
+last_updated: "2026-03-16T03:23:32.389Z"
 last_activity: "2026-03-03 — Quick-7: fix Settings page race condition where eligible groups checkbox reverted to all-checked on refresh"
 progress:
-  total_phases: 7
-  completed_phases: 2
-  total_plans: 13
-  completed_plans: 12
+  total_phases: 8
+  completed_phases: 3
+  total_plans: 17
+  completed_plans: 14
   percent: 100
 ---
 
@@ -61,6 +61,7 @@ Progress: [██████████] 100% (4/4 plans complete in phase 05)
 | Phase 07 P02 | 5 | 1 tasks | 2 files |
 | Phase 07 P03 | 8 | 2 tasks | 1 files |
 | Phase 07 P04 | 3 | 3 tasks | 3 files |
+| Phase 08 P01 | 4 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -96,6 +97,8 @@ All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
 - [Phase 07]: GradingDeadlineItem uses deadline_at field name to match test_07_02_api.py assertions
 - [Phase 07]: [07-03]: raise from e in update_grading_deadline except clause to satisfy Ruff B904
 - [Phase 07]: [07-04]: Used settings.course_id inside Settings.jsx for propagate-defaults call; deadline fetch in Promise.all with fallback; renamed taUsers to _taUsers for ESLint compliance
+- [Phase 08]: pytest file uses DB_PATH monkeypatch (not DATA_DIR) — tests API layer, consistent with test_07_02_api.py
+- [Phase 08]: GradeAnalysis.test.jsx uses _testData prop pattern for small-sample test to avoid fetch mock complexity
 
 ### Pending Todos
 
@@ -113,6 +116,7 @@ All decisions from v1.0 and v1.1 archived in PROJECT.md Key Decisions table.
 - Phase 5 added: Fix late day penalty calculation — rewrite to semester-aware bank system with per-assignment caps, project deliverable exclusion via Canvas assignment groups, and 25% penalty rate
 - Phase 6 added: Grader identity tracking: sync grader_id/graded_at from Canvas, sync TA/instructor users, ta_breakdown_mode setting, update EnhancedTADashboard TA breakdown table
 - Phase 7 added: Add TA grading deadlines: grading_deadlines table, default_grading_turnaround_days setting, REST endpoints for deadline CRUD, overdue status per TA, Settings UI, inline deadline editing on Dashboard, overdue badges, and shareable Grading Schedule Summary view
+- Phase 8 added: Add grade distribution visualizations: grade-distribution endpoint with per-assignment stats and per-TA stats, Grade Analysis page with histograms and box plots, assignment selector, summary stats, and small-sample warnings
 
 ### Blockers/Concerns
 
@@ -133,6 +137,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T22:49:51.652Z
-Stopped at: Completed 07-04-PLAN.md
+Last session: 2026-03-16T03:23:32.387Z
+Stopped at: Completed 08-01-PLAN.md
 Resume file: None
