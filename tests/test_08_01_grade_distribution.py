@@ -616,3 +616,123 @@ class TestPerTaStats:
         assert "Unattributed" in names, (
             f"Expected 'Unattributed' in per_ta, got {names}"
         )
+
+
+# ---------------------------------------------------------------------------
+# TestPerTaBoxPlotFields
+# ---------------------------------------------------------------------------
+
+
+_TA_USER = {
+    "id": 99,
+    "name": "TA Grader",
+    "email": "ta@example.com",
+    "enrollment_type": "TaEnrollment",
+}
+
+_MULTI_ASSIGNMENT = {
+    "id": 202,
+    "name": "HW 2",
+    "due_at": "2026-03-10T23:59:00Z",
+    "points_possible": 100.0,
+    "html_url": "",
+    "assignment_group_id": None,
+}
+
+
+def _make_sub_with_ta(sub_id: int, score: float) -> dict:
+    """Submission graded by TA 99 with a known score."""
+    return {
+        "id": sub_id,
+        "user_id": sub_id,  # reuse sub_id as student id for simplicity
+        "assignment_id": 202,
+        "submitted_at": "2026-03-09T12:00:00Z",
+        "workflow_state": "graded",
+        "late": False,
+        "score": score,
+        "grader_id": 99,
+        "graded_at": "2026-03-10T10:00:00Z",
+    }
+
+
+class TestPerTaBoxPlotFields:
+    """New per-TA fields: median, stdev, min, q1, q3, max, small_sample."""
+
+    def _seed(self, fresh_db, scores: list[float]):
+        """Seed assignment 202 with len(scores) students all graded by TA 99."""
+        students = [
+            {"id": i + 1, "name": f"Student {i + 1}", "email": f"s{i}@example.com"}
+            for i, _ in enumerate(scores)
+        ]
+        fresh_db.upsert_assignments("course1", [_MULTI_ASSIGNMENT])
+        fresh_db.upsert_users("course1", students)
+        fresh_db.upsert_ta_users("course1", [_TA_USER])
+        subs = [_make_sub_with_ta(i + 1, s) for i, s in enumerate(scores)]
+        fresh_db.upsert_submissions("course1", subs)
+
+    def test_per_ta_item_has_new_fields(self, fresh_db):
+        """per_ta items include median, stdev, min, q1, q3, max, small_sample."""
+        from main import app
+
+        self._seed(fresh_db, [60.0, 70.0, 80.0, 90.0, 100.0])
+        resp = asyncio.run(_get(app, "/api/dashboard/grade-distribution/course1/202"))
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["per_ta"]) >= 1, "Expected at least one per_ta entry"
+        ta = data["per_ta"][0]
+        for field in ("median", "stdev", "min", "q1", "q3", "max", "small_sample"):
+            assert field in ta, f"Field '{field}' missing from per_ta item: {ta}"
+
+    def test_per_ta_median_correct(self, fresh_db):
+        """Median is the middle value for an odd-count list."""
+        from main import app
+
+        self._seed(fresh_db, [60.0, 70.0, 80.0, 90.0, 100.0])
+        resp = asyncio.run(_get(app, "/api/dashboard/grade-distribution/course1/202"))
+        ta = resp.json()["per_ta"][0]
+        assert ta["median"] == pytest.approx(80.0), (
+            f"Expected median=80.0, got {ta['median']}"
+        )
+
+    def test_per_ta_min_max_correct(self, fresh_db):
+        """Min and max match the extreme scores."""
+        from main import app
+
+        self._seed(fresh_db, [60.0, 70.0, 80.0, 90.0, 100.0])
+        resp = asyncio.run(_get(app, "/api/dashboard/grade-distribution/course1/202"))
+        ta = resp.json()["per_ta"][0]
+        assert ta["min"] == pytest.approx(60.0), f"Expected min=60.0, got {ta['min']}"
+        assert ta["max"] == pytest.approx(100.0), f"Expected max=100.0, got {ta['max']}"
+
+    def test_per_ta_small_sample_false_when_n_ge_5(self, fresh_db):
+        """small_sample is False when a TA has 5+ graded submissions."""
+        from main import app
+
+        self._seed(fresh_db, [60.0, 70.0, 80.0, 90.0, 100.0])
+        resp = asyncio.run(_get(app, "/api/dashboard/grade-distribution/course1/202"))
+        ta = resp.json()["per_ta"][0]
+        assert ta["small_sample"] is False, (
+            f"Expected small_sample=False for n=5, got {ta['small_sample']}"
+        )
+
+    def test_per_ta_small_sample_true_when_n_lt_5(self, fresh_db):
+        """small_sample is True when a TA has fewer than 5 graded submissions."""
+        from main import app
+
+        self._seed(fresh_db, [70.0, 85.0, 90.0])  # n=3
+        resp = asyncio.run(_get(app, "/api/dashboard/grade-distribution/course1/202"))
+        ta = resp.json()["per_ta"][0]
+        assert ta["small_sample"] is True, (
+            f"Expected small_sample=True for n=3, got {ta['small_sample']}"
+        )
+
+    def test_per_ta_stdev_none_when_n_eq_1(self, fresh_db):
+        """stdev and quartiles are None when a TA has only 1 submission."""
+        from main import app
+
+        self._seed(fresh_db, [80.0])  # n=1
+        resp = asyncio.run(_get(app, "/api/dashboard/grade-distribution/course1/202"))
+        ta = resp.json()["per_ta"][0]
+        assert ta["stdev"] is None, f"Expected stdev=None for n=1, got {ta['stdev']}"
+        assert ta["q1"] is None, f"Expected q1=None for n=1, got {ta['q1']}"
+        assert ta["q3"] is None, f"Expected q3=None for n=1, got {ta['q3']}"
