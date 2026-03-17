@@ -251,6 +251,13 @@ class TaGradeStats(BaseModel):
     grader_name: str
     n: int
     mean: float | None = None
+    median: float | None = None
+    stdev: float | None = None
+    min: float | None = None
+    q1: float | None = None
+    q3: float | None = None
+    max: float | None = None
+    small_sample: bool = False
 
 
 class GradeDistributionResponse(BaseModel):
@@ -2209,11 +2216,29 @@ async def get_grade_distribution_detail(
         per_ta = []
         for grader_name, ta_scores in ta_groups.items():
             ta_n = len(ta_scores)
+            ta_mean = _stats.mean(ta_scores) if ta_n >= 1 else None
+            ta_median = _stats.median(ta_scores) if ta_n >= 1 else None
+            ta_stdev = _stats.stdev(ta_scores) if ta_n >= 2 else None
+            ta_min = min(ta_scores) if ta_n >= 1 else None
+            ta_max = max(ta_scores) if ta_n >= 1 else None
+            try:
+                qs = _stats.quantiles(ta_scores, n=4) if ta_n >= 2 else None
+                ta_q1 = qs[0] if qs else None
+                ta_q3 = qs[2] if qs else None
+            except _stats.StatisticsError:
+                ta_q1 = ta_q3 = None
             per_ta.append(
                 TaGradeStats(
                     grader_name=grader_name,
                     n=ta_n,
-                    mean=_stats.mean(ta_scores) if ta_n >= 1 else None,
+                    mean=ta_mean,
+                    median=ta_median,
+                    stdev=ta_stdev,
+                    min=ta_min,
+                    q1=ta_q1,
+                    q3=ta_q3,
+                    max=ta_max,
+                    small_sample=(ta_n < 5),
                 )
             )
         per_ta.sort(key=lambda x: x.n, reverse=True)
