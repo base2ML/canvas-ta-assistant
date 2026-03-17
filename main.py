@@ -2198,7 +2198,12 @@ async def get_grade_distribution_detail(
         # Build per-TA stats
         ta_groups: dict[str, list[float]] = {}
         for s in graded:
-            grader_name = s.get("grader_name") or "Unattributed"
+            if s.get("grader_name"):
+                grader_name = s["grader_name"]
+            elif s.get("enrollment_status") == "dropped":
+                grader_name = "Dropped Student"
+            else:
+                grader_name = "Unattributed"
             ta_groups.setdefault(grader_name, []).append(s["_score"])
 
         per_ta = []

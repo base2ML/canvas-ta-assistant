@@ -1138,10 +1138,13 @@ def get_submissions(
                 SELECT s.id, s.course_id, s.user_id, s.assignment_id,
                        s.submitted_at, s.workflow_state, s.late, s.score,
                        s.grader_id, s.graded_at, s.synced_at,
-                       t.name AS grader_name
+                       t.name AS grader_name,
+                       u.enrollment_status
                 FROM submissions s
                 LEFT JOIN ta_users t
                   ON s.grader_id = t.id AND t.course_id = s.course_id
+                LEFT JOIN users u
+                  ON s.user_id = u.id AND u.course_id = s.course_id
                 WHERE s.course_id = ? AND s.assignment_id = ?
             """,
                 (course_id, assignment_id),
@@ -1152,10 +1155,13 @@ def get_submissions(
                 SELECT s.id, s.course_id, s.user_id, s.assignment_id,
                        s.submitted_at, s.workflow_state, s.late, s.score,
                        s.grader_id, s.graded_at, s.synced_at,
-                       t.name AS grader_name
+                       t.name AS grader_name,
+                       u.enrollment_status
                 FROM submissions s
                 LEFT JOIN ta_users t
                   ON s.grader_id = t.id AND t.course_id = s.course_id
+                LEFT JOIN users u
+                  ON s.user_id = u.id AND u.course_id = s.course_id
                 WHERE s.course_id = ?
             """,
                 (course_id,),
