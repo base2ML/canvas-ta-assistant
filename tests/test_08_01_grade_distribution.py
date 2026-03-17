@@ -10,7 +10,7 @@ Covers:
 - TestGradeStats: stats block correctness for known scores
 - TestSmallSample: small_sample flag and None fields when n < 5 / n == 1
 - TestHistogramBins: 10 bins, correct total count, last bin catches max score
-- TestPerTaStats: grader_name grouping, NULL grader_id → "Unknown / Pre-Phase 6"
+- TestPerTaStats: grader_name grouping, NULL grader_id → "Unattributed"
 """
 
 import asyncio
@@ -514,7 +514,7 @@ class TestPerTaStats:
         )
 
     def test_null_grader_id_grouped_as_unknown(self, fresh_db):
-        """Submissions with NULL grader_id appear under 'Unknown / Pre-Phase 6'."""
+        """Submissions with NULL grader_id appear under 'Unattributed'."""
         from main import app
 
         fresh_db.upsert_assignments("course1", [_ASSIGNMENT])
@@ -539,8 +539,8 @@ class TestPerTaStats:
         resp = asyncio.run(_get(app, "/api/dashboard/grade-distribution/course1/101"))
         per_ta = resp.json()["per_ta"]
         names = [t["grader_name"] for t in per_ta]
-        assert "Unknown / Pre-Phase 6" in names, (
-            f"Expected 'Unknown / Pre-Phase 6' in per_ta, got {names}"
+        assert "Unattributed" in names, (
+            f"Expected 'Unattributed' in per_ta, got {names}"
         )
 
     def test_per_ta_item_has_required_fields(self, fresh_db):
@@ -613,6 +613,6 @@ class TestPerTaStats:
         per_ta = resp.json()["per_ta"]
         names = [t["grader_name"] for t in per_ta]
         assert "Alice TA" in names, f"Expected 'Alice TA' in per_ta, got {names}"
-        assert "Unknown / Pre-Phase 6" in names, (
-            f"Expected 'Unknown / Pre-Phase 6' in per_ta, got {names}"
+        assert "Unattributed" in names, (
+            f"Expected 'Unattributed' in per_ta, got {names}"
         )
