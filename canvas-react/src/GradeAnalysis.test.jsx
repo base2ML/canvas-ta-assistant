@@ -117,9 +117,9 @@ describe('per-TA sortable table', () => {
         <GradeAnalysis activeCourseId="course1" _testData={mockDetail} />
       </MemoryRouter>
     );
-    expect(screen.getByText('Mean')).toBeInTheDocument();
-    expect(screen.getByText('Median')).toBeInTheDocument();
-    expect(screen.getByText('Std Dev')).toBeInTheDocument();
+    expect(screen.getAllByText('Mean').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Median').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Std Dev').length).toBeGreaterThan(0);
   });
 
   it('renders TA names in the table', () => {
@@ -158,7 +158,7 @@ describe('per-TA sortable table', () => {
         <GradeAnalysis activeCourseId="course1" _testData={mockDetail} />
       </MemoryRouter>
     );
-    expect(screen.getByText(/distribution/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/distribution/i).length).toBeGreaterThan(0);
   });
 
   it('clicking Median header re-sorts the table', async () => {

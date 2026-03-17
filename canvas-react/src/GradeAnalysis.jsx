@@ -46,6 +46,40 @@ export default function GradeAnalysis({ activeCourseId, refreshTrigger, _testDat
       .finally(() => setDetailLoading(false));
   }, [activeCourseId, selectedId, usingTestData]);
 
+  // --- per-TA sort state ---
+  const COLS = [
+    { key: 'grader_name', label: 'TA Name',  naturalDir: 'asc'  },
+    { key: 'n',           label: 'Graded',   naturalDir: 'desc' },
+    { key: 'mean',        label: 'Mean',     naturalDir: 'desc' },
+    { key: 'median',      label: 'Median',   naturalDir: 'desc' },
+    { key: 'stdev',       label: 'Std Dev',  naturalDir: 'desc' },
+  ];
+  const [sort, setSort] = useState({ col: 'n', dir: 'desc' });
+
+  function handleSort(col, naturalDir) {
+    setSort(prev =>
+      prev.col === col
+        ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { col, dir: naturalDir }
+    );
+  }
+
+  function sortedTa(rows) {
+    if (!rows) return [];
+    return [...rows].sort((a, b) => {
+      const av = a[sort.col], bv = b[sort.col];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
+      return sort.dir === 'asc' ? cmp : -cmp;
+    });
+  }
+
+  const fmtStat = (val) => (val == null ? '—' : val.toFixed(1));
+
+  const MUTED_NAMES = new Set(['Unattributed', 'Dropped Student']);
+
   if (!usingTestData && !activeCourseId) {
     return (
       <div className="p-8 text-center text-gray-500">
@@ -179,21 +213,89 @@ export default function GradeAnalysis({ activeCourseId, refreshTrigger, _testDat
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b">
                     <tr>
-                      <th className="text-left px-4 py-3 font-medium text-gray-700">TA Name</th>
-                      <th className="text-right px-4 py-3 font-medium text-gray-700">Graded</th>
-                      <th className="text-right px-4 py-3 font-medium text-gray-700">Avg Score</th>
+                      {COLS.map(col => (
+                        <th key={col.key} className="px-3 py-2 text-left font-medium text-gray-700">
+                          <button
+                            onClick={() => handleSort(col.key, col.naturalDir)}
+                            className="flex items-center gap-1 hover:text-blue-600"
+                          >
+                            {col.label}
+                            <span className="text-gray-400 text-xs">
+                              {sort.col === col.key ? (sort.dir === 'asc' ? '↑' : '↓') : '↕'}
+                            </span>
+                          </button>
+                        </th>
+                      ))}
+                      <th className="px-3 py-2 text-left font-medium text-gray-700" style={{ minWidth: '200px' }}>
+                        <svg
+                          viewBox="0 0 400 14"
+                          preserveAspectRatio="none"
+                          style={{ display: 'block', width: '100%', height: '14px' }}
+                        >
+                          <text x="0"   y="11" textAnchor="start"  fontSize="10" fill="#9ca3af">0</text>
+                          <text x="100" y="11" textAnchor="middle" fontSize="10" fill="#9ca3af">25</text>
+                          <text x="200" y="11" textAnchor="middle" fontSize="10" fill="#9ca3af">50</text>
+                          <text x="300" y="11" textAnchor="middle" fontSize="10" fill="#9ca3af">75</text>
+                          <text x="400" y="11" textAnchor="end"    fontSize="10" fill="#9ca3af">100</text>
+                        </svg>
+                        <span className="text-xs font-normal text-gray-500">Distribution (% of max)</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {detail.per_ta.map((ta, i) => (
-                      <tr key={i} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-gray-900">{ta.grader_name}</td>
-                        <td className="px-4 py-3 text-right text-gray-700">{ta.n}</td>
-                        <td className="px-4 py-3 text-right text-gray-700">
-                          {ta.mean == null ? '—' : ta.mean.toFixed(1)}
-                        </td>
-                      </tr>
-                    ))}
+                    {sortedTa(detail.per_ta).map((ta, i) => {
+                      const isMuted = MUTED_NAMES.has(ta.grader_name);
+                      const bpX = (v) => Math.min(400, Math.max(0, (v / detail.points_possible) * 400));
+                      const showBox = ta.n >= 2
+                        && ta.q1 != null && ta.q3 != null
+                        && ta.min != null && ta.max != null
+                        && detail.points_possible != null;
+                      return (
+                        <tr key={i} className="hover:bg-gray-50">
+                          <td className={`px-3 py-2 ${isMuted ? 'text-gray-400 italic' : 'text-gray-900 font-medium'}`}>
+                            {ta.grader_name}
+                            {ta.small_sample && (
+                              <span className="ml-1 text-xs bg-yellow-50 text-yellow-700 border border-yellow-200 rounded px-1">
+                                ⚠ n={ta.n}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-gray-700">{ta.n}</td>
+                          <td className="px-3 py-2 text-gray-700">{fmtStat(ta.mean)}</td>
+                          <td className="px-3 py-2 text-gray-700">{fmtStat(ta.median)}</td>
+                          <td className="px-3 py-2 text-gray-700">{fmtStat(ta.stdev)}</td>
+                          <td className="px-3 py-2">
+                            {showBox && (
+                              <svg
+                                viewBox="0 0 400 30"
+                                preserveAspectRatio="none"
+                                style={{ display: 'block', width: '100%', height: '30px' }}
+                              >
+                                {/* Quarter guide lines */}
+                                <line x1="100" y1="0" x2="100" y2="30" stroke="#374151" strokeWidth="1"/>
+                                <line x1="200" y1="0" x2="200" y2="30" stroke="#374151" strokeWidth="1"/>
+                                <line x1="300" y1="0" x2="300" y2="30" stroke="#374151" strokeWidth="1"/>
+                                {/* Left whisker: min → q1 */}
+                                <line x1={bpX(ta.min)} y1="15" x2={bpX(ta.q1)} y2="15" stroke="#6b7280" strokeWidth="2"/>
+                                <line x1={bpX(ta.min)} y1="7"  x2={bpX(ta.min)} y2="23" stroke="#6b7280" strokeWidth="2"/>
+                                {/* IQR box: q1 → q3 */}
+                                <rect
+                                  x={bpX(ta.q1)} y="6"
+                                  width={Math.max(1, bpX(ta.q3) - bpX(ta.q1))} height="18"
+                                  fill="#1e3a5f" stroke="#3b82f6" strokeWidth="1.5"
+                                />
+                                {/* Median line */}
+                                <line x1={bpX(ta.median)} y1="6" x2={bpX(ta.median)} y2="24"
+                                      stroke="#60a5fa" strokeWidth="3"/>
+                                {/* Right whisker: q3 → max */}
+                                <line x1={bpX(ta.q3)} y1="15" x2={bpX(ta.max)} y2="15" stroke="#6b7280" strokeWidth="2"/>
+                                <line x1={bpX(ta.max)} y1="7"  x2={bpX(ta.max)} y2="23" stroke="#6b7280" strokeWidth="2"/>
+                              </svg>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
