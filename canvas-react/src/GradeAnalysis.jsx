@@ -81,6 +81,8 @@ export default function GradeAnalysis({ activeCourseId, refreshTrigger, _testDat
 
   const MUTED_NAMES = new Set(['Unattributed', 'Dropped Student']);
 
+  const bpX = (v) => Math.min(400, Math.max(0, (v / detail.points_possible) * 400));
+
   if (!usingTestData && !activeCourseId) {
     return (
       <div className="p-8 text-center text-gray-500">
@@ -242,61 +244,58 @@ export default function GradeAnalysis({ activeCourseId, refreshTrigger, _testDat
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {(() => {
-                      const bpX = (v) => Math.min(400, Math.max(0, (v / detail.points_possible) * 400));
-                      return sortedTa(detail.per_ta).map((ta) => {
-                        const isMuted = MUTED_NAMES.has(ta.grader_name);
-                        const showBox = ta.n >= 2
-                          && ta.q1 != null && ta.q3 != null
-                          && ta.min != null && ta.max != null
-                          && detail.points_possible != null;
-                        return (
-                          <tr key={ta.grader_name} className="hover:bg-gray-50">
-                            <td className={`px-3 py-2 ${isMuted ? 'text-gray-400 italic' : 'text-gray-900 font-medium'}`}>
-                              {ta.grader_name}
-                              {ta.small_sample && (
-                                <span className="ml-1 text-xs bg-yellow-50 text-yellow-700 border border-yellow-200 rounded px-1">
-                                  ⚠ n={ta.n}
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-gray-700">{ta.n}</td>
-                            <td className="px-3 py-2 text-gray-700">{fmt(ta.mean)}</td>
-                            <td className="px-3 py-2 text-gray-700">{fmt(ta.median)}</td>
-                            <td className="px-3 py-2 text-gray-700">{fmt(ta.stdev)}</td>
-                            <td className="px-3 py-2">
-                              {showBox && (
-                                <svg
-                                  viewBox="0 0 400 30"
-                                  preserveAspectRatio="none"
-                                  style={{ display: 'block', width: '100%', height: '30px' }}
-                                >
-                                  {/* Quarter guide lines */}
-                                  <line x1="100" y1="0" x2="100" y2="30" stroke="#374151" strokeWidth="1"/>
-                                  <line x1="200" y1="0" x2="200" y2="30" stroke="#374151" strokeWidth="1"/>
-                                  <line x1="300" y1="0" x2="300" y2="30" stroke="#374151" strokeWidth="1"/>
-                                  {/* Left whisker: min → q1 */}
-                                  <line x1={bpX(ta.min)} y1="15" x2={bpX(ta.q1)} y2="15" stroke="#6b7280" strokeWidth="2"/>
-                                  <line x1={bpX(ta.min)} y1="7"  x2={bpX(ta.min)} y2="23" stroke="#6b7280" strokeWidth="2"/>
-                                  {/* IQR box: q1 → q3 */}
-                                  <rect
-                                    x={bpX(ta.q1)} y="6"
-                                    width={Math.max(1, bpX(ta.q3) - bpX(ta.q1))} height="18"
-                                    fill="#1e3a5f" stroke="#3b82f6" strokeWidth="1.5"
-                                  />
-                                  {/* Median line */}
-                                  <line x1={bpX(ta.median)} y1="6" x2={bpX(ta.median)} y2="24"
-                                        stroke="#60a5fa" strokeWidth="3"/>
-                                  {/* Right whisker: q3 → max */}
-                                  <line x1={bpX(ta.q3)} y1="15" x2={bpX(ta.max)} y2="15" stroke="#6b7280" strokeWidth="2"/>
-                                  <line x1={bpX(ta.max)} y1="7"  x2={bpX(ta.max)} y2="23" stroke="#6b7280" strokeWidth="2"/>
-                                </svg>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      });
-                    })()}
+                    {sortedTa(detail.per_ta).map((ta) => {
+                      const isMuted = MUTED_NAMES.has(ta.grader_name);
+                      const showBox = ta.n >= 2
+                        && ta.q1 != null && ta.q3 != null
+                        && ta.min != null && ta.max != null
+                        && detail.points_possible != null;
+                      return (
+                        <tr key={ta.grader_name} className="hover:bg-gray-50">
+                          <td className={`px-3 py-2 ${isMuted ? 'text-gray-400 italic' : 'text-gray-900 font-medium'}`}>
+                            {ta.grader_name}
+                            {ta.small_sample && (
+                              <span className="ml-1 text-xs bg-yellow-50 text-yellow-700 border border-yellow-200 rounded px-1">
+                                ⚠ n={ta.n}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-gray-700">{ta.n}</td>
+                          <td className="px-3 py-2 text-gray-700">{fmt(ta.mean)}</td>
+                          <td className="px-3 py-2 text-gray-700">{fmt(ta.median)}</td>
+                          <td className="px-3 py-2 text-gray-700">{fmt(ta.stdev)}</td>
+                          <td className="px-3 py-2">
+                            {showBox && (
+                              <svg
+                                viewBox="0 0 400 30"
+                                preserveAspectRatio="none"
+                                style={{ display: 'block', width: '100%', height: '30px' }}
+                              >
+                                {/* Quarter guide lines */}
+                                <line x1="100" y1="0" x2="100" y2="30" stroke="#374151" strokeWidth="1"/>
+                                <line x1="200" y1="0" x2="200" y2="30" stroke="#374151" strokeWidth="1"/>
+                                <line x1="300" y1="0" x2="300" y2="30" stroke="#374151" strokeWidth="1"/>
+                                {/* Left whisker: min → q1 */}
+                                <line x1={bpX(ta.min)} y1="15" x2={bpX(ta.q1)} y2="15" stroke="#6b7280" strokeWidth="2"/>
+                                <line x1={bpX(ta.min)} y1="7"  x2={bpX(ta.min)} y2="23" stroke="#6b7280" strokeWidth="2"/>
+                                {/* IQR box: q1 → q3 */}
+                                <rect
+                                  x={bpX(ta.q1)} y="6"
+                                  width={Math.max(1, bpX(ta.q3) - bpX(ta.q1))} height="18"
+                                  fill="#1e3a5f" stroke="#3b82f6" strokeWidth="1.5"
+                                />
+                                {/* Median line */}
+                                <line x1={bpX(ta.median)} y1="6" x2={bpX(ta.median)} y2="24"
+                                      stroke="#60a5fa" strokeWidth="3"/>
+                                {/* Right whisker: q3 → max */}
+                                <line x1={bpX(ta.q3)} y1="15" x2={bpX(ta.max)} y2="15" stroke="#6b7280" strokeWidth="2"/>
+                                <line x1={bpX(ta.max)} y1="7"  x2={bpX(ta.max)} y2="23" stroke="#6b7280" strokeWidth="2"/>
+                              </svg>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
