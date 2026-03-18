@@ -272,9 +272,9 @@ export default function GradeAnalysis({ activeCourseId, refreshTrigger, _testDat
                                 style={{ display: 'block', width: '100%', height: '30px' }}
                               >
                                 {/* Quarter guide lines */}
-                                <line x1="100" y1="0" x2="100" y2="30" stroke="#374151" strokeWidth="1"/>
-                                <line x1="200" y1="0" x2="200" y2="30" stroke="#374151" strokeWidth="1"/>
-                                <line x1="300" y1="0" x2="300" y2="30" stroke="#374151" strokeWidth="1"/>
+                                <line x1="100" y1="0" x2="100" y2="30" stroke="#d1d5db" strokeWidth="1"/>
+                                <line x1="200" y1="0" x2="200" y2="30" stroke="#d1d5db" strokeWidth="1"/>
+                                <line x1="300" y1="0" x2="300" y2="30" stroke="#d1d5db" strokeWidth="1"/>
                                 {/* Left whisker: min → q1 */}
                                 <line x1={bpX(ta.min)} y1="15" x2={bpX(ta.q1)} y2="15" stroke="#6b7280" strokeWidth="2"/>
                                 <line x1={bpX(ta.min)} y1="7"  x2={bpX(ta.min)} y2="23" stroke="#6b7280" strokeWidth="2"/>
@@ -282,11 +282,11 @@ export default function GradeAnalysis({ activeCourseId, refreshTrigger, _testDat
                                 <rect
                                   x={bpX(ta.q1)} y="6"
                                   width={Math.max(1, bpX(ta.q3) - bpX(ta.q1))} height="18"
-                                  fill="#1e3a5f" stroke="#3b82f6" strokeWidth="1.5"
+                                  fill="#bfdbfe" stroke="#3b82f6" strokeWidth="1.5"
                                 />
                                 {/* Median line */}
                                 <line x1={bpX(ta.median)} y1="6" x2={bpX(ta.median)} y2="24"
-                                      stroke="#60a5fa" strokeWidth="3"/>
+                                      stroke="#1d4ed8" strokeWidth="3"/>
                                 {/* Right whisker: q3 → max */}
                                 <line x1={bpX(ta.q3)} y1="15" x2={bpX(ta.max)} y2="15" stroke="#6b7280" strokeWidth="2"/>
                                 <line x1={bpX(ta.max)} y1="7"  x2={bpX(ta.max)} y2="23" stroke="#6b7280" strokeWidth="2"/>
