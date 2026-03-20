@@ -11,6 +11,7 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId, refreshTrigg
   const [courseInfo, setCourseInfo] = useState(null);
   const [lateDaysData, setLateDaysData] = useState([]);
   const [selectedTAGroup, setSelectedTAGroup] = useState('');
+  const [penaltyFilterAssignmentId, setPenaltyFilterAssignmentId] = React.useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'student_name', direction: 'asc' });
   const [selectedAssignments, setSelectedAssignments] = useState([]);
   const [showAssignmentFilter, setShowAssignmentFilter] = useState(false);
@@ -132,6 +133,16 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId, refreshTrigg
     return () => cancelPosting();
   }, [cancelPosting]);
 
+  // Auto-show the filtered assignment's column when penalty filter is selected
+  useEffect(() => {
+    if (penaltyFilterAssignmentId) {
+      const id = Number(penaltyFilterAssignmentId);
+      if (!selectedAssignments.includes(id)) {
+        setSelectedAssignments(prev => [...prev, id]);
+      }
+    }
+  }, [penaltyFilterAssignmentId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-select students with late days when assignment changes
   useEffect(() => {
     if (postAssignmentId) {
@@ -250,9 +261,17 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId, refreshTrigg
   );
 
   // Filter students by TA group if a filter is selected
-  const filteredLateDaysData = selectedTAGroup
+  const taFilteredData = selectedTAGroup
     ? lateDaysData.filter(student => student.ta_group_name === selectedTAGroup)
     : lateDaysData;
+
+  // Step 2: Penalty days filter — show only students with penalty_days > 0 on the chosen assignment
+  const filteredLateDaysData = penaltyFilterAssignmentId
+    ? taFilteredData.filter(student => {
+        const entry = student.assignments?.[penaltyFilterAssignmentId];
+        return entry && entry.penalty_days > 0;
+      })
+    : taFilteredData;
 
   // Get unique TA groups for the filter dropdown
   const availableTAGroups = [...new Set(lateDaysData
@@ -404,6 +423,46 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId, refreshTrigg
                   );
                 })}
               </select>
+            </div>
+          </div>
+        )}
+
+        {/* Penalty Days Filter */}
+        {currentCourse && assignments.length > 0 && (
+          <div className="p-6 border-b border-gray-200">
+            <div className="max-w-md">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Show students with penalty days on
+              </label>
+              <select
+                value={penaltyFilterAssignmentId}
+                onChange={(e) => setPenaltyFilterAssignmentId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All students</option>
+                {sortedAssignments.map(assignment => {
+                  const count = (selectedTAGroup
+                    ? lateDaysData.filter(s => s.ta_group_name === selectedTAGroup)
+                    : lateDaysData
+                  ).filter(s => {
+                    const entry = s.assignments?.[String(assignment.id)];
+                    return entry && entry.penalty_days > 0;
+                  }).length;
+                  return (
+                    <option key={assignment.id} value={String(assignment.id)}>
+                      {assignment.name} ({count} student{count !== 1 ? 's' : ''})
+                    </option>
+                  );
+                })}
+              </select>
+              {penaltyFilterAssignmentId && (
+                <button
+                  onClick={() => setPenaltyFilterAssignmentId("")}
+                  className="mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  Clear filter
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -954,10 +1013,10 @@ const LateDaysTracking = ({ courses, onLoadCourses, activeCourseId, refreshTrigg
         {!loading && currentCourse && sortedData.length === 0 && lateDaysData.length > 0 && (
           <div className="p-12 text-center text-gray-500">
             <User className="h-12 w-12 mx-auto mb-4" />
-            <p>No students found for TA group "{selectedTAGroup}"</p>
-            <p className="text-sm mt-2">Try selecting a different TA group or clear the filter</p>
+            <p>No students match the current filters</p>
+            <p className="text-sm mt-2">Try adjusting or clearing the TA group or penalty days filter</p>
             <button
-              onClick={() => setSelectedTAGroup('')}
+              onClick={() => { setSelectedTAGroup(''); setPenaltyFilterAssignmentId(''); }}
               className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
             >
               Clear Filter
