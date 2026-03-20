@@ -7,6 +7,7 @@ import asyncio
 import json
 import math
 import os
+import string
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -374,28 +375,39 @@ ALLOWED_TEMPLATE_VARIABLES = {
 
 
 def validate_template_syntax(
-    template_text: str, variables: list[str]
+    template_text: str, _variables: list[str]
 ) -> tuple[bool, str]:
     """Validate template syntax by test-rendering with dummy data.
 
     Checks for:
     1. Unclosed or unmatched braces
-    2. Variables not in the allowed set
+    2. Variables not in the allowed set (extracted from text, not the passed-in list)
     3. Template renders without errors
 
     Returns (is_valid, error_message).
     """
-    # Check for unknown variables
-    unknown = set(variables) - ALLOWED_TEMPLATE_VARIABLES
+    # Extract variables actually present in the template text (authoritative source)
+    try:
+        actual_variables = {
+            fname
+            for _, fname, _, _ in string.Formatter().parse(template_text)
+            if fname is not None
+        }
+    except Exception as e:
+        return False, f"Invalid template syntax (malformed braces): {e}"
+
+    # Check for unknown variables in the template text
+    unknown = actual_variables - ALLOWED_TEMPLATE_VARIABLES
     if unknown:
         unknown_str = ", ".join(sorted(unknown))
         allowed_str = ", ".join(sorted(ALLOWED_TEMPLATE_VARIABLES))
-        msg = f"Unknown template variables: {unknown_str}. Allowed: {allowed_str}"
-        return False, msg
+        return (
+            False,
+            f"Unknown template variables: {unknown_str}. Allowed: {allowed_str}",
+        )
 
-    # Create dummy data for all allowed variables
+    # Render with dummy data to catch remaining syntax errors
     dummy_data = {var: f"[{var}]" for var in ALLOWED_TEMPLATE_VARIABLES}
-
     try:
         template_text.format(**dummy_data)
         return True, ""
@@ -1053,13 +1065,16 @@ async def update_template(
 
     if template.template_variables is not None:
         new_variables = template.template_variables
-    elif existing.get("template_variables"):
-        try:
-            new_variables = json.loads(existing["template_variables"])
-        except (json.JSONDecodeError, TypeError):
-            new_variables = []
     else:
-        new_variables = []
+        # Re-derive from new template text so stored metadata stays current
+        try:
+            new_variables = [
+                fname
+                for _, fname, _, _ in string.Formatter().parse(new_text)
+                if fname is not None
+            ]
+        except Exception:
+            new_variables = []
 
     # Validate if text or variables changed
     if template.template_text is not None or template.template_variables is not None:
@@ -2627,7 +2642,7 @@ async def get_enrollment_history(course_id: str) -> dict[str, Any]:
     """
     try:
         current_counts = db.get_enrollment_counts(course_id)
-        snapshots = db.get_enrollment_history(course_id, limit=20)
+        snapshots = db.get_enrollment_history(course_id, limit=200)
         events = db.get_enrollment_events(course_id, limit=50)
 
         return {

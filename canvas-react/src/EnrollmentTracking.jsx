@@ -151,17 +151,20 @@ const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId, refreshTri
             </div>
           </div>
 
-          {/* Enrollment Over Time - SVG Line Chart */}
+          {/* Enrollment Over Time - SVG Step Chart */}
           {(() => {
             const chronologicalSnapshots = [...(enrollmentData.snapshots || [])].reverse();
-            if (chronologicalSnapshots.length < 2) return null;
+            const deduplicated = chronologicalSnapshots.filter((s, i) =>
+              i === 0 || s.active_count !== chronologicalSnapshots[i - 1].active_count
+            );
+            if (deduplicated.length === 0) return null;
 
-            const padL = 50, padR = 20, padT = 16, padB = 32;
-            const width = 600, height = 160;
+            const padL = 50, padR = 20, padT = 30, padB = 55;
+            const width = 600, height = 185;
             const plotW = width - padL - padR;
             const plotH = height - padT - padB;
 
-            const counts = chronologicalSnapshots.map(s => s.active_count);
+            const counts = deduplicated.map(s => s.active_count);
             let minCount = Math.min(...counts);
             let maxCount = Math.max(...counts);
             if (minCount === maxCount) {
@@ -173,35 +176,73 @@ const EnrollmentTracking = ({ courses, onLoadCourses, activeCourseId, refreshTri
             const yMin = minCount - padding;
             const yMax = maxCount + padding;
 
-            const toX = (i) => padL + (i / (chronologicalSnapshots.length - 1)) * plotW;
+            const getDate = (s) => new Date(s.sync_completed_at || s.recorded_at);
+            const today = new Date();
+            const semesterStart = getDate(deduplicated[0]);
+            const timeRange = today - semesterStart;
+            const toX = (date) => padL + ((date - semesterStart) / timeRange) * plotW;
             const toY = (val) => padT + plotH - ((val - yMin) / (yMax - yMin)) * plotH;
 
-            const points = chronologicalSnapshots.map((s, i) => `${toX(i)},${toY(s.active_count)}`).join(' ');
+            const stepPoints = [];
+            deduplicated.forEach((s, i) => {
+              const x = toX(getDate(s));
+              const y = toY(s.active_count);
+              if (i > 0) {
+                stepPoints.push(`${x},${toY(deduplicated[i - 1].active_count)}`);
+              }
+              stepPoints.push(`${x},${y}`);
+            });
+            stepPoints.push(`${toX(today)},${toY(deduplicated[deduplicated.length - 1].active_count)}`);
 
-            const firstDate = formatDateOnly(chronologicalSnapshots[0].sync_completed_at || chronologicalSnapshots[0].recorded_at);
-            const lastDate = formatDateOnly(chronologicalSnapshots[chronologicalSnapshots.length - 1].sync_completed_at || chronologicalSnapshots[chronologicalSnapshots.length - 1].recorded_at);
+            const labelBaseY = padT + plotH + 8;
 
             return (
               <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Enrollment Over Time</h2>
-                <svg viewBox="0 0 600 160" className="w-full h-40">
+                <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{height: '185px'}}>
                   {/* Y-axis labels */}
                   <text x={padL - 6} y={toY(maxCount)} fontSize="10" fill="#6b7280" textAnchor="end" dominantBaseline="middle">{Math.round(maxCount)}</text>
                   <text x={padL - 6} y={toY(minCount)} fontSize="10" fill="#6b7280" textAnchor="end" dominantBaseline="middle">{Math.round(minCount)}</text>
-                  {/* Line */}
+                  {/* Step line */}
                   <polyline
-                    points={points}
+                    points={stepPoints.join(' ')}
                     stroke="#2563eb"
                     strokeWidth="2"
                     fill="none"
                   />
-                  {/* Dots */}
-                  {chronologicalSnapshots.map((s, i) => (
-                    <circle key={i} cx={toX(i)} cy={toY(s.active_count)} r="3" fill="#2563eb" />
-                  ))}
-                  {/* X-axis labels */}
-                  <text x={toX(0)} y={height - 4} fontSize="10" fill="#6b7280" textAnchor="middle">{firstDate}</text>
-                  <text x={toX(chronologicalSnapshots.length - 1)} y={height - 4} fontSize="10" fill="#6b7280" textAnchor="middle">{lastDate}</text>
+                  {/* Dots, callout labels, and date labels at each change point */}
+                  {deduplicated.map((s, i) => {
+                    const cx = toX(getDate(s));
+                    const cy = toY(s.active_count);
+                    const label = String(s.active_count);
+                    const labelW = label.length * 6 + 10;
+                    const labelH = 15;
+                    const labelX = cx - labelW / 2;
+                    // flip callout below the dot if it would go above the top padding
+                    const calloutAbove = cy - 22 >= padT;
+                    const calloutY = calloutAbove ? cy - 22 : cy + 8;
+                    const dateStr = formatDateOnly(s.sync_completed_at || s.recorded_at);
+                    return (
+                      <g key={i}>
+                        {/* Callout box */}
+                        <rect x={labelX} y={calloutY} width={labelW} height={labelH} rx="3" fill="white" stroke="#2563eb" strokeWidth="1" />
+                        <text x={cx} y={calloutY + 10} fontSize="9" fill="#2563eb" textAnchor="middle" fontWeight="bold">{label}</text>
+                        {/* Dot */}
+                        <circle cx={cx} cy={cy} r="3" fill="#2563eb" />
+                        {/* Date label rotated -45° */}
+                        <text
+                          x={cx}
+                          y={labelBaseY}
+                          fontSize="9"
+                          fill="#6b7280"
+                          textAnchor="end"
+                          transform={`rotate(-45, ${cx}, ${labelBaseY})`}
+                        >{dateStr}</text>
+                      </g>
+                    );
+                  })}
+                  {/* Today label */}
+                  <text x={toX(today)} y={labelBaseY} fontSize="9" fill="#6b7280" textAnchor="end" transform={`rotate(-45, ${toX(today)}, ${labelBaseY})`}>Today</text>
                 </svg>
               </div>
             );
