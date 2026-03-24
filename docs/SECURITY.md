@@ -2,7 +2,7 @@
 
 ## Overview
 
-The CDA TA Dashboard handles sensitive educational data including student information, grades, and Canvas LMS credentials. This document outlines security best practices for development and local deployment.
+The CDA TA Dashboard handles sensitive educational data including student information, grades, and Canvas LMS credentials. This document outlines security best practices for development and deployment.
 
 ## Credential Management
 
@@ -47,22 +47,22 @@ CANVAS_API_TOKEN=your-canvas-api-token-here
 CANVAS_COURSE_ID=your-course-id  # Optional
 ```
 
-## Local Deployment Security
+## Deployment Security
 
 ### Single-User Design
 
 This application is designed for local, single-user deployment:
 
 - No authentication system (user has direct access)
-- Data stored locally in SQLite database
+- SQLite database stored on OneDrive/SharePoint for FERPA-compliant shared access
 - Canvas API token stored in local `.env` file
-- Not designed for multi-user or shared access
 
 ### Data Storage
 
-- **SQLite Database**: `./data/canvas.db`
+- **SQLite Database**: stored at the path configured by `DATA_PATH` (see `.env.example`)
+  - Recommended: a OneDrive/SharePoint directory shared among TAs
   - Contains student names, emails, grades, submissions
-  - Protected by file system permissions
+  - Protected by OneDrive access controls and file system permissions
   - Not encrypted at rest
 - **Environment File**: `.env`
   - Contains Canvas API token
@@ -94,7 +94,7 @@ This application accesses student data from Canvas LMS:
 
 - Only access courses you are authorized to view
 - Do not share screenshots containing student data
-- Delete local database when no longer needed
+- Delete or archive the OneDrive database when no longer needed
 - Handle student data according to your institution's guidelines
 
 ## What NOT to Commit
@@ -102,7 +102,7 @@ This application accesses student data from Canvas LMS:
 ❌ **Never commit these files:**
 
 - `.env` files with Canvas API tokens
-- `data/` directory with SQLite database
+- The OneDrive `DATA_PATH` directory containing the SQLite database
 - Screenshots with student names, IDs, or grades
 - Logs containing sensitive information
 
@@ -124,7 +124,7 @@ The following are already configured in `.gitignore`:
 .env.local
 .env.*.local
 
-# Local data storage
+# Local data directory fallback (not used when DATA_PATH points to OneDrive)
 data/
 !data/.gitkeep
 

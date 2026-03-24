@@ -2,13 +2,13 @@
 
 ## Executive Summary
 
-**Objective**: Deploy Canvas TA Dashboard as a local-only application using Docker Compose for single-user use.
+**Objective**: Deploy Canvas TA Dashboard as a local application using Docker Compose for single-user use, with the SQLite database stored on OneDrive/SharePoint for FERPA-compliant shared access across TAs.
 
 **Key Features**:
 
 - Single-command deployment via Docker Compose
-- SQLite database for local data persistence
-- No cloud dependencies or authentication
+- SQLite database stored on OneDrive/SharePoint (configurable via `DATA_PATH`)
+- No cloud service dependencies or authentication
 - Canvas data sync on startup and manual refresh
 - Settings UI for course configuration
 
@@ -16,7 +16,7 @@
 
 ### Design Principles
 
-- **Local-First**: All data stored locally in SQLite
+- **OneDrive-Backed**: SQLite database stored on OneDrive/SharePoint for shared FERPA-compliant access
 - **Simple Deployment**: Single `docker-compose up` command
 - **No Authentication**: Single-user local deployment
 - **Docker-Based**: Containerized services for consistency
@@ -41,7 +41,7 @@
 │  │                                          │                  │ │
 │  │                              ┌───────────▼─────────────┐   │ │
 │  │                              │   SQLite Database       │   │ │
-│  │                              │   ./data/canvas.db      │   │ │
+│  │                              │   $DATA_PATH/canvas.db  │   │ │
 │  │                              │                         │   │ │
 │  │                              │  • Settings             │   │ │
 │  │                              │  • Assignments          │   │ │
@@ -104,9 +104,9 @@
 
 ### 3. Data Storage (SQLite)
 
-**Location**: `./data/canvas.db`
+**Location**: `$DATA_PATH/canvas.db` — defaults to `./data/canvas.db`, configured via `DATA_PATH` env var. Set to a OneDrive/SharePoint path for FERPA-compliant shared storage across TAs.
 
-**Persistence**: Docker volume mount
+**Persistence**: Docker volume mount (the `DATA_PATH` directory is mounted into the container)
 
 **Tables**:
 
@@ -166,6 +166,7 @@ See [AGENTS.md](AGENTS.md#backend-structure) for full endpoint documentation.
 | `CANVAS_API_URL` | Yes | Canvas instance URL |
 | `CANVAS_API_TOKEN` | Yes | Canvas API token |
 | `CANVAS_COURSE_ID` | No | Default course ID |
+| `DATA_PATH` | No | Path to SQLite database and logs (default: `./data`); set to OneDrive/SharePoint path for shared storage |
 | `ENVIRONMENT` | No | Environment name (default: local) |
 
 ### Docker Compose Configuration
@@ -183,7 +184,7 @@ services:
       - CANVAS_API_TOKEN=${CANVAS_API_TOKEN}
       - CANVAS_COURSE_ID=${CANVAS_COURSE_ID:-}
     volumes:
-      - ./data:/app/data
+      - ${DATA_PATH:-./data}:/app/data
 
   frontend:
     build: ./canvas-react
@@ -230,19 +231,19 @@ docker-compose down -v
 
 ## Security Considerations
 
-### Local Deployment
+### Deployment
 
 - No authentication required (single-user)
-- Data stored locally on user's machine
-- Canvas API token stored in `.env` file
-- SQLite database not encrypted
+- SQLite database stored on OneDrive/SharePoint — access controlled by OneDrive permissions
+- Canvas API token stored in `.env` file (never committed)
+- SQLite database not encrypted at rest
 
 ### Best Practices
 
 - Never commit `.env` files
 - Regenerate Canvas tokens periodically
 - Handle student data per FERPA guidelines
-- Keep `data/` directory in `.gitignore`
+- Set `DATA_PATH` to OneDrive/SharePoint rather than a local directory
 
 ## Comparison with Previous AWS Architecture
 

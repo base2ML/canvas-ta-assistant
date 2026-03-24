@@ -1,6 +1,6 @@
 # CDA TA Dashboard
 
-A Canvas LMS Teaching Assistant Dashboard application designed to streamline grading workflow and monitor assignment status across courses. Runs locally via Docker Compose with SQLite storage.
+A Canvas LMS Teaching Assistant Dashboard application designed to streamline grading workflow and monitor assignment status across courses. Runs locally via Docker Compose with a SQLite database stored on OneDrive/SharePoint for FERPA-compliant shared access.
 
 ## Features
 
@@ -18,7 +18,7 @@ A Canvas LMS Teaching Assistant Dashboard application designed to streamline gra
 
 ### Backend (FastAPI + SQLite)
 - **FastAPI**: Modern async Python web framework
-- **SQLite**: Local database for Canvas data storage
+- **SQLite**: Database stored at a configurable path (OneDrive/SharePoint by default for FERPA-compliant shared access)
 - **canvasapi**: Official Canvas LMS Python library
 - **Pydantic v2**: Data validation and settings management
 - **Loguru**: Structured logging
@@ -54,11 +54,15 @@ cp .env.example .env
 nano .env
 ```
 
-Configure these required values in `.env`:
+Configure these values in `.env`:
 ```bash
 CANVAS_API_URL=https://your-school.instructure.com
 CANVAS_API_TOKEN=your-canvas-api-token-here
 CANVAS_COURSE_ID=  # Optional - can be set via Settings UI
+
+# Path to SQLite database and logs — set to OneDrive/SharePoint for shared FERPA-compliant storage
+# Example (Georgia Tech): /Users/yourname/Library/CloudStorage/OneDrive-GeorgiaInstituteofTechnology/ISYE6740 TA Sharepoint/TA Dashboard
+DATA_PATH=
 ```
 
 ### 2. Build and Run
@@ -260,7 +264,14 @@ docker-compose down -v
 
 ## Data Storage
 
-Canvas data is stored in a SQLite database at `./data/canvas.db`. This directory is mounted as a Docker volume for persistence.
+Canvas data is stored in a SQLite database at `$DATA_PATH/canvas.db`. The `DATA_PATH` environment variable defaults to `./data` but should be set to a OneDrive/SharePoint directory for FERPA-compliant shared storage across TAs.
+
+```bash
+# Example (Georgia Tech OneDrive)
+DATA_PATH=/Users/yourname/Library/CloudStorage/OneDrive-GeorgiaInstituteofTechnology/ISYE6740 TA Sharepoint/TA Dashboard
+```
+
+This path is mounted as a Docker volume so the database persists across container restarts and is accessible to all TAs with OneDrive sync.
 
 ### Database Tables
 - `settings` - Application configuration (course ID, etc.)
