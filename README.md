@@ -5,9 +5,12 @@ A Canvas LMS Teaching Assistant Dashboard application designed to streamline gra
 ## Features
 
 - **Assignment Tracking**: Monitor assignment status with due dates and direct Canvas links
-- **TA Grading Management**: Specialized dashboard for workload distribution across TA groups
-- **Late Days Tracking**: Track and manage student late day usage
+- **TA Grading Management**: Specialized dashboard for workload distribution across TA groups with configurable grading deadlines
+- **Grade Analysis**: Grade distribution histograms, box plots, and per-TA breakdowns by assignment
+- **Late Days Tracking**: Track and manage student late day usage with semester bank system
 - **Peer Review Tracking**: Monitor peer review completion status
+- **Enrollment Tracking**: Enrollment history over time with step-chart visualization
+- **Comment Templates**: Manage and post reusable grading comment templates to Canvas
 - **Course Filtering**: Efficient workflow with course and assignment filtering
 - **Settings UI**: Easy course configuration through web interface
 
@@ -95,6 +98,9 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 uv run ruff check .           # Lint code
 uv run ruff check . --fix     # Lint and auto-fix
 uv run ruff format .          # Format code
+
+# Run tests
+uv run pytest
 ```
 
 ### Local Frontend Development
@@ -113,6 +119,9 @@ npm run build
 
 # Run ESLint
 npm run lint
+
+# Run tests (Vitest)
+npm run test
 ```
 
 ## Project Structure
@@ -124,15 +133,34 @@ cda-ta-dashboard/
 ├── canvas_sync.py              # Canvas API data fetcher
 ├── Dockerfile                  # Backend container
 ├── docker-compose.yml          # Service orchestration
+├── pyproject.toml              # Backend dependencies (uv)
 ├── canvas-react/               # React frontend
 │   ├── src/
 │   │   ├── App.jsx             # Main application with routing
 │   │   ├── Settings.jsx        # Course configuration page
 │   │   ├── EnhancedTADashboard.jsx
+│   │   ├── GradeAnalysis.jsx   # Grade distribution charts and per-TA breakdown
 │   │   ├── LateDaysTracking.jsx
-│   │   └── PeerReviewTracking.jsx
+│   │   ├── EnrollmentTracking.jsx
+│   │   ├── PeerReviewTracking.jsx
+│   │   ├── components/
+│   │   │   ├── Navigation.jsx
+│   │   │   ├── AssignmentStatusBreakdown.jsx
+│   │   │   ├── SubmissionStatusCards.jsx
+│   │   │   ├── GradeBoxPlot.jsx
+│   │   │   ├── GradeHistogram.jsx
+│   │   │   └── GradingScheduleSummary.jsx
+│   │   └── hooks/
+│   │       ├── useExpandableSet.js
+│   │       └── useSSEPost.js
 │   ├── Dockerfile              # Frontend container
 │   └── nginx.conf              # Nginx reverse proxy config
+├── scripts/                    # Utility and deployment scripts
+│   ├── deploy-production.sh
+│   ├── deploy-sandbox.sh
+│   ├── test-backend-local.sh
+│   ├── test-frontend-local.sh
+│   └── test-integration.sh
 ├── data/                       # SQLite database (persisted)
 ├── docs/                       # Documentation
 └── .env.example                # Environment template
@@ -140,21 +168,34 @@ cda-ta-dashboard/
 
 ## API Endpoints
 
+### Health
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Simple health check |
+| GET | `/api/health` | Detailed health with DB status |
+
 ### Settings
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/settings` | Get current settings |
 | PUT | `/api/settings` | Update settings |
 | GET | `/api/settings/courses` | List available Canvas courses |
+| GET | `/api/settings/api-user` | Get Canvas API user info |
 
 ### Canvas Data
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/canvas/courses` | List configured courses |
+| GET | `/api/canvas/data/{course_id}` | Get all course data (assignments, submissions, users, groups) |
 | GET | `/api/canvas/assignments/{course_id}` | Get assignments |
 | GET | `/api/canvas/submissions/{course_id}` | Get submissions |
-| GET | `/api/canvas/users/{course_id}` | Get users |
+| GET | `/api/canvas/users/{course_id}` | Get students |
 | GET | `/api/canvas/groups/{course_id}` | Get groups |
+| GET | `/api/canvas/ta-users/{course_id}` | Get TA users |
+| GET | `/api/canvas/assignment-groups/{course_id}` | Get assignment groups |
+| GET | `/api/canvas/peer-review-assignments/{course_id}` | Get peer review assignments |
+| GET | `/api/canvas/peer-review-deadline/{course_id}` | Get peer review deadline |
+| GET | `/api/canvas/peer-reviews/{course_id}` | Get peer review data |
 
 ### Sync
 | Method | Endpoint | Description |
@@ -162,11 +203,30 @@ cda-ta-dashboard/
 | POST | `/api/canvas/sync` | Trigger Canvas data sync |
 | GET | `/api/canvas/sync/status` | Get last sync status |
 
-### Health
+### Dashboard
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/health` | Simple health check |
-| GET | `/api/health` | Detailed health with DB status |
+| GET | `/api/dashboard/submission-status/{course_id}` | Submission status breakdown |
+| GET | `/api/dashboard/ta-grading/{course_id}` | TA grading workload data |
+| GET | `/api/dashboard/grading-deadlines/{course_id}` | Assignments with grading deadlines and overdue status |
+| PUT | `/api/dashboard/grading-deadlines/{course_id}/{assignment_id}` | Update grading deadline for assignment |
+| POST | `/api/dashboard/grading-deadlines/{course_id}/propagate-defaults` | Apply default turnaround to all assignments |
+| GET | `/api/dashboard/grade-distribution/{course_id}` | List assignments with graded submission counts |
+| GET | `/api/dashboard/grade-distribution/{course_id}/{assignment_id}` | Full grade stats, histogram, and per-TA breakdown |
+| GET | `/api/dashboard/late-days/{course_id}` | Late days usage per student |
+| GET | `/api/dashboard/peer-reviews/{course_id}` | Peer review completion analysis |
+| GET | `/api/dashboard/enrollment-history/{course_id}` | Enrollment history over time |
+
+### Comment Templates
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/templates` | List comment templates |
+| POST | `/api/templates` | Create comment template |
+| PUT | `/api/templates/{template_id}` | Update comment template |
+| DELETE | `/api/templates/{template_id}` | Delete comment template |
+| POST | `/api/comments/preview/{assignment_id}` | Preview comment posting |
+| POST | `/api/comments/post/{assignment_id}` | Post comments to Canvas |
+| GET | `/api/comments/history` | Get comment post history |
 
 Full API documentation available at `/docs` (Swagger UI) when running.
 
@@ -213,7 +273,7 @@ Canvas data is stored in a SQLite database at `./data/canvas.db`. This directory
 
 ## Security
 
-⚠️ **IMPORTANT**: This application handles sensitive student data.
+**IMPORTANT**: This application handles sensitive student data.
 
 ### Security Notes
 - **API Token**: Store Canvas API token in `.env` file only (never commit)

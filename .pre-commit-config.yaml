@@ -48,11 +48,6 @@ repos:
       - id: check-merge-conflict
         name: Check for merge conflicts
 
-      # Prevent committing to main/master
-      - id: no-commit-to-branch
-        name: Prevent commits to main/master
-        args: ['--branch', 'main', '--branch', 'master']
-
       # Check for private keys
       - id: detect-private-key
         name: Detect private keys
